@@ -7,6 +7,7 @@ on:
 jobs:
   build-and-publish:
     name: Builds and publishes releases to PyPI
+    environment: pypi
     permissions:
       id-token: write # IMPORTANT: this permission is mandatory for trusted publishing
     runs-on: ubuntu-latest
