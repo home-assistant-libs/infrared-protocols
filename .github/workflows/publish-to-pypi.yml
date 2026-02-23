@@ -1,0 +1,27 @@
+name: Publish releases to PyPI
+
+on:
+  release:
+    types: [published, prereleased]
+
+jobs:
+  build-and-publish:
+    name: Builds and publishes releases to PyPI
+    environment: pypi
+    permissions:
+      id-token: write # IMPORTANT: this permission is mandatory for trusted publishing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - name: Set up Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.13"
+      - name: Install build
+        run: |-
+          pip install build
+      - name: Build
+        run: |-
+          python -m build
+      - name: Publish release to PyPI
+        uses: pypa/gh-action-pypi-publish@v1.13.0
