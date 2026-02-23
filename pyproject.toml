@@ -44,5 +44,4 @@ max-complexity = 25
 typeCheckingMode = "standard"
 
 [project.optional-dependencies]
-dev = ["prek"]
-
+dev = ["pytest", "prek"]
