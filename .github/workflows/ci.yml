@@ -45,6 +45,8 @@ jobs:
     environment: python-semantic-release
     if: github.ref == 'refs/heads/main'
     needs: [prek, pytest]
+    permissions:
+      id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
     steps:
       - name: Generate Token
         id: app-token
