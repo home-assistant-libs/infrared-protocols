@@ -36,7 +36,6 @@ select = [
     # isort
     "I",]
 
-
 [tool.ruff.lint.mccabe]
 max-complexity = 25
 
@@ -45,3 +44,8 @@ typeCheckingMode = "standard"
 
 [project.optional-dependencies]
 dev = ["pytest", "prek"]
+
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+build_command = "pip install build==1.4.0 && python -m build"
+tag_format = "{version}"

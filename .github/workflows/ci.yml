@@ -38,3 +38,36 @@ jobs:
       - name: Test with pytest
         run: |
           pytest --log-cli-level=debug
+
+  release:
+    runs-on: ubuntu-latest
+    concurrency: release
+    environment: python-semantic-release
+    if: github.ref == 'refs/heads/main'
+    needs: [prek, pytest]
+    permissions:
+      contents: write
+    steps:
+      - name: Generate Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.PSR_APP_ID }}
+          private-key: ${{ secrets.PSR_PRIVATE_KEY }}
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Python Semantic Release
+        id: release
+        uses: python-semantic-release/python-semantic-release@v10.5.3
+        with:
+          github_token: ${{ steps.app-token.outputs.token }}
+          changelog: false
+      - name: Publish package PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        if: steps.release.outputs.released == 'true'
