@@ -45,12 +45,10 @@ jobs:
     environment: python-semantic-release
     if: github.ref == 'refs/heads/main'
     needs: [prek, pytest]
-    permissions:
-      contents: write
     steps:
       - name: Generate Token
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2.2.1
         with:
           app-id: ${{ secrets.PSR_APP_ID }}
           private-key: ${{ secrets.PSR_PRIVATE_KEY }}
