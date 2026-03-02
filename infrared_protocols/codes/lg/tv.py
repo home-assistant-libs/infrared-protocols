@@ -1,4 +1,4 @@
-"""Command codes for LG TVs"""
+"""Command codes for LG TVs."""
 
 from enum import IntEnum
 
