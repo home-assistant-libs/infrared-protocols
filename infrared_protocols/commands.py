@@ -68,6 +68,7 @@ class NECCommand(Command):
         zero_low = 562
         one_low = 1687
         repeat_low = 2250
+        initial_frame_gap = 41000  # Gap to make total frame ~108ms
         frame_gap = 96000  # Gap to make total frame ~108ms
 
         timings: list[Timing] = [Timing(high_us=leader_high, low_us=leader_low)]
@@ -105,10 +106,12 @@ class NECCommand(Command):
         timings.append(Timing(high_us=bit_high, low_us=0))
 
         # Add repeat codes if requested
+        gap = initial_frame_gap
         for _ in range(self.repeat_count):
             # Replace the last timing's low_us with the frame gap
             last_timing = timings[-1]
-            timings[-1] = Timing(high_us=last_timing.high_us, low_us=frame_gap)
+            timings[-1] = Timing(high_us=last_timing.high_us, low_us=gap)
+            gap = frame_gap  # Use standard frame gap for subsequent repeats
 
             # Repeat code: leader burst + shorter space + end pulse
             timings.extend(
