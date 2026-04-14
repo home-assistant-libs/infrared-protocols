@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name         = "infrared-protocols"
-version      = "1.2.0"
+version      = "0.0.0"
 license      = "MIT"
 description  = "Library to decode and encode infrared signals."
 readme       = "README.md"
@@ -44,8 +44,3 @@ typeCheckingMode = "standard"
 
 [project.optional-dependencies]
 dev = ["pytest", "prek"]
-
-[tool.semantic_release]
-version_toml = ["pyproject.toml:project.version"]
-build_command = "pip install build==1.4.0 && python -m build"
-tag_format = "{version}"
