@@ -51,6 +51,4 @@ class LGTVCode(IntEnum):
 
 def make_command(code: LGTVCode, repeat_count: int = 0) -> Command:
     """Get the NECCommand for an LG TV IR code."""
-    return NECCommand(
-        address=0xFB04, command=code, modulation=38000, repeat_count=repeat_count
-    )
+    return NECCommand(address=0xFB04, command=code, repeat_count=repeat_count)
