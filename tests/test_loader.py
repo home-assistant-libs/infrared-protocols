@@ -231,6 +231,68 @@ command: 02 00 00 00
     assert commands["VOL_UP"].command == 0x02
 
 
+def test_load_codes_duplicate_name(tmp_path: Path) -> None:
+    """Test that duplicate command names raise ValueError."""
+    ir_file = tmp_path / "dup.ir"
+    ir_file.write_text(
+        """Filetype: IR signals file
+Version: 1
+#
+name: POWER
+type: parsed
+protocol: NEC
+address: 04 00 00 00
+command: 08 00 00 00
+#
+name: POWER
+type: parsed
+protocol: NEC
+address: 04 00 00 00
+command: 09 00 00 00
+"""
+    )
+    codes = load_codes("dup", base_dir=tmp_path)
+    with pytest.raises(ValueError, match="Duplicate command name"):
+        asyncio.run(codes.load_commands())
+
+
+def test_load_codes_missing_address(tmp_path: Path) -> None:
+    """Test that a missing required field raises a descriptive ValueError."""
+    ir_file = tmp_path / "bad.ir"
+    ir_file.write_text(
+        """Filetype: IR signals file
+Version: 1
+#
+name: POWER
+type: parsed
+protocol: NEC
+command: 08 00 00 00
+"""
+    )
+    codes = load_codes("bad", base_dir=tmp_path)
+    with pytest.raises(ValueError, match="Command 'POWER'.*'address'"):
+        asyncio.run(codes.load_commands())
+
+
+def test_load_codes_necext_truncated_address(tmp_path: Path) -> None:
+    """Test that NECext with a single address byte raises ValueError."""
+    ir_file = tmp_path / "bad.ir"
+    ir_file.write_text(
+        """Filetype: IR signals file
+Version: 1
+#
+name: POWER
+type: parsed
+protocol: NECext
+address: 04
+command: 08 00 00 00
+"""
+    )
+    codes = load_codes("bad", base_dir=tmp_path)
+    with pytest.raises(ValueError, match="at least 2 byte"):
+        asyncio.run(codes.load_commands())
+
+
 def test_load_codes_unsupported_protocol(tmp_path: Path) -> None:
     """Test that unsupported protocols raise ValueError on access."""
     ir_file = tmp_path / "bad.ir"

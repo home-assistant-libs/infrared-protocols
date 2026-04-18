@@ -95,9 +95,10 @@ pyproject.toml           # Build config, ruff rules, pyright settings
 
 IR code sets live under `infrared_protocols/codes/<vendor>/<device>.ir` as
 Flipper Zero `.ir` files. They are loaded at runtime via `load_codes(path)`
-(see `loader.py`). `load_codes` returns an opaque `Codes` object typed as
-`Any` so callers do not need per-file type stubs. To add a new device, drop
-a `.ir` file under `codes/<vendor>/` — no Python changes required.
+(see `loader.py`). `load_codes` returns a `CommandCollection`; the backing
+file is parsed lazily on the first `await collection.load_command(...)` and
+cached. To add a new device, drop a `.ir` file under `codes/<vendor>/` — no
+Python changes required.
 
 ---
 

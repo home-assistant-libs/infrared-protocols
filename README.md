@@ -6,14 +6,14 @@ Python package to decode and encode infrared signals for use in Home Assistant.
 
 IR codes are stored as [Flipper Zero `.ir`](https://docs.flipper.net/infrared/file-format)
 files under `infrared_protocols/codes/`. `load_codes` returns a
-`CommandCollection` without touching the disk; file I/O is deferred to the
-first `await collection.load_command(...)` and dispatched to the running
-loop's default executor.
+`CommandCollection` without opening or reading the `.ir` file; file I/O is
+deferred to the first `await collection.load_command(...)` and dispatched to
+the running loop's default executor.
 
 ```python
 from infrared_protocols import load_codes
 
-codes = load_codes("lg/tv")  # no I/O
+codes = load_codes("lg/tv")  # does not open/read the .ir file
 
 power = await codes.load_command("POWER")  # parses + caches on first call
 await async_send_command(power)
