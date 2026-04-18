@@ -49,11 +49,11 @@ class CommandCollection:
         return f"CommandCollection(path={self._path!s}, {state})"
 
 
-def load_codes(path: str, *, base_dir: Path | str | None = None) -> CommandCollection:
-    """Return a `CommandCollection` for a Flipper `.ir` file.
+def get_codes(name: str, *, base_dir: Path | str | None = None) -> CommandCollection:
+    """Return a `CommandCollection` for a Flipper `.ir` code set.
 
-    `path` is a relative path (without extension) under the base directory,
-    e.g. ``"lg/tv"``. When `base_dir` is omitted, the packaged `codes`
+    `name` is the identifier of the code set (without extension), e.g.
+    ``"lg/tv"``. When `base_dir` is omitted, the packaged `codes`
     directory is used.
 
     The `.ir` file is not opened or parsed until
@@ -62,10 +62,10 @@ def load_codes(path: str, *, base_dir: Path | str | None = None) -> CommandColle
     """
     base = Path(base_dir) if base_dir is not None else _DEFAULT_BASE_DIR
     resolved_base = base.resolve()
-    ir_path = (base / f"{path}.ir").resolve()
+    ir_path = (base / f"{name}.ir").resolve()
     if not ir_path.is_relative_to(resolved_base):
         raise ValueError(
-            f"Code path {path!r} resolves outside the base directory {base}"
+            f"Code name {name!r} resolves outside the base directory {base}"
         )
     return CommandCollection(ir_path)
 

@@ -5,16 +5,16 @@ from pathlib import Path
 
 import pytest
 
-from infrared_protocols import Command, NECCommand, load_codes, parse_ir
+from infrared_protocols import Command, NECCommand, get_codes, parse_ir
 
 _BUNDLED_CODES_DIR = Path(__file__).resolve().parent.parent / (
     "infrared_protocols/codes"
 )
 
 
-def test_load_codes_lg_tv() -> None:
+def test_get_codes_lg_tv() -> None:
     """Test loading bundled LG TV codes (NECext address)."""
-    codes = load_codes("lg/tv")
+    codes = get_codes("lg/tv")
     power = asyncio.run(codes.load_command("POWER"))
     assert isinstance(power, NECCommand)
     assert power.address == 0xFB04
@@ -26,9 +26,9 @@ def test_load_codes_lg_tv() -> None:
     assert volume_up.command == 0x02
 
 
-def test_load_codes_nedis() -> None:
+def test_get_codes_nedis() -> None:
     """Test loading bundled Nedis codes (plain NEC address)."""
-    codes = load_codes("nedis/vmat3462at")
+    codes = get_codes("nedis/vmat3462at")
     power = asyncio.run(codes.load_command("POWER"))
     assert isinstance(power, NECCommand)
     assert power.address == 0x00
@@ -37,12 +37,12 @@ def test_load_codes_nedis() -> None:
 
 def test_load_command_unknown() -> None:
     """Test that unknown commands raise ValueError."""
-    codes = load_codes("lg/tv")
+    codes = get_codes("lg/tv")
     with pytest.raises(ValueError, match="No command named"):
         asyncio.run(codes.load_command("NOT_A_REAL_COMMAND"))
 
 
-def test_load_codes_base_dir_override(tmp_path: Path) -> None:
+def test_get_codes_base_dir_override(tmp_path: Path) -> None:
     """Test loading from a custom base directory."""
     ir_file = tmp_path / "device.ir"
     ir_file.write_text(
@@ -63,7 +63,7 @@ command: 02 00 00 00
 """
     )
 
-    codes = load_codes("device", base_dir=tmp_path)
+    codes = get_codes("device", base_dir=tmp_path)
     power = asyncio.run(codes.load_command("POWER"))
     vol_up = asyncio.run(codes.load_command("VOL_UP"))
     assert power.address == 0x04
@@ -72,7 +72,7 @@ command: 02 00 00 00
     assert vol_up.command == 0x02
 
 
-def test_load_codes_rejects_path_traversal(tmp_path: Path) -> None:
+def test_get_codes_rejects_path_traversal(tmp_path: Path) -> None:
     """Test that paths escaping the base directory are rejected."""
     (tmp_path / "outside.ir").write_text(
         "Filetype: IR signals file\nVersion: 1\n"
@@ -81,10 +81,10 @@ def test_load_codes_rejects_path_traversal(tmp_path: Path) -> None:
     inner.mkdir()
 
     with pytest.raises(ValueError, match="outside the base directory"):
-        load_codes("../outside", base_dir=inner)
+        get_codes("../outside", base_dir=inner)
 
 
-def test_load_codes_rejects_absolute_path(tmp_path: Path) -> None:
+def test_get_codes_rejects_absolute_path(tmp_path: Path) -> None:
     """Test that absolute paths are rejected."""
     (tmp_path / "elsewhere.ir").write_text(
         "Filetype: IR signals file\nVersion: 1\n"
@@ -93,13 +93,13 @@ def test_load_codes_rejects_absolute_path(tmp_path: Path) -> None:
     base.mkdir()
 
     with pytest.raises(ValueError, match="outside the base directory"):
-        load_codes(str(tmp_path / "elsewhere"), base_dir=base)
+        get_codes(str(tmp_path / "elsewhere"), base_dir=base)
 
 
-def test_load_codes_is_lazy(tmp_path: Path) -> None:
+def test_get_codes_is_lazy(tmp_path: Path) -> None:
     """Test that the `.ir` file is not opened until load_command is awaited."""
     ir_path = tmp_path / "dev.ir"
-    codes = load_codes("dev", base_dir=tmp_path)
+    codes = get_codes("dev", base_dir=tmp_path)
 
     ir_path.write_text(
         """Filetype: IR signals file
@@ -131,7 +131,7 @@ address: 04 00 00 00
 command: 08 00 00 00
 """
     )
-    codes = load_codes("dev", base_dir=tmp_path)
+    codes = get_codes("dev", base_dir=tmp_path)
 
     async def load_twice_then_delete_file() -> tuple[Command, Command]:
         first = await codes.load_command("POWER")
@@ -150,7 +150,7 @@ def test_load_all_bundled_codes() -> None:
 
     async def load_first_command(ir_file: Path) -> Command:
         relative = ir_file.relative_to(_BUNDLED_CODES_DIR).with_suffix("")
-        codes = load_codes(str(relative))
+        codes = get_codes(str(relative))
         first_name = _first_command_name(ir_file)
         return await codes.load_command(first_name)
 
@@ -161,7 +161,7 @@ def test_load_all_bundled_codes() -> None:
 
 def test_load_commands_returns_full_mapping() -> None:
     """Test that load_commands returns every command in the file."""
-    codes = load_codes("nedis/vmat3462at")
+    codes = get_codes("nedis/vmat3462at")
     commands = asyncio.run(codes.load_commands())
     assert set(commands) == {
         "POWER",
@@ -193,7 +193,7 @@ address: 04 00 00 00
 command: 08 00 00 00
 """
     )
-    codes = load_codes("dev", base_dir=tmp_path)
+    codes = get_codes("dev", base_dir=tmp_path)
 
     async def load_both_then_delete_file() -> tuple[Command, Command]:
         via_all = (await codes.load_commands())["POWER"]
@@ -231,7 +231,7 @@ command: 02 00 00 00
     assert commands["VOL_UP"].command == 0x02
 
 
-def test_load_codes_duplicate_name(tmp_path: Path) -> None:
+def test_get_codes_duplicate_name(tmp_path: Path) -> None:
     """Test that duplicate command names raise ValueError."""
     ir_file = tmp_path / "dup.ir"
     ir_file.write_text(
@@ -251,12 +251,12 @@ address: 04 00 00 00
 command: 09 00 00 00
 """
     )
-    codes = load_codes("dup", base_dir=tmp_path)
+    codes = get_codes("dup", base_dir=tmp_path)
     with pytest.raises(ValueError, match="Duplicate command name"):
         asyncio.run(codes.load_commands())
 
 
-def test_load_codes_missing_address(tmp_path: Path) -> None:
+def test_get_codes_missing_address(tmp_path: Path) -> None:
     """Test that a missing required field raises a descriptive ValueError."""
     ir_file = tmp_path / "bad.ir"
     ir_file.write_text(
@@ -269,12 +269,12 @@ protocol: NEC
 command: 08 00 00 00
 """
     )
-    codes = load_codes("bad", base_dir=tmp_path)
+    codes = get_codes("bad", base_dir=tmp_path)
     with pytest.raises(ValueError, match="Command 'POWER'.*'address'"):
         asyncio.run(codes.load_commands())
 
 
-def test_load_codes_necext_truncated_address(tmp_path: Path) -> None:
+def test_get_codes_necext_truncated_address(tmp_path: Path) -> None:
     """Test that NECext with a single address byte raises ValueError."""
     ir_file = tmp_path / "bad.ir"
     ir_file.write_text(
@@ -288,12 +288,12 @@ address: 04
 command: 08 00 00 00
 """
     )
-    codes = load_codes("bad", base_dir=tmp_path)
+    codes = get_codes("bad", base_dir=tmp_path)
     with pytest.raises(ValueError, match="at least 2 byte"):
         asyncio.run(codes.load_commands())
 
 
-def test_load_codes_unsupported_protocol(tmp_path: Path) -> None:
+def test_get_codes_unsupported_protocol(tmp_path: Path) -> None:
     """Test that unsupported protocols raise ValueError on access."""
     ir_file = tmp_path / "bad.ir"
     ir_file.write_text(
@@ -307,7 +307,7 @@ address: 01 00 00 00
 command: 02 00 00 00
 """
     )
-    codes = load_codes("bad", base_dir=tmp_path)
+    codes = get_codes("bad", base_dir=tmp_path)
     with pytest.raises(ValueError, match="Unsupported protocol"):
         asyncio.run(codes.load_command("FOO"))
 
