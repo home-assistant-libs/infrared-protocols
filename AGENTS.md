@@ -78,13 +78,26 @@ pytest tests/test_commands.py::test_nec_command_get_raw_timings_standard
 infrared_protocols/      # Library source (only this directory is linted/type-checked)
     __init__.py          # Public API: defines __all__ and re-exports
     commands.py          # All domain logic: Command ABC, NECCommand, Timing
+    loader.py            # Flipper `.ir` parser + load_codes / Codes
+    codes/               # Bundled Flipper `.ir` code files (packaged as data)
+        lg/tv.ir
+        nedis/vmat3462at.ir
 tests/
-    test_commands.py     # pytest suite (all tests in one file)
+    test_commands.py     # Command encoding tests
+    test_loader.py       # Loader tests
 script/
     setup.sh             # Dev environment bootstrap
 .pre-commit-config.yaml  # ruff, ruff-format, basedpyright hooks
 pyproject.toml           # Build config, ruff rules, pyright settings
 ```
+
+### Bundled IR codes
+
+IR code sets live under `infrared_protocols/codes/<vendor>/<device>.ir` as
+Flipper Zero `.ir` files. They are loaded at runtime via `load_codes(path)`
+(see `loader.py`). `load_codes` returns an opaque `Codes` object typed as
+`Any` so callers do not need per-file type stubs. To add a new device, drop
+a `.ir` file under `codes/<vendor>/` — no Python changes required.
 
 ---
 
