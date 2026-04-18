@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from infrared_protocols import Command, NECCommand, load_codes
+from infrared_protocols import Command, NECCommand, load_codes, parse_ir
 
 _BUNDLED_CODES_DIR = Path(__file__).resolve().parent.parent / (
     "infrared_protocols/codes"
@@ -157,6 +157,32 @@ def test_load_all_bundled_codes() -> None:
     for ir_file in ir_files:
         command = asyncio.run(load_first_command(ir_file))
         assert isinstance(command, Command)
+
+
+def test_parse_ir_from_string() -> None:
+    """Test that parse_ir parses `.ir` file content directly."""
+    content = """Filetype: IR signals file
+Version: 1
+#
+name: POWER
+type: parsed
+protocol: NEC
+address: 04 00 00 00
+command: 08 00 00 00
+#
+name: VOL_UP
+type: parsed
+protocol: NECext
+address: 04 FB 00 00
+command: 02 00 00 00
+"""
+
+    commands = parse_ir(content)
+    assert isinstance(commands["POWER"], NECCommand)
+    assert commands["POWER"].address == 0x04
+    assert commands["POWER"].command == 0x08
+    assert commands["VOL_UP"].address == 0xFB04
+    assert commands["VOL_UP"].command == 0x02
 
 
 def test_load_codes_unsupported_protocol(tmp_path: Path) -> None:

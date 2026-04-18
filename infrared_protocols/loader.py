@@ -28,9 +28,8 @@ class CommandCollection:
         commands = self._commands
         if commands is None:
             loop = asyncio.get_running_loop()
-            commands = await loop.run_in_executor(
-                None, _parse_ir_file, self._path
-            )
+            content = await loop.run_in_executor(None, self._path.read_text)
+            commands = parse_ir(content)
             self._commands = commands
         try:
             return commands[name]
@@ -68,24 +67,23 @@ def load_codes(
     return CommandCollection(ir_path)
 
 
-def _parse_ir_file(path: Path) -> dict[str, Command]:
-    """Parse a Flipper `.ir` file into a mapping of name to Command."""
+def parse_ir(content: str) -> dict[str, Command]:
+    """Parse Flipper `.ir` file content into a mapping of name to Command."""
     commands: dict[str, Command] = {}
     current: dict[str, str] = {}
 
-    with path.open(encoding="utf-8") as fh:
-        for raw_line in fh:
-            line = raw_line.strip()
-            if not line:
-                continue
-            if line.startswith("#"):
-                _flush_record(current, commands)
-                current = {}
-                continue
-            key, sep, value = line.partition(":")
-            if not sep:
-                continue
-            current[key.strip().lower()] = value.strip()
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("#"):
+            _flush_record(current, commands)
+            current = {}
+            continue
+        key, sep, value = line.partition(":")
+        if not sep:
+            continue
+        current[key.strip().lower()] = value.strip()
 
     _flush_record(current, commands)
     return commands
