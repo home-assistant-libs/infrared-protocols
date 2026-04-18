@@ -17,26 +17,22 @@ class CommandCollection:
     The parsed result is cached for subsequent calls.
     """
 
-    __slots__ = ("_commands", "_load_lock", "_path")
+    __slots__ = ("_commands", "_path")
 
     def __init__(self, path: Path) -> None:
         """Initialize the collection with the resolved path to the `.ir` file."""
         self._path = path
         self._commands: dict[str, Command] | None = None
-        self._load_lock = asyncio.Lock()
 
     async def load_commands(self) -> dict[str, Command]:
         """Return the full command mapping, parsing the file on first use."""
         commands = self._commands
         if commands is None:
-            async with self._load_lock:
-                commands = self._commands
-                if commands is None:
-                    content = await asyncio.to_thread(
-                        partial(self._path.read_text, encoding="utf-8")
-                    )
-                    commands = parse_ir(content)
-                    self._commands = commands
+            content = await asyncio.to_thread(
+                partial(self._path.read_text, encoding="utf-8")
+            )
+            commands = parse_ir(content)
+            self._commands = commands
         return commands
 
     async def load_command(self, name: str) -> Command:
