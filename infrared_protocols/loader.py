@@ -23,14 +23,19 @@ class CommandCollection:
         self._path = path
         self._commands: dict[str, Command] | None = None
 
-    async def load_command(self, name: str) -> Command:
-        """Return the named command, parsing the backing file on first use."""
+    async def load_commands(self) -> dict[str, Command]:
+        """Return the full command mapping, parsing the file on first use."""
         commands = self._commands
         if commands is None:
             loop = asyncio.get_running_loop()
             content = await loop.run_in_executor(None, self._path.read_text)
             commands = parse_ir(content)
             self._commands = commands
+        return commands
+
+    async def load_command(self, name: str) -> Command:
+        """Return the named command, parsing the backing file on first use."""
+        commands = await self.load_commands()
         try:
             return commands[name]
         except KeyError:

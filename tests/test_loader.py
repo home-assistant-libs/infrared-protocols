@@ -159,6 +159,52 @@ def test_load_all_bundled_codes() -> None:
         assert isinstance(command, Command)
 
 
+def test_load_commands_returns_full_mapping() -> None:
+    """Test that load_commands returns every command in the file."""
+    codes = load_codes("nedis/vmat3462at")
+    commands = asyncio.run(codes.load_commands())
+    assert set(commands) == {
+        "POWER",
+        "A_OFF",
+        "A_1",
+        "A_2",
+        "A_3",
+        "A_4",
+        "B_OFF",
+        "B_1",
+        "B_2",
+        "B_3",
+        "B_4",
+    }
+    assert commands["POWER"].command == 0x14
+
+
+def test_load_commands_shares_cache_with_load_command(tmp_path: Path) -> None:
+    """Test that load_commands and load_command share the parsed cache."""
+    ir_path = tmp_path / "dev.ir"
+    ir_path.write_text(
+        """Filetype: IR signals file
+Version: 1
+#
+name: POWER
+type: parsed
+protocol: NEC
+address: 04 00 00 00
+command: 08 00 00 00
+"""
+    )
+    codes = load_codes("dev", base_dir=tmp_path)
+
+    async def load_both_then_delete_file() -> tuple[Command, Command]:
+        via_all = (await codes.load_commands())["POWER"]
+        ir_path.unlink()
+        via_one = await codes.load_command("POWER")
+        return via_all, via_one
+
+    via_all, via_one = asyncio.run(load_both_then_delete_file())
+    assert via_all is via_one
+
+
 def test_parse_ir_from_string() -> None:
     """Test that parse_ir parses `.ir` file content directly."""
     content = """Filetype: IR signals file
