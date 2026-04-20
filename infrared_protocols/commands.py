@@ -1,16 +1,7 @@
 """Common IR command definitions."""
 
 import abc
-from dataclasses import dataclass
 from typing import override
-
-
-@dataclass(frozen=True, slots=True)
-class Timing:
-    """High/low signal timing."""
-
-    high_us: int
-    low_us: int
 
 
 class Command(abc.ABC):
@@ -25,8 +16,12 @@ class Command(abc.ABC):
         self.repeat_count = repeat_count
 
     @abc.abstractmethod
-    def get_raw_timings(self) -> list[Timing]:
-        """Get raw timings for the command."""
+    def get_raw_timings(self) -> list[int]:
+        """Get raw timings for the command.
+
+        Positive values are pulse (high) durations in microseconds; negative
+        values are space (low) durations in microseconds.
+        """
 
 
 class NECCommand(Command):
@@ -49,7 +44,7 @@ class NECCommand(Command):
         self.command = command
 
     @override
-    def get_raw_timings(self) -> list[Timing]:
+    def get_raw_timings(self) -> list[int]:
         """Get raw timings for the NEC command.
 
         NEC protocol timing (in microseconds):
@@ -76,7 +71,7 @@ class NECCommand(Command):
         initial_frame_gap = 41000  # Gap to make total frame ~108ms
         frame_gap = 96000  # Gap to make total frame ~108ms
 
-        timings: list[Timing] = [Timing(high_us=leader_high, low_us=leader_low)]
+        timings: list[int] = [leader_high, -leader_low]
 
         # Determine if standard (8-bit) or extended (16-bit) address
         if self.address <= 0xFF:
@@ -101,29 +96,17 @@ class NECCommand(Command):
 
         for _ in range(32):
             bit = data & 1
-            if bit:
-                timings.append(Timing(high_us=bit_high, low_us=one_low))
-            else:
-                timings.append(Timing(high_us=bit_high, low_us=zero_low))
+            timings.append(bit_high)
+            timings.append(-one_low if bit else -zero_low)
             data >>= 1
 
         # End pulse
-        timings.append(Timing(high_us=bit_high, low_us=0))
+        timings.append(bit_high)
 
         # Add repeat codes if requested
         gap = initial_frame_gap
         for _ in range(self.repeat_count):
-            # Replace the last timing's low_us with the frame gap
-            last_timing = timings[-1]
-            timings[-1] = Timing(high_us=last_timing.high_us, low_us=gap)
+            timings.extend([-gap, leader_high, -repeat_low, bit_high])
             gap = frame_gap  # Use standard frame gap for subsequent repeats
-
-            # Repeat code: leader burst + shorter space + end pulse
-            timings.extend(
-                [
-                    Timing(high_us=leader_high, low_us=repeat_low),
-                    Timing(high_us=bit_high, low_us=0),
-                ]
-            )
 
         return timings
