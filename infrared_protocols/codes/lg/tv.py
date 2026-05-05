@@ -2,7 +2,8 @@
 
 from enum import Enum, IntEnum
 
-from ...commands import Command, NECCommand
+from ...commands.base import Command
+from ...commands.nec import NECCommand
 
 
 class LGTVCode(IntEnum):

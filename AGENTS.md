@@ -60,12 +60,12 @@ pytest --log-cli-level=debug
 
 ### Run a single test file
 ```bash
-pytest tests/test_commands.py
+pytest tests/commands/test_nec.py
 ```
 
 ### Run a single test by name
 ```bash
-pytest tests/test_commands.py::test_nec_command_get_raw_timings_standard
+pytest tests/commands/test_nec.py::test_nec_command_get_raw_timings_standard
 ```
 
 > CI tests against Python 3.13 and 3.14 via GitHub Actions.
@@ -76,10 +76,20 @@ pytest tests/test_commands.py::test_nec_command_get_raw_timings_standard
 
 ```
 infrared_protocols/      # Library source (only this directory is linted/type-checked)
-    __init__.py          # Public API: defines __all__ and re-exports
-    commands.py          # All domain logic: Command ABC, NECCommand
+    __init__.py          # Empty — no re-exports; consumers import from submodules
+    commands/            # One file per protocol encoder
+        __init__.py      # Empty — no re-exports
+        base.py          # Command ABC
+        nec.py           # NECCommand
+        samsung.py       # Samsung32Command
+    codes/               # Device-specific code mappings (namespace package)
+        lg/tv.py         # LGTVCode, LGTVCodeJP
+        nedis/...
+        samsung/tv.py    # SamsungTVCode
 tests/
-    test_commands.py     # pytest suite (all tests in one file)
+    commands/            # Mirrors infrared_protocols/commands/ layout
+        test_nec.py      # NECCommand tests
+        test_samsung.py  # Samsung32Command tests
 script/
     setup.sh             # Dev environment bootstrap
 .pre-commit-config.yaml  # ruff, ruff-format, basedpyright hooks
@@ -104,12 +114,15 @@ pyproject.toml           # Build config, ruff rules, pyright settings
 - **In tests:** use absolute imports from the installed package (`from infrared_protocols import ...`).
 - Named imports only; no wildcard imports (`from x import *`).
 - Import order is enforced by ruff's `I` (isort) rules: stdlib → third-party → local.
-- `__all__` must be defined in `__init__.py` to explicitly declare the public API.
+- No re-exports. `__init__.py` files are empty (just a docstring) so importing a
+  code module only loads the protocol encoder it actually needs. Consumers import
+  directly from the protocol submodule, e.g.
+  `from infrared_protocols.commands.nec import NECCommand`.
 
 ### Naming
 | Element | Convention | Example |
 |---|---|---|
-| Files / modules | `snake_case` | `commands.py` |
+| Files / modules | `snake_case` | `nec.py`, `samsung.py` |
 | Packages | `snake_case` | `infrared_protocols` |
 | Classes | `PascalCase` | `NECCommand`, `Command` |
 | Functions / methods | `snake_case` | `get_raw_timings` |
@@ -158,12 +171,13 @@ def get_raw_timings(self) -> list[int]:
 ## Architecture
 
 ### Adding a New Protocol
-1. Subclass `Command` (ABC) in `infrared_protocols/commands.py`.
+1. Create `infrared_protocols/commands/<protocol>.py` and subclass `Command` (ABC)
+   from `.base`.
 2. Implement `get_raw_timings(self) -> list[int]`.
 3. Decorate the override with `@override`.
 4. Define timing constants as local `snake_case` variables inside the method.
-5. Re-export the new class from `infrared_protocols/__init__.py` and add it to
-   `__all__`.
+5. Add `tests/commands/test_<protocol>.py` for the new encoder, importing
+   directly from `infrared_protocols.commands.<protocol>`.
 
 ### Key Abstractions
 - **Raw timings** — a flat `list[int]` of microsecond durations. Positive values are
@@ -173,6 +187,7 @@ def get_raw_timings(self) -> list[int]:
 - **`Command` (ABC)** — base class for all IR protocol encoders. Holds `modulation`
   and `repeat_count`.
 - **`NECCommand(Command)`** — encodes the NEC protocol; reference implementation.
+- **`Samsung32Command(Command)`** — encodes the Samsung32 protocol.
 
 ### Patterns to Follow
 - Build timing lists by starting with a base list, appending pulse/space ints in a
@@ -189,8 +204,9 @@ def get_raw_timings(self) -> list[int]:
   `list[int]` fixtures of signed pulse/space durations.
 - One assertion per logical case; reuse expected values with list unpacking
   (`[*expected, ...]`) rather than duplicating fixtures.
-- Tests live in `tests/test_commands.py`; keep them in one file unless the suite
-  grows substantially.
+- Test layout mirrors the package layout: `tests/commands/test_<protocol>.py`
+  (e.g. `tests/commands/test_nec.py`). Each test file imports directly from the
+  matching `infrared_protocols.commands.<protocol>` module.
 - Pre-commit hooks (`prek`) do **not** run on `tests/`; the type checker and linter
   only target `infrared_protocols/`. Tests are still expected to be clean Python.
 

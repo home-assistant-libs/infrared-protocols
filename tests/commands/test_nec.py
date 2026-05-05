@@ -1,6 +1,6 @@
-"""Tests for the Infrared protocol definitions."""
+"""Tests for the NEC IR command encoder."""
 
-from infrared_protocols import NECCommand
+from infrared_protocols.commands.nec import NECCommand
 
 
 def test_nec_command_get_raw_timings_standard() -> None:
