@@ -85,7 +85,6 @@ infrared_protocols/      # Library source (only this directory is linted/type-ch
         lg/tv.py         # LGTVCode, LGTVCodeJP
         nedis/...
         samsung/tv.py    # SamsungTVCode
-        samsung/tv.py    # SamsungTVCode
 tests/
     commands/            # Mirrors infrared_protocols/commands/ layout
         test_nec.py      # NECCommand tests
