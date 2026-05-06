@@ -2,7 +2,8 @@
 
 from enum import IntEnum
 
-from ...commands import Command, NECCommand
+from ...commands import Command
+from ...commands.nec import NECCommand
 
 
 class NedisVMAT3462ATCode(IntEnum):
