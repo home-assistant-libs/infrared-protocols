@@ -1,0 +1,32 @@
+name: Draft PR on Copilot suggestions
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  draft:
+    if: >-
+      github.event.review.user.login == 'copilot-pull-request-reviewer[bot]'
+      && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Convert PR to draft if Copilot left inline comments
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REVIEW_ID: ${{ github.event.review.id }}
+        run: |
+          set -euo pipefail
+          count=$(gh api \
+            "repos/${REPO}/pulls/${PR_NUMBER}/reviews/${REVIEW_ID}/comments" \
+            --jq 'length')
+          if [ "$count" -gt 0 ]; then
+            echo "Copilot left ${count} inline comment(s); converting PR #${PR_NUMBER} to draft."
+            gh pr ready "$PR_NUMBER" --undo --repo "$REPO"
+          else
+            echo "No inline comments found in review ${REVIEW_ID}."
+          fi
