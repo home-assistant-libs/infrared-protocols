@@ -2,7 +2,7 @@
 
 from enum import Enum, IntEnum
 
-from ...commands.base import Command
+from ...commands import Command
 from ...commands.nec import NECCommand
 
 

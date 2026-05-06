@@ -78,13 +78,13 @@ pytest tests/commands/test_nec.py::test_nec_command_get_raw_timings_standard
 infrared_protocols/      # Library source (only this directory is linted/type-checked)
     __init__.py          # Empty — no re-exports; consumers import from submodules
     commands/            # One file per protocol encoder
-        __init__.py      # Empty — no re-exports
-        base.py          # Command ABC
+        __init__.py      # Defines the Command ABC; no re-exports of subclasses
         nec.py           # NECCommand
         samsung.py       # Samsung32Command
     codes/               # Device-specific code mappings (namespace package)
         lg/tv.py         # LGTVCode, LGTVCodeJP
         nedis/...
+        samsung/tv.py    # SamsungTVCode
         samsung/tv.py    # SamsungTVCode
 tests/
     commands/            # Mirrors infrared_protocols/commands/ layout
@@ -110,14 +110,21 @@ pyproject.toml           # Build config, ruff rules, pyright settings
 - Two blank lines between top-level definitions; one blank line between methods.
 
 ### Imports
-- **Within the package:** use relative imports (`from .commands import ...`).
-- **In tests:** use absolute imports from the installed package (`from infrared_protocols import ...`).
+- **Within the package:** use relative imports to the specific submodule that
+  defines the symbol, e.g. `from . import Command` in
+  `infrared_protocols/commands/nec.py` (picking up `Command` from the
+  `commands` package's `__init__.py`).
+- **In tests:** import directly from the protocol submodule, e.g.
+  `from infrared_protocols.commands.nec import NECCommand`. Do not import from
+  `infrared_protocols` or `infrared_protocols.commands` — neither re-exports
+  protocol classes.
 - Named imports only; no wildcard imports (`from x import *`).
 - Import order is enforced by ruff's `I` (isort) rules: stdlib → third-party → local.
-- No re-exports. `__init__.py` files are empty (just a docstring) so importing a
-  code module only loads the protocol encoder it actually needs. Consumers import
-  directly from the protocol submodule, e.g.
-  `from infrared_protocols.commands.nec import NECCommand`.
+- No re-exports of protocol classes. The top-level `infrared_protocols/__init__.py`
+  is empty so importing a code module only loads the protocol encoder it actually
+  needs. The `commands/__init__.py` defines the `Command` ABC directly (there is
+  no separate `base.py`); concrete protocol classes live in their own submodules
+  and are not re-exported.
 
 ### Naming
 | Element | Convention | Example |
@@ -172,7 +179,7 @@ def get_raw_timings(self) -> list[int]:
 
 ### Adding a New Protocol
 1. Create `infrared_protocols/commands/<protocol>.py` and subclass `Command` (ABC)
-   from `.base`.
+   via `from . import Command` (the ABC lives in `commands/__init__.py`).
 2. Implement `get_raw_timings(self) -> list[int]`.
 3. Decorate the override with `@override`.
 4. Define timing constants as local `snake_case` variables inside the method.

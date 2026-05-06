@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import override
 
-from .base import Command
+from . import Command
 
 LEADER_HIGH = 9000
 LEADER_LOW = 4500

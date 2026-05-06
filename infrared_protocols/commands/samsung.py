@@ -2,7 +2,7 @@
 
 from typing import override
 
-from .base import Command
+from . import Command
 
 
 class Samsung32Command(Command):
