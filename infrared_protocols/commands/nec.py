@@ -1,8 +1,6 @@
 """NEC IR command."""
 
-from __future__ import annotations
-
-from typing import override
+from typing import Self, override
 
 from . import Command
 
@@ -95,8 +93,8 @@ class NECCommand(Command):
 
         return timings
 
-    @staticmethod
-    def from_raw_timings(timings: list[int]) -> NECCommand | None:
+    @classmethod
+    def from_raw_timings(cls, timings: list[int]) -> Self | None:
         """Decode raw IR timings into a NECCommand.
 
         Returns a NECCommand if the timings match, or None otherwise.
@@ -106,21 +104,21 @@ class NECCommand(Command):
             return None
 
         # Validate leader pulse
-        if not NECCommand._is_close(
-            timings[0], LEADER_HIGH
-        ) or not NECCommand._is_close(-timings[1], LEADER_LOW):
+        if not cls._is_close(timings[0], LEADER_HIGH) or not cls._is_close(
+            -timings[1], LEADER_LOW
+        ):
             return None
 
         # Decode 32 data bits (LSB first)
         data = 0
         for i in range(32):
-            bit = NECCommand._decode_bit(timings[2 + 2 * i], -timings[3 + 2 * i])
+            bit = cls._decode_bit(timings[2 + 2 * i], -timings[3 + 2 * i])
             if bit is None:
                 return None
             data |= bit << i
 
         # Validate end pulse
-        if not NECCommand._is_close(timings[66], BIT_HIGH):
+        if not cls._is_close(timings[66], BIT_HIGH):
             return None
 
         # Extract bytes
@@ -143,16 +141,11 @@ class NECCommand(Command):
 
         # Count repeat codes after the end pulse. Any remaining timings must be
         # complete repeat frames; otherwise this is not a valid NEC command.
-        repeat_count = NECCommand._count_repeat_codes(timings, 67)
+        repeat_count = cls._count_repeat_codes(timings, 67)
         if repeat_count is None:
             return None
 
-        return NECCommand(
-            address=address,
-            command=command_byte,
-            modulation=0,
-            repeat_count=repeat_count,
-        )
+        return cls(address=address, command=command_byte, repeat_count=repeat_count)
 
     @staticmethod
     def _is_close(actual: int, expected: int) -> bool:

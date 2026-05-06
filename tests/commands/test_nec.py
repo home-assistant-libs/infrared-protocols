@@ -1,4 +1,4 @@
-"""Tests for the NEC IR command encoder."""
+"""Tests for the NEC IR command."""
 
 import pytest
 
@@ -206,7 +206,7 @@ def test_nec_command_from_raw_timings(frame: list[int], expected_address: int) -
     assert command.address == expected_address
     assert command.command == COMMAND
     assert command.repeat_count == 0
-    assert command.modulation == 0
+    assert command.modulation == 38000
 
 
 def test_nec_command_from_raw_timings_with_repeats() -> None:
