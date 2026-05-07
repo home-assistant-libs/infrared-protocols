@@ -9,9 +9,9 @@ from ...commands.nec import NECCommand
 class EdifierR1280TCode(IntEnum):
     """Edifier R1280T speaker IR command codes."""
 
-    VOLUME_UP = 0xC33C
-    VOLUME_DOWN = 0xB24D
-    MUTE = 0xD42B
+    VOLUME_UP = 0x3C
+    VOLUME_DOWN = 0x4D
+    MUTE = 0x2B
 
     def to_command(self, repeat_count: int = 0) -> Command:
         """Build an NECCommand."""
