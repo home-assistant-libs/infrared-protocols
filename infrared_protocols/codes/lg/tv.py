@@ -15,6 +15,7 @@ class LGTVCode(IntEnum):
     CHANNEL_DOWN = 0x01
     CHANNEL_UP = 0x00
     EXIT = 0x5B
+    EZ_ADJUST = 0xFF
     FAST_FORWARD = 0x8E
     GREEN = 0x63
     GUIDE = 0xA9
@@ -25,6 +26,7 @@ class LGTVCode(IntEnum):
     HOME = 0x7C
     INFO = 0xAA
     INPUT = 0x0B
+    IN_START = 0xFB
     LIST = 0xCA
     MENU = 0x43
     MUTE = 0x09
@@ -144,6 +146,7 @@ class LGTVCodeJP(Enum):
     DTV_NUM_11 = (0xC404, 0xDB)
     DTV_NUM_12 = (0xC304, 0xDB)
     EXIT = (0xFB04, 0x5B)
+    EZ_ADJUST = (0xFB04, 0xFF)
     FAST_FORWARD = (0xFB04, 0x8E)
     GREEN = (0xFB04, 0x63)
     GUIDE = (0xFB04, 0xA9)
@@ -154,6 +157,7 @@ class LGTVCodeJP(Enum):
     HOME = (0xFB04, 0x7C)
     INFO = (0xFB04, 0xAA)
     INPUT = (0xFB04, 0x0B)
+    IN_START = (0xFB04, 0xFB)
     LIST = (0xFB04, 0x53)
     MENU = (0xFB04, 0x43)
     MUTE = (0xFB04, 0x09)
