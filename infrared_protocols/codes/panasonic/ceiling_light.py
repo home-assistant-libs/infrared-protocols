@@ -52,12 +52,11 @@ class PanasonicCeilingLightCode(Enum):
         # Error correction byte is the xor of data bytes except the address
         return bytes([data[2] ^ data[3]])
 
-    def to_command(self, repeat_count: int = 0) -> Command:
+    def to_command(self) -> Command:
         """Build an Kaseikyo command for this Panasonic Ceiling Light code."""
         return KaseikyoCommand(
             address=0x522C,
             data=[self.value.to_bytes(2, "little")],
             error_correction=self.error_correction,
-            repeat_count=repeat_count,
             modulation=37000,
         )

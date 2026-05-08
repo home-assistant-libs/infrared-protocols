@@ -13,7 +13,6 @@ class KaseikyoCommand(Command):
     data: list[bytes]
     error_correction: Callable[[bytes], bytes] | None
     base_unit: float
-    use_repeat_code: bool
 
     def __init__(
         self,
@@ -24,7 +23,6 @@ class KaseikyoCommand(Command):
         modulation: int = 38000,
         burst_pulse: int = 16,
         repeat_count: int = 0,
-        use_repeat_code: bool = False,
     ) -> None:
         """Initialize the Kaseikyo IR command."""
         super().__init__(modulation=modulation, repeat_count=repeat_count)
@@ -32,7 +30,6 @@ class KaseikyoCommand(Command):
         self.data = data
         self.error_correction = error_correction
         self.base_unit = 1000000 * burst_pulse / modulation
-        self.use_repeat_code = use_repeat_code
 
     @override
     def get_raw_timings(self) -> list[int]:
@@ -93,15 +90,8 @@ class KaseikyoCommand(Command):
 
         # Add repeat codes if requested
         gap = max(frame_time - sum(abs(t) for t in timings), multi_frame_gap)
-        if self.use_repeat_code:
-            for _ in range(self.repeat_count):
-                timings.extend([-gap, leader_high, -repeat_low, bit_high])
-                gap = repeat_frame_gap  # Use standard frame gap for subsequent repeats
-        else:
-            # Full frame retransmission
-            base_frame = timings.copy()
-            for _ in range(self.repeat_count):
-                timings.append(-gap)
-                timings.extend(base_frame)
+        for _ in range(self.repeat_count):
+            timings.extend([-gap, leader_high, -repeat_low, bit_high])
+            gap = repeat_frame_gap  # Use standard frame gap for subsequent repeats
 
         return timings

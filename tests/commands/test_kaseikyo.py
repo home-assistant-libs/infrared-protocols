@@ -100,30 +100,15 @@ def test_kaseikyo_command_get_raw_timings() -> None:
     ]
 
     # Frame duration: 3368 + 1684 + 32*421 + 13*1263 + 19*421 + 421 = 43363
-    # Gap = 130000 - 43363 = 86637
+    #   Gap = 130000 - 43363 = 86637
+    # Repeat code duration: 3368 + 3368 + 421 = 7157
+    #   Gap = 130000 - 7157 = 122843
     command_with_repeats = KaseikyoCommand(
         address=command.address,
         data=command.data,
         repeat_count=2,
     )
     timings_with_repeats = command_with_repeats.get_raw_timings()
-    assert timings_with_repeats == [
-        *expected_raw_timings,
-        -86637,
-        *expected_raw_timings,
-        -86637,
-        *expected_raw_timings,
-    ]
-
-    # Repeat code duration: 3368 + 3368 + 421 = 7157
-    # Gap = 130000 - 7157 = 122843
-    command_with_repeat_codes = KaseikyoCommand(
-        address=command.address,
-        data=command.data,
-        repeat_count=2,
-        use_repeat_code=True,
-    )
-    timings_with_repeat_codes = command_with_repeat_codes.get_raw_timings()
     expected_repeat_code_raw_timings = [
         # Leader
         3368,
@@ -131,7 +116,7 @@ def test_kaseikyo_command_get_raw_timings() -> None:
         # End pulse
         421,
     ]
-    assert timings_with_repeat_codes == [
+    assert timings_with_repeats == [
         *expected_raw_timings,
         -86637,
         *expected_repeat_code_raw_timings,
