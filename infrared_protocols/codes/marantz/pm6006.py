@@ -53,13 +53,3 @@ class MarantzPM6006Code(Enum):
             toggle=toggle,
             repeat_count=repeat_count,
         )
-
-
-def make_command(
-    code: MarantzPM6006Code,
-    repeat_count: int = 0,
-    *,
-    toggle: int = 0,
-) -> Command:
-    """Build the IR command for a Marantz PM6006 code."""
-    return code.to_command(repeat_count=repeat_count, toggle=toggle)

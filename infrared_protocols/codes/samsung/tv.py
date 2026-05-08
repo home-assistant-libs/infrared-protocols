@@ -49,8 +49,3 @@ class SamsungTVCode(IntEnum):
             command=self.value,
             repeat_count=repeat_count,
         )
-
-
-def make_command(code: SamsungTVCode, repeat_count: int = 0) -> Command:
-    """Build a Samsung32 command for a Samsung TV IR code."""
-    return code.to_command(repeat_count)

@@ -21,7 +21,6 @@ class NedisVMAT3462ATCode(IntEnum):
     B_3 = 0x53
     B_4 = 0x45
 
-
-def make_command(code: NedisVMAT3462ATCode, repeat_count: int = 0) -> Command:
-    """Get the NECCommand for a Nedis VMAT3462AT HDMI switch IR code."""
-    return NECCommand(address=0x0, command=code, repeat_count=repeat_count)
+    def to_command(self, repeat_count: int = 0) -> Command:
+        """Get the NECCommand for a Nedis VMAT3462AT HDMI switch IR code."""
+        return NECCommand(address=0x0, command=self.value, repeat_count=repeat_count)

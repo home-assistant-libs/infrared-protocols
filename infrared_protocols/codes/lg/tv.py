@@ -206,8 +206,3 @@ class LGTVCodeJP(Enum):
             command=command,
             repeat_count=repeat_count,
         )
-
-
-def make_command(code: LGTVCode, repeat_count: int = 0) -> Command:
-    """Build an NEC command for an LG TV IR code."""
-    return code.to_command(repeat_count)
