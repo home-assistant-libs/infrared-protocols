@@ -1,11 +1,3 @@
-# AGENTS.md — infrared-protocols
-
-Guidelines for agentic coding agents working in this repository.
-
----
-
-## Project Overview
-
 `infrared-protocols` is a pure-Python library (Python ≥ 3.13) that encodes infrared
 remote-control protocols (e.g. NEC) into raw pulse/space timing sequences. The public
 API surface is small and intentionally minimal.
@@ -63,50 +55,9 @@ pytest --log-cli-level=debug
 pytest tests/commands/test_nec.py
 ```
 
-### Run a single test by name
-```bash
-pytest tests/commands/test_nec.py::test_nec_command_get_raw_timings_standard
-```
-
-> CI tests against Python 3.13 and 3.14 via GitHub Actions.
-
----
-
-## Repository Structure
-
-```
-infrared_protocols/      # Library source (only this directory is linted/type-checked)
-    __init__.py          # Empty — no re-exports; consumers import from submodules
-    commands/            # One file per protocol encoder
-        __init__.py      # Defines the Command ABC; no re-exports of subclasses
-        nec.py           # NECCommand
-        samsung.py       # Samsung32Command
-    codes/               # Device-specific code mappings (namespace package)
-        lg/tv.py         # LGTVCode, LGTVCodeJP
-        nedis/...
-        samsung/tv.py    # SamsungTVCode
-tests/
-    commands/            # Mirrors infrared_protocols/commands/ layout
-        test_nec.py      # NECCommand tests
-        test_samsung.py  # Samsung32Command tests
-script/
-    setup.sh             # Dev environment bootstrap
-.pre-commit-config.yaml  # ruff, ruff-format, basedpyright hooks
-pyproject.toml           # Build config, ruff rules, pyright settings
-```
-
 ---
 
 ## Code Style
-
-### Formatting
-- Enforced by `ruff-format` (Black-compatible).
-- **Indentation:** 4 spaces.
-- **Quotes:** Double quotes (`"..."`).
-- **Line length:** 88 characters (Black default).
-- **Trailing commas:** Required in multi-line collections and argument lists.
-- **Semicolons:** Never.
-- Two blank lines between top-level definitions; one blank line between methods.
 
 ### Imports
 - **Within the package:** use relative imports to the specific submodule that
@@ -192,8 +143,6 @@ def get_raw_timings(self) -> list[int]:
   space.
 - **`Command` (ABC)** — base class for all IR protocol encoders. Holds `modulation`
   and `repeat_count`.
-- **`NECCommand(Command)`** — encodes the NEC protocol; reference implementation.
-- **`Samsung32Command(Command)`** — encodes the Samsung32 protocol.
 
 ### Patterns to Follow
 - Build timing lists by starting with a base list, appending pulse/space ints in a
