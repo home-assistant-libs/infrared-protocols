@@ -46,6 +46,12 @@ _CURSOR_PAD = frozenset(
 )
 
 
+GENERIC = MarantzModel(
+    name="Generic Amplifier",
+    codes=frozenset(MarantzAudioCode),
+)
+
+
 PM6006 = MarantzModel(
     name="PM6006 Integrated Amplifier",
     codes=_STANDARD_AUDIO
@@ -224,14 +230,10 @@ AV_9000 = MarantzModel(
 )
 
 
-GENERIC = MarantzModel(
-    name="Generic Amplifier",
-    codes=frozenset(MarantzAudioCode),
-)
-
-
-#: All known Marantz audio models, for iteration.
+#: All known Marantz audio models, for iteration. Generic is first so
+#: integrations using this list as a UI source default to the catch-all.
 ALL_MODELS: tuple[MarantzModel, ...] = (
+    GENERIC,
     PM6006,
     RC042SR,
     SR_19,
@@ -240,5 +242,4 @@ ALL_MODELS: tuple[MarantzModel, ...] = (
     SR_7300,
     SR_670,
     AV_9000,
-    GENERIC,
 )
