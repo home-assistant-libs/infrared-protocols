@@ -5,7 +5,7 @@ from typing import override
 from . import Command
 
 
-class SONYCommand(Command):
+class SonyCommand(Command):
     """SONY SIRC IR command."""
 
     address: int

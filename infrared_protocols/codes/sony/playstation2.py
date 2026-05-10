@@ -1,4 +1,4 @@
-"""Command codes for Sony PlayStation 2 and PSX(DESR-XXXX).
+"""Command codes for Sony PlayStation 2 (SCPH-XXXXX) and PSX (DESR-XXXX).
 
 Based on the following remote control models:
 - SCPH-10150
@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from ...commands import Command
-from ...commands.sony import SONYCommand
+from ...commands.sony import SonyCommand
 
 DVD_ADDRESS = 0x1A49
 PS2_ADDRESS = 0x1ADA
@@ -183,7 +183,7 @@ class SonyPlayStation2Code(Enum):
         if self.name.startswith("DESR_"):
             address = _PSX_ADDRESS_BY_SWITCH[psx_switch]
 
-        return SONYCommand(
+        return SonyCommand(
             address=address,
             address_bits=13,
             command=command,
