@@ -11,12 +11,17 @@ class SamsungTVCode(IntEnum):
 
     POWER = 0x02
     POWER_OFF = 0x98
+    POWER_ON = 0x99
     SOURCE = 0x01
     SETTINGS = 0x1A
     INFO = 0x1F
     EXIT = 0x2D
     RETURN = 0x58
     HOME = 0x79
+    RED = 0x6C
+    GREEN = 0x14
+    YELLOW = 0x15
+    BLUE = 0x16
     NAV_UP = 0x60
     NAV_DOWN = 0x61
     NAV_LEFT = 0x65
@@ -27,6 +32,7 @@ class SamsungTVCode(IntEnum):
     VOLUME_DOWN = 0x0B
     CHANNEL_UP = 0x12
     CHANNEL_DOWN = 0x10
+    PREVIOUS_CHANNEL = 0x13
     HDMI_1 = 0xE9
     HDMI_2 = 0xBE
     HDMI_3 = 0xC2
@@ -41,6 +47,17 @@ class SamsungTVCode(IntEnum):
     NUM_7 = 0x0C
     NUM_8 = 0x0D
     NUM_9 = 0x0E
+    PLAY = 0x47
+    PAUSE = 0x4A
+    STOP = 0x46
+    FAST_FORWARD = 0x48
+    REWIND = 0x45
+    RECORD = 0x49
+    TOOLS = 0x4B
+    BROWSER = 0x37
+    TV = 0x1B
+    AD_SUBTITLE = 0x25
+    E_MANUAL = 0x3F
 
     def to_command(self, repeat_count: int = 0) -> Command:
         """Build a Samsung32 command for this Samsung TV code."""
