@@ -52,7 +52,6 @@ class NECCommand(Command):
         - Extended NEC: address_low (8-bit) + address_high (8-bit) + command (8-bit)
           + ~command (8-bit)
         """
-
         timings: list[int] = [LEADER_HIGH, -LEADER_LOW]
 
         # Determine if standard (8-bit) or extended (16-bit) address

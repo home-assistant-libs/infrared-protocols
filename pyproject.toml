@@ -33,8 +33,18 @@ select = [
     "UP",
     # flake8-bugbear
     "B",
+    # pydocstyle
+    "D",
+    # flake8-annotations
+    "ANN",
     # isort
     "I",]
+ignore = [
+    # Prefer no blank line before class docstrings.
+    "D203",
+    # Prefer multi-line docstring summaries on the first line.
+    "D213",
+]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 25
