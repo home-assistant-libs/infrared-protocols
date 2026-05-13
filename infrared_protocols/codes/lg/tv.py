@@ -5,6 +5,8 @@ from enum import Enum, IntEnum
 from ...commands import Command
 from ...commands.nec import NECCommand
 
+LG_ADDRESS = 0xFB04
+
 
 class LGTVCode(IntEnum):
     """LG TV IR command codes."""
@@ -64,9 +66,7 @@ class LGTVCode(IntEnum):
     def to_command(self, repeat_count: int = 0) -> Command:
         """Build an NEC command for this LG TV code."""
         return NECCommand(
-            address=0xFB04,
-            command=self.value,
-            repeat_count=repeat_count,
+            address=LG_ADDRESS, command=self.value, repeat_count=repeat_count
         )
 
 
@@ -201,8 +201,4 @@ class LGTVCodeJP(Enum):
     def to_command(self, repeat_count: int = 0) -> Command:
         """Build an NEC command for this LG TV code."""
         address, command = self.value
-        return NECCommand(
-            address=address,
-            command=command,
-            repeat_count=repeat_count,
-        )
+        return NECCommand(address=address, command=command, repeat_count=repeat_count)
