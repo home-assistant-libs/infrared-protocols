@@ -47,6 +47,11 @@ prek --all-files
 - Multi-line: blank line after the summary, then prose description when the method is
   complex or requires extra detail.
 
+## Protocol Semantics
+
+- Do not add generic repeat (full frame copy) support to command encoders. Only
+  protocols with a distinct/special repeat-code frame should expose repeat handling.
+
 ## Error Handling
 
 - The library currently has no custom exceptions. Incorrect inputs surface as natural
