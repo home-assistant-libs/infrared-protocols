@@ -26,7 +26,11 @@ class MarantzAudioCode(Enum):
 
     # System 0x10 — audio amplifier / receiver
     POWER = (0x10, 0x0C)
+    POWER_ON = (0x10, 0x0C, 0x01)
+    POWER_OFF = (0x10, 0x0C, 0x02)
     MUTE = (0x10, 0x0D)
+    MUTE_ON = (0x10, 0x0D, 0x00)
+    MUTE_OFF = (0x10, 0x0D, 0x01)
     DISPLAY = (0x10, 0x0F)
     VOLUME_UP = (0x10, 0x10)
     VOLUME_DOWN = (0x10, 0x11)
@@ -84,10 +88,25 @@ class MarantzAudioCode(Enum):
     SOURCE_MD = (0x17, 0x3F)
     SOURCE_CDR = (0x1A, 0x3F)
 
+    # RC5X source selectors (command 0x63) — newer Marantz remotes use these
+    # for buttons commonly relabelled to digital inputs (Optical 1, TV optical).
+    SOURCE_CBL_SAT = (0x06, 0x63)
+    SOURCE_TV_AUDIO = (0x00, 0x63)
+
     # Marantz extended — digital inputs.
     SOURCE_OPTICAL = (0x10, 0x01, 0x28)
     SOURCE_COAX = (0x10, 0x01, 0x19)
     SOURCE_NETWORK = (0x19, 0x3F, 0x0A)
+
+    # Marantz extended — auxiliary / DVD source slots.
+    SOURCE_DVD = (0x16, 0x00, 0x10)
+    SOURCE_AUX_1 = (0x16, 0x00, 0x06)
+    SOURCE_AUX_2 = (0x16, 0x00, 0x07)
+    SOURCE_AUX_3 = (0x16, 0x00, 0x08)
+    SOURCE_AUX_4 = (0x16, 0x02, 0x00)
+    SOURCE_AUX_5 = (0x16, 0x02, 0x01)
+    SOURCE_AUX_6 = (0x16, 0x02, 0x02)
+    SOURCE_AUX_7 = (0x16, 0x02, 0x03)
 
     def to_command(self, repeat_count: int = 0, *, toggle: int = 0) -> Command:
         """Build the IR command for this code."""

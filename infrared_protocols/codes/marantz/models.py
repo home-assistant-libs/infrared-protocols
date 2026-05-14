@@ -20,7 +20,11 @@ class MarantzModel:
 _STANDARD_AUDIO = frozenset(
     {
         MarantzAudioCode.POWER,
+        MarantzAudioCode.POWER_ON,
+        MarantzAudioCode.POWER_OFF,
         MarantzAudioCode.MUTE,
+        MarantzAudioCode.MUTE_ON,
+        MarantzAudioCode.MUTE_OFF,
         MarantzAudioCode.VOLUME_UP,
         MarantzAudioCode.VOLUME_DOWN,
     }
