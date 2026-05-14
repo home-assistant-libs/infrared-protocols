@@ -19,7 +19,6 @@ class SonyCommand(Command):
         address_bits: int,
         command: int,
         modulation: int = 40000,
-        repeat_count: int = 0,
     ) -> None:
         """Initialize the SONY SIRC IR command."""
         if address_bits not in (5, 8, 13):
@@ -28,7 +27,7 @@ class SonyCommand(Command):
             raise ValueError("SONY SIRC address is out of range for address_bits")
         if not 0 <= command <= 0x7F:
             raise ValueError("SONY SIRC command must be in range 0x00..0x7F")
-        super().__init__(modulation=modulation, repeat_count=repeat_count)
+        super().__init__(modulation=modulation)
         self.address = address
         self.address_bits = address_bits
         self.command = command
@@ -69,11 +68,4 @@ class SonyCommand(Command):
         trailer_low = frame_period - sum(abs(timing) for timing in frame)
         frame.append(-trailer_low)
 
-        timings = list(frame)
-
-        # SONY SIRC repeats by retransmitting the same full frame.
-        if self.repeat_count > 0:
-            for _ in range(self.repeat_count):
-                timings.extend(frame)
-
-        return timings
+        return frame

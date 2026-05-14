@@ -170,7 +170,7 @@ class SonyPlayStation2Code(Enum):
     DESR_FLASH_FORW = (PSX_ADDRESS_SWITCH_1, 117)  # Only for RMT-P002J
     DESR_FLASH_BACK = (PSX_ADDRESS_SWITCH_1, 118)  # Only for RMT-P002J
 
-    def to_command(self, repeat_count: int = 0, *, psx_switch: int = 1) -> Command:
+    def to_command(self, *, psx_switch: int = 1) -> Command:
         """Build a SONY SIRC command for this PlayStation 2/PSX code.
 
         For DESR codes, set ``psx_switch`` to 1, 2, or 3 to select the
@@ -187,7 +187,6 @@ class SonyPlayStation2Code(Enum):
             address=address,
             address_bits=13,
             command=command,
-            repeat_count=repeat_count,
         )
 
 

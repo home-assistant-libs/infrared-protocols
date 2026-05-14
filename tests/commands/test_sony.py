@@ -37,29 +37,15 @@ def test_sony_command_get_raw_timings_12_bit_standard() -> None:
         600,
         -25800,
     ]
-    command = SonyCommand(address=0x01, address_bits=5, command=0x15, repeat_count=0)
+    command = SonyCommand(address=0x01, address_bits=5, command=0x15)
     timings = command.get_raw_timings()
     assert timings == expected_raw_timings
     assert command.modulation == 40000
 
-    # Trailer low = 45000 - (2400 + (4*1800) + (8*1200)) = 25800
-    command_with_repeats = SonyCommand(
-        address=command.address,
-        address_bits=command.address_bits,
-        command=command.command,
-        repeat_count=2,
-    )
-    timings_with_repeats = command_with_repeats.get_raw_timings()
-    assert timings_with_repeats == [
-        *expected_raw_timings,
-        *expected_raw_timings,
-        *expected_raw_timings,
-    ]
-
 
 def test_sony_command_get_raw_timings_15_bit() -> None:
     """Test SONY SIRC 15-bit framing for an 8-bit address."""
-    command = SonyCommand(address=0xA8, address_bits=8, command=0x02, repeat_count=0)
+    command = SonyCommand(address=0xA8, address_bits=8, command=0x02)
     timings = command.get_raw_timings()
 
     # 15-bit frame: leader high + 15 low/high pairs + trailer low
@@ -70,7 +56,7 @@ def test_sony_command_get_raw_timings_15_bit() -> None:
 
 def test_sony_command_get_raw_timings_20_bit() -> None:
     """Test SONY SIRC 20-bit framing for a 13-bit address."""
-    command = SonyCommand(address=0x1ABC, address_bits=13, command=0x34, repeat_count=0)
+    command = SonyCommand(address=0x1ABC, address_bits=13, command=0x34)
     timings = command.get_raw_timings()
 
     # 20-bit frame: leader high + 20 low/high pairs + trailer low
