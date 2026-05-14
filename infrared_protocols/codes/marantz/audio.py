@@ -21,9 +21,9 @@ class MarantzAudioCode(Enum):
       bit 6 set is sent using the RC5X extended encoding (used for the
       cursor keys on system 0x10).
     - ``(address, command, extension)`` — a Marantz extended frame, used
-   - ``(address, command)`` — a standard RC-5 frame. A ``command`` with
-     bit 6 set is sent using the RC5X extended encoding.
-   - ``(address, command, extension)`` — a Marantz extended frame.
+    - ``(address, command)`` — a standard RC-5 frame. A ``command`` with
+      bit 6 set is sent using the RC5X extended encoding.
+    - ``(address, command, extension)`` — a Marantz extended frame.
     """
 
     # System 0x10 — audio amplifier / receiver
