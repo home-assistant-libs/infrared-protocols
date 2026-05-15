@@ -100,7 +100,7 @@ class SonyPSXCode(Enum):
             Each position maps to a distinct IR address, allowing multiple PSX units
             to be controlled independently in the same room. Defaults to 1.
         """
-        if switch not in _SWITCH_TO_ADDRESS.keys():
+        if switch not in _SWITCH_TO_ADDRESS:
             raise ValueError(f"Invalid switch position: {switch}")
 
         command = self.value
@@ -116,7 +116,7 @@ class PSXModel:
     """A Sony PSX model and the IR codes it accepts for a specific switch setting."""
 
     name: str
-    codes: frozenset[Enum]
+    codes: frozenset[SonyPSXCode]
 
 
 # Code grouping by remote model
