@@ -140,15 +140,11 @@ _P002J_ONLY_COMMANDS = frozenset(
 # Earlier models include only common codes and P001-exclusive codes.
 # Later models include common codes and P002J-exclusive codes.
 PSX_EARLIER_MODELS = PSXModel(
-    name=(
-        "PSX earlier models (DESR-5000, DESR-7000, DESR-5100, and DESR-7100)"
-    ),
+    name=("PSX earlier models (DESR-5000, DESR-7000, DESR-5100, and DESR-7100)"),
     codes=frozenset(code for code in SonyPSXCode if code not in _P002J_ONLY_COMMANDS),
 )
 
 PSX_LATER_MODELS = PSXModel(
-    name=(
-        "PSX later models (DESR-5500, DESR-7500, DESR-5700, and DESR-7700)"
-    ),
+    name=("PSX later models (DESR-5500, DESR-7500, DESR-5700, and DESR-7700)"),
     codes=frozenset(code for code in SonyPSXCode if code not in _P001_ONLY_COMMANDS),
 )
