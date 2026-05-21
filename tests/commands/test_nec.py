@@ -252,13 +252,25 @@ def test_nec_command_from_raw_timings_within_tolerance() -> None:
         pytest.param(
             [*STANDARD_FRAME[:65], -562, *STANDARD_FRAME[66:]], id="invalid_checksum"
         ),
-        pytest.param([*STANDARD_FRAME, -12345], id="trailing_garbage"),
-        pytest.param([*STANDARD_FRAME, -41000, 9000], id="incomplete_repeat"),
-        pytest.param(
-            [*STANDARD_FRAME, -100, 9000, -2250, 562], id="invalid_repeat_gap"
-        ),
     ],
 )
 def test_nec_command_from_raw_timings_invalid(timings: list[int]) -> None:
     """Test from_raw_timings returns None for malformed inputs."""
     assert NECCommand.from_raw_timings(timings) is None
+
+
+@pytest.mark.parametrize(
+    "trailing",
+    [
+        pytest.param([-12345], id="trailing_garbage"),
+        pytest.param([-41000, 9000], id="incomplete_repeat"),
+        pytest.param([-100, 9000, -2250, 562], id="invalid_repeat_gap"),
+    ],
+)
+def test_nec_command_from_raw_timings_ignores_trailing(trailing: list[int]) -> None:
+    """Test that trailing timings that don't form a valid repeat code are ignored."""
+    command = NECCommand.from_raw_timings([*STANDARD_FRAME, *trailing])
+    assert command is not None
+    assert command.address == STANDARD_DECODED_ADDRESS
+    assert command.command == COMMAND
+    assert command.repeat_count == 0

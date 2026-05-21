@@ -141,9 +141,6 @@ class NECCommand(Command):
         # Count repeat codes after the end pulse. Any remaining timings must be
         # complete repeat frames; otherwise this is not a valid NEC command.
         repeat_count = cls._count_repeat_codes(timings, 67)
-        if repeat_count is None:
-            return None
-
         return cls(address=address, command=command_byte, repeat_count=repeat_count)
 
     @staticmethod
@@ -167,19 +164,17 @@ class NECCommand(Command):
         return None
 
     @staticmethod
-    def _count_repeat_codes(timings: list[int], start_index: int) -> int | None:
+    def _count_repeat_codes(timings: list[int], start_index: int) -> int:
         """Count NEC repeat codes starting from the given index.
 
         A repeat code consists of a frame gap, a leader burst (9000µs high,
-        2250µs low), and an end pulse (562µs high). Returns None if trailing
-        timings do not exactly match complete repeat codes.
+        2250µs low), and an end pulse (562µs high). Counting stops at the first
+        mismatch or truncated trailing frame; any remaining timings are ignored.
         """
         count = 0
         i = start_index
         gap = INITIAL_FRAME_GAP
-        while i < len(timings):
-            if i + 3 >= len(timings):
-                return None
+        while (i + 3) < len(timings):
             if (
                 NECCommand._is_close(-timings[i], gap)
                 and NECCommand._is_close(timings[i + 1], LEADER_HIGH)
@@ -190,5 +185,5 @@ class NECCommand(Command):
                 i += 4
                 gap = FRAME_GAP
             else:
-                return None
+                return count
         return count
