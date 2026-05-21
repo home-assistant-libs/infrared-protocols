@@ -138,8 +138,8 @@ class NECCommand(Command):
         # of the low byte to determine if it was originally a standard 8-bit address.
         address = address_low | (address_high << 8)
 
-        # Count repeat codes after the end pulse. Any remaining timings must be
-        # complete repeat frames; otherwise this is not a valid NEC command.
+        # Count repeat codes after the end pulse. Counting stops at the first
+        # mismatch or truncated repeat frame; any remaining timings are ignored.
         repeat_count = cls._count_repeat_codes(timings, 67)
         return cls(address=address, command=command_byte, repeat_count=repeat_count)
 
