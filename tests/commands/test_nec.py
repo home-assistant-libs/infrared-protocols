@@ -260,17 +260,20 @@ def test_nec_command_from_raw_timings_invalid(timings: list[int]) -> None:
 
 
 @pytest.mark.parametrize(
-    "trailing",
+    ("trailing", "expected_repeat_count"),
     [
-        pytest.param([-12345], id="trailing_garbage"),
-        pytest.param([-41000, 9000], id="incomplete_repeat"),
-        pytest.param([-100, 9000, -2250, 562], id="invalid_repeat_gap"),
+        pytest.param([-12345], 0, id="trailing_garbage"),
+        pytest.param([-41000, 9000], 0, id="incomplete_repeat"),
+        pytest.param([-100, 9000, -2250, 562], 0, id="invalid_repeat_gap"),
+        pytest.param([*TWO_REPEATS_TAIL, -12345], 2, id="repeats_then_trailing_garbage"),
     ],
 )
-def test_nec_command_from_raw_timings_ignores_trailing(trailing: list[int]) -> None:
-    """Test that trailing timings that don't form a valid repeat code are ignored."""
+def test_nec_command_from_raw_timings_ignores_trailing(
+    trailing: list[int], expected_repeat_count: int
+) -> None:
+    """Test that invalid trailing timings are ignored without dropping valid repeats."""
     command = NECCommand.from_raw_timings([*STANDARD_FRAME, *trailing])
     assert command is not None
     assert command.address == STANDARD_DECODED_ADDRESS
     assert command.command == COMMAND
-    assert command.repeat_count == 0
+    assert command.repeat_count == expected_repeat_count
