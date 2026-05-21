@@ -10,7 +10,7 @@ class KaseikyoCommand(Command):
     """Kaseikyo format IR command."""
 
     address: int
-    data: list[bytes]
+    data: bytes
     error_correction: Callable[[bytes], bytes] | None
     base_unit: float
 
@@ -18,7 +18,7 @@ class KaseikyoCommand(Command):
         self,
         *,
         address: int,
-        data: list[bytes],
+        data: bytes,
         error_correction: Callable[[bytes], bytes] | None = None,
         modulation: int = 38000,
         burst_pulse: int = 16,
@@ -36,7 +36,7 @@ class KaseikyoCommand(Command):
         """Get raw timings for the Kaseikyo command.
 
         Kaseikyo protocol timing (in base time units):
-        - T: base time unit (16/38kHz = 421µs typ.)
+        - T: base time unit (350µs - 500µs, 16/38kHz = 421µs typ.)
         - Leader pulse: 8T high, 4T low
         - Logical '0': 1T high, 1T low
         - Logical '1': 1T high, 3T low
@@ -54,42 +54,39 @@ class KaseikyoCommand(Command):
         zero_low = round(1 * self.base_unit)
         one_low = round(3 * self.base_unit)
         frame_time = 130000
-        repeat_frame_gap = frame_time - (leader_high + repeat_low + bit_high)
-        multi_frame_gap = 10000
+        trailer_min = 8000
+        repeat_frame_gap = max(
+            frame_time - (leader_high + repeat_low + bit_high), trailer_min
+        )
+
+        timings = [leader_high, -leader_low]
 
         parity = self.address & 0xFFFF
         parity ^= parity >> 8
         parity ^= parity >> 4
         parity &= 0x0F
 
-        timings: list[int] = []
-        for i, data in enumerate(self.data):
-            if i != 0:
-                # Add inter-frame gap for multi-frame commands
-                timings.append(-multi_frame_gap)
-            timings.extend([leader_high, -leader_low])
+        data_bytes = [
+            self.address & 0xFF,
+            (self.address >> 8) & 0xFF,
+            (self.data[0] & 0xF0) | parity,
+            *self.data[1:],
+        ]
+        if self.error_correction:
+            data_bytes.extend(self.error_correction(bytes(data_bytes)))
 
-            data_bytes = [
-                self.address & 0xFF,
-                (self.address >> 8) & 0xFF,
-                (data[0] & 0xF0) | parity,
-                *data[1:],
-            ]
-            if self.error_correction:
-                data_bytes.extend(self.error_correction(bytes(data_bytes)))
+        for byte in data_bytes:
+            for _ in range(8):
+                bit = byte & 1
+                timings.append(bit_high)
+                timings.append(-one_low if bit else -zero_low)
+                byte >>= 1
 
-            for byte in data_bytes:
-                for _ in range(8):
-                    bit = byte & 1
-                    timings.append(bit_high)
-                    timings.append(-one_low if bit else -zero_low)
-                    byte >>= 1
-
-            # End pulse
-            timings.append(bit_high)
+        # End pulse
+        timings.append(bit_high)
 
         # Add repeat codes if requested
-        gap = max(frame_time - sum(abs(t) for t in timings), multi_frame_gap)
+        gap = max(frame_time - sum(abs(t) for t in timings), trailer_min)
         for _ in range(self.repeat_count):
             timings.extend([-gap, leader_high, -repeat_low, bit_high])
             gap = repeat_frame_gap  # Use standard frame gap for subsequent repeats

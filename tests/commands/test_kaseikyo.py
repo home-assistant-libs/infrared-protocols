@@ -83,21 +83,10 @@ def test_kaseikyo_command_get_raw_timings() -> None:
         # End pulse
         421,
     ]
-    command = KaseikyoCommand(address=0x1234, data=[bytes([0x50, 0x67])])
+    command = KaseikyoCommand(address=0x1234, data=bytes([0x50, 0x67]))
     timings = command.get_raw_timings()
     assert timings == expected_raw_timings
     assert command.modulation == 38000
-
-    command_with_multiple_frames = KaseikyoCommand(
-        address=command.address,
-        data=[*command.data, *command.data],
-    )
-    timings_multiple_frames = command_with_multiple_frames.get_raw_timings()
-    assert timings_multiple_frames == [
-        *expected_raw_timings,
-        -10000,
-        *expected_raw_timings,
-    ]
 
     # Frame duration: 3368 + 1684 + 32*421 + 13*1263 + 19*421 + 421 = 43363
     #   Gap = 130000 - 43363 = 86637

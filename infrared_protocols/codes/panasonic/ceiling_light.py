@@ -56,7 +56,7 @@ class PanasonicCeilingLightCode(Enum):
         """Build an Kaseikyo command for this Panasonic Ceiling Light code."""
         return KaseikyoCommand(
             address=0x522C,
-            data=[self.value.to_bytes(2, "little")],
+            data=self.value.to_bytes(2, "little"),
             error_correction=self.error_correction,
             modulation=37000,
         )
