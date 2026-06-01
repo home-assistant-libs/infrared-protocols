@@ -189,5 +189,7 @@ class VizioTVCode(IntEnum):
     def to_command(self, repeat_count: int = 0) -> Command:
         """Build an NEC command for this Vizio TV code."""
         return NECCommand(
-            address=VIZIO_ADDRESS, command=self.value, repeat_count=repeat_count,
+            address=VIZIO_ADDRESS,
+            command=self.value,
+            repeat_count=repeat_count,
         )
