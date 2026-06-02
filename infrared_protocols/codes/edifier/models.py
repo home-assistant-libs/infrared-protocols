@@ -3,7 +3,7 @@
 from enum import StrEnum
 
 
-class EdifierCommandSets(StrEnum):
+class EdifierCommandSet(StrEnum):
     """Edifier command set groupings."""
 
     R1700BT = "r1700bt"
@@ -36,23 +36,23 @@ class EdifierModel(StrEnum):
     RC20G = "RC20G"
 
 
-MODEL_TO_COMMAND_SET: dict[EdifierModel, EdifierCommandSets] = {
+MODEL_TO_COMMAND_SET: dict[EdifierModel, EdifierCommandSet] = {
     # R1700BT command set
-    EdifierModel.R1700BT: EdifierCommandSets.R1700BT,
-    EdifierModel.R1700BTS: EdifierCommandSets.R1700BT,
-    EdifierModel.RC17A: EdifierCommandSets.R1700BT,
-    EdifierModel.RC80B: EdifierCommandSets.R1700BT,
-    EdifierModel.R1855DB: EdifierCommandSets.R1700BT,
+    EdifierModel.R1700BT: EdifierCommandSet.R1700BT,
+    EdifierModel.R1700BTS: EdifierCommandSet.R1700BT,
+    EdifierModel.RC17A: EdifierCommandSet.R1700BT,
+    EdifierModel.RC80B: EdifierCommandSet.R1700BT,
+    EdifierModel.R1855DB: EdifierCommandSet.R1700BT,
     # R1280DB command set
-    EdifierModel.R1280DB: EdifierCommandSets.R1280DB,
-    EdifierModel.R2730DB: EdifierCommandSets.R1280DB,
-    EdifierModel.RC10D1: EdifierCommandSets.R1280DB,
-    EdifierModel.R2000DB: EdifierCommandSets.R1280DB,
+    EdifierModel.R1280DB: EdifierCommandSet.R1280DB,
+    EdifierModel.R2730DB: EdifierCommandSet.R1280DB,
+    EdifierModel.RC10D1: EdifierCommandSet.R1280DB,
+    EdifierModel.R2000DB: EdifierCommandSet.R1280DB,
     # R1280T command set
-    EdifierModel.R1280T: EdifierCommandSets.R1280T,
+    EdifierModel.R1280T: EdifierCommandSet.R1280T,
     # S360DB command set
-    EdifierModel.S360DB: EdifierCommandSets.S360DB,
-    EdifierModel.RC31A: EdifierCommandSets.S360DB,
+    EdifierModel.S360DB: EdifierCommandSet.S360DB,
+    EdifierModel.RC31A: EdifierCommandSet.S360DB,
     # RC20G command set
-    EdifierModel.RC20G: EdifierCommandSets.RC20G,
+    EdifierModel.RC20G: EdifierCommandSet.RC20G,
 }
