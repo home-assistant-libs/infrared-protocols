@@ -19,16 +19,16 @@ The public API surface is small and intentionally minimal.
 - `ruff` is used for linting and formatting.
 - `basedpyright` is used for type checking.
 - `pytest` is used for testing.
-- After finishing a code session, run `uv run prek run --all-files` to check for linting and formatting issues.
+- After finishing a code session, run `prek --all-files` to check for linting and formatting issues.
 
 ### Run all lint, format, and type-check hooks (changed files only)
 ```bash
-prek run
+prek
 ```
 
 ### Run all hooks on every file
 ```bash
-prek run --all-files
+prek --all-files
 ```
 
 ## Code Style
