@@ -1,4 +1,6 @@
-`infrared-protocols` is a pure-Python library (Python ≥ 3.13) that encodes infrared
+# Agent Instructions
+
+`infrared-protocols` is a pure-Python library (Python ≥ 3.14) that encodes infrared
 remote-control protocols (e.g. NEC) to and from raw pulse/space timing sequences.
 The public API surface is small and intentionally minimal.
 
@@ -8,11 +10,16 @@ The public API surface is small and intentionally minimal.
 ./script/setup.sh
 ```
 
+## Git Commit Guidelines
+
+- **Do NOT amend, squash, or rebase commits that have already been pushed to the PR branch after the PR is opened** - Reviewers need to follow the commit history, as well as see what changed since their last review
+
 ## Build / Lint / Test
 
 - `ruff` is used for linting and formatting.
 - `basedpyright` is used for type checking.
 - `pytest` is used for testing.
+- After finishing a code session, run `prek --all-files` to check for linting and formatting issues.
 
 ### Run all lint, format, and type-check hooks (changed files only)
 ```bash
@@ -47,6 +54,12 @@ prek --all-files
 - Multi-line: blank line after the summary, then prose description when the method is
   complex or requires extra detail.
 
+## Python Syntax Notes
+
+- Python 3.14 and above is supported. Do not flag syntax or features that require Python 3.13 as issues, and do not suggest workarounds for older Python versions.
+- Python 3.14 explicitly allows `except TypeA, TypeB:` without parentheses. Never flag this as an issue.
+- Python 3.14 evaluates annotations lazily (PEP 649). Forward references in annotations do not need to be quoted — annotations can reference names defined later in the module without quoting them or using `from __future__ import annotations`. Do not flag unquoted forward references in annotations as issues.
+
 ## Protocol Semantics
 
 - Do not add generic repeat (full frame copy) support to command encoders. Only
@@ -61,3 +74,16 @@ prek --all-files
 - If you add validation, raise standard built-in exceptions with descriptive messages
   rather than introducing custom exception classes unless there is a clear consumer
   need.
+
+## Testing
+
+- Use `pytest` to run tests
+- When writing or modifying tests, ensure all test function parameters have type annotations.
+- Prefer concrete types over `Any`.
+- Prefer `@pytest.mark.usefixtures` over arguments, if the argument is not going to be used.
+- Avoid using conditions/branching in tests. Instead, either split tests or adjust the test parametrization to cover all cases without branching.
+- If multiple tests share most of their code, use `pytest.mark.parametrize` to merge them into a single parameterized test instead of duplicating the body. Use `pytest.param` with an `id` parameter to name the test cases clearly.
+
+## Good practices
+
+- Do not add comments that just restate the code on the following line(s) (e.g. `# Check if initialized` above `if self.initialized:`). Comments should only explain why — non-obvious constraints, surprising behavior, or workarounds — never what.
