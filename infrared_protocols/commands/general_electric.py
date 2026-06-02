@@ -23,10 +23,7 @@ class GEACCommand(Command):
     - 8 command bits (MSB first): each 562µs mark + 562/1687µs space
     - Stop: 562µs mark
 
-    This is the protocol used by GE AC remotes such as the YAE1K2. It is
-    distinct from standard NEC in three ways: bits are transmitted MSB first
-    (not LSB first), there are no inverse-byte checksum fields, and a 4500µs
-    mid-frame gap separates the address group from the command group.
+    This is the protocol used by GE AC remotes such as the YAE1K2.
     """
 
     address: int
