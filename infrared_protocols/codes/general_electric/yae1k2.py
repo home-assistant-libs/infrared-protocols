@@ -8,7 +8,7 @@ from ...commands.general_electric import GEACCommand
 YAE1K2_ADDRESS = 0xEB
 
 
-class Yae1k2Code(IntEnum):
+class YAE1K2Code(IntEnum):
     """GE YAE1K2 AC remote IR command codes."""
 
     COOL_MODE = 0x00
