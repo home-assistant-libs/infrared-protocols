@@ -109,12 +109,12 @@ class GEACCommand(Command):
         margin = expected * TOLERANCE
         return expected - margin <= actual <= expected + margin
 
-    @staticmethod
-    def _decode_bit(high_us: int, low_us: int) -> int | None:
-        if not GEACCommand._is_close(high_us, BIT_HIGH):
+    @classmethod
+    def _decode_bit(cls, high_us: int, low_us: int) -> int | None:
+        if not cls._is_close(high_us, BIT_HIGH):
             return None
-        if GEACCommand._is_close(low_us, ZERO_LOW):
+        if cls._is_close(low_us, ZERO_LOW):
             return 0
-        if GEACCommand._is_close(low_us, ONE_LOW):
+        if cls._is_close(low_us, ONE_LOW):
             return 1
         return None
