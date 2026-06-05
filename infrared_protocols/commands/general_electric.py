@@ -37,6 +37,10 @@ class GEACCommand(Command):
         modulation: int = 38000,
     ) -> None:
         """Initialize the GE AC IR command."""
+        if not (0 <= address <= 0xFF):
+            raise ValueError(f"address must be 0-255, got {address}")
+        if not (0 <= command <= 0xFF):
+            raise ValueError(f"command must be 0-255, got {command}")
         super().__init__(modulation=modulation, repeat_count=0)
         self.address = address
         self.command = command
