@@ -13,7 +13,7 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Operating System :: OS Independent",
 ]
-requires-python = ">=3.14.2"
+requires-python = ">=3.14"
 
 [project.urls]
 "Homepage" = "https://github.com/home-assistant-libs/infrared-protocols"
