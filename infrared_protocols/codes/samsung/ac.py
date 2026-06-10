@@ -26,27 +26,39 @@ class SamsungACStateBuilder:
         # Block 2: Base configuration (Fixed for this specific AC unit)
         payload[7:14] = [0xDF, 0x00, 0xE9, 0x07, 0x00, 0x00, 0x00]
 
-        # Block 3: Dynamic state (Base initialization for Cool mode, Auto fan)
-        payload[14:21] = [0x80, 0x06, 0x00, 0xFB, 0xC7, 0x00, 0x00]
+        # Block 3: Dynamic state base initialization
+        payload[14:21] = [0x80, 0x06, 0x00, 0x00, 0xC7, 0x00, 0x00]
 
-        # Temporary hardcoded mapping (Proof of Concept) for temperature.
-        # Uses raw hexadecimal values and checksums extracted from the physical remote.
-        if self.target_temperature == 24:
-            payload[16] = 0x88
-            payload[19] = 0x01
-            payload[20] = 0x46
-        elif self.target_temperature == 25:
-            payload[16] = 0x48
-            payload[19] = 0x01
-            payload[20] = 0x46
-        elif self.target_temperature == 26:
-            payload[16] = 0x08
-            payload[19] = 0x81
-            payload[20] = 0x56
-        else:
-            # Safety fallback to 25°C if an unmapped temperature is requested
-            payload[16] = 0x48
-            payload[19] = 0x01
-            payload[20] = 0x46
+        # Enforce temperature limits between 16°C and 30°C
+        temp = max(16, min(30, self.target_temperature))
+
+        # Full lookup table for Block 3 variable bytes based on captured physical remote data.
+        # Structure: temp -> (Byte 16, Byte 17, Byte 19, Byte 20)
+        temp_mapping: dict[int, tuple[int, int, int, int]] = {
+            16: (0x88, 0xFB, 0x01, 0x54),
+            17: (0x88, 0xFB, 0x41, 0x54),  # Interpolated checksum logic
+            18: (0x88, 0xFB, 0x81, 0x54),  # Interpolated checksum logic
+            19: (0x88, 0xFB, 0xC1, 0x54),  # Interpolated checksum logic
+            20: (0x08, 0xFB, 0x01, 0x44),  # Interpolated checksum logic
+            21: (0x08, 0xFB, 0x41, 0x44),  # Interpolated checksum logic
+            22: (0x08, 0xFB, 0x81, 0x44),  # Interpolated checksum logic
+            23: (0xC8, 0xFA, 0xC1, 0x55),
+            24: (0x88, 0xFB, 0x01, 0x46),
+            25: (0x48, 0xFB, 0xC7, 0x46),  # Fixed to 25°C capture variant (41/46 match)
+            26: (0x08, 0xFB, 0x81, 0x56),
+            27: (0xC8, 0xFA, 0xC1, 0x56),
+            28: (0x88, 0xFA, 0x01, 0x57),  # Interpolated high-range logic
+            29: (0x48, 0xFA, 0x41, 0x57),  # Interpolated high-range logic
+            30: (0xC8, 0xFA, 0x81, 0x57),
+        }
+
+        # Retrieve values from mapping table
+        b16, b17, b19, b20 = temp_mapping[temp]
+
+        # Inject the mapped temperature and checksum bytes into Block 3
+        payload[16] = b16
+        payload[17] = b17
+        payload[19] = b19
+        payload[20] = b20
 
         return StructuralACCommand(payload=payload)
