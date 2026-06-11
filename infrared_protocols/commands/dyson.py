@@ -33,7 +33,7 @@ class DysonCoolCommand(Command):
 
     @override
     def get_raw_timings(self) -> list[int]:
-        """Compile the 15-bit payload into raw IR microsecond timings matched to your actual remote."""
+        """Compile the 16-bit payload into raw IR microsecond timings matched to your actual remote."""
         
         leader_high = 8940
         leader_low = 4440
@@ -45,19 +45,19 @@ class DysonCoolCommand(Command):
         timings: list[int] = []
         
         for packet_idx in range(self.repeat_count + 1):
-            
+            # Preambolo
             timings.append(leader_high)
             timings.append(leader_low)
             
-            
             data = self.payload
-            for i in range(14, -1, -1):
+            # CORREZIONE: Range impostato a 16 bit (da 15 a 0) per non tagliare l'MSB del payload
+            for i in range(15, -1, -1):
                 bit = (data >> i) & 1
                 timings.append(bit_high)
                 timings.append(one_low if bit else zero_low)
                     
+            # Bit di stop finale
             timings.append(bit_high)
-            
             
             if packet_idx < self.repeat_count:
                 timings.append(gap_low)
