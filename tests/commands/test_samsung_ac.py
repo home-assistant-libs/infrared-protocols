@@ -1,86 +1,950 @@
-"""Tests for the Samsung AC IR command encoder."""
+"""Tests for the Samsung AC IR command encoders."""
 
-from infrared_protocols.codes.samsung.ac import SamsungACStateBuilder
+import pytest
+
+from infrared_protocols.codes.samsung.ac import (
+    SamsungAC0292HvacMode,
+    SamsungAC0292StateBuilder,
+    SamsungAC2A20HvacMode,
+    SamsungAC2A20StateBuilder,
+    SamsungACFanMode,
+    SamsungACSwingMode,
+)
+from infrared_protocols.commands.samsung import (
+    SamsungAC0292Command,
+    SamsungAC2A20Command,
+)
 
 
-def test_samsung_ac_command_get_raw_timings() -> None:
-    """Test Samsung AC command raw timings compilation for 21-byte protocol across states."""
-    
-    # Core test cases: (hvac_mode, temp, fan_mode, b16, b17, b19, b20)
-    test_cases = [
-        # Cool configurations
-        ("cool", 16, "auto", 0x88, 0xFB, 0x01, 0x54),
-        ("cool", 24, "auto", 0x88, 0xFB, 0x01, 0x46),
-        ("cool", 24, "low", 0x48, 0xFB, 0x01, 0x56),
-        ("cool", 24, "medium", 0x48, 0xFB, 0x01, 0x66),
-        ("cool", 24, "high", 0x08, 0xFB, 0x01, 0x6E),
-        ("cool", 25, "auto", 0x48, 0xFB, 0xC7, 0x46),
-        ("cool", 26, "auto", 0x08, 0xFB, 0x81, 0x56),
-        ("cool", 27, "auto", 0xC8, 0xFA, 0xC1, 0x56),
-        ("cool", 30, "auto", 0xC8, 0xFA, 0x81, 0x57),
-        
-        # New mode configurations
-        ("heat", 24, "auto", 0x88, 0xFB, 0x01, 0x06),
-        ("dry", 24, "auto", 0x88, 0xFB, 0x01, 0x86),
-        ("fan_only", 24, "auto", 0x08, 0xFB, 0x01, 0xD6),
+@pytest.mark.parametrize(
+    ("hvac_mode", "target_temperature", "fan_mode", "expected_payload"),
+    [
+        pytest.param(
+            "cool",
+            16,
+            "auto",
+            [
+                0x2A,
+                0x20,
+                0xF9,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0xDF,
+                0x00,
+                0xE9,
+                0x07,
+                0x00,
+                0x00,
+                0x00,
+                0x80,
+                0x06,
+                0x88,
+                0xFB,
+                0xC7,
+                0x01,
+                0x54,
+            ],
+            id="cool-16-auto",
+        ),
+        pytest.param(
+            "cool",
+            24,
+            "auto",
+            [
+                0x2A,
+                0x20,
+                0xF9,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0xDF,
+                0x00,
+                0xE9,
+                0x07,
+                0x00,
+                0x00,
+                0x00,
+                0x80,
+                0x06,
+                0x88,
+                0xFB,
+                0xC7,
+                0x01,
+                0x46,
+            ],
+            id="cool-24-auto",
+        ),
+        pytest.param(
+            "cool",
+            24,
+            "low",
+            [
+                0x2A,
+                0x20,
+                0xF9,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0xDF,
+                0x00,
+                0xE9,
+                0x07,
+                0x00,
+                0x00,
+                0x00,
+                0x80,
+                0x06,
+                0x48,
+                0xFB,
+                0xC7,
+                0x01,
+                0x56,
+            ],
+            id="cool-24-low",
+        ),
+        pytest.param(
+            "cool",
+            24,
+            "medium",
+            [
+                0x2A,
+                0x20,
+                0xF9,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0xDF,
+                0x00,
+                0xE9,
+                0x07,
+                0x00,
+                0x00,
+                0x00,
+                0x80,
+                0x06,
+                0x48,
+                0xFB,
+                0xC7,
+                0x01,
+                0x66,
+            ],
+            id="cool-24-medium",
+        ),
+        pytest.param(
+            "cool",
+            24,
+            "high",
+            [
+                0x2A,
+                0x20,
+                0xF9,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0xDF,
+                0x00,
+                0xE9,
+                0x07,
+                0x00,
+                0x00,
+                0x00,
+                0x80,
+                0x06,
+                0x08,
+                0xFB,
+                0xC7,
+                0x01,
+                0x6E,
+            ],
+            id="cool-24-high",
+        ),
+        pytest.param(
+            "cool",
+            25,
+            "auto",
+            [
+                0x2A,
+                0x20,
+                0xF9,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0xDF,
+                0x00,
+                0xE9,
+                0x07,
+                0x00,
+                0x00,
+                0x00,
+                0x80,
+                0x06,
+                0x48,
+                0xFB,
+                0xC7,
+                0xC7,
+                0x46,
+            ],
+            id="cool-25-auto",
+        ),
+        pytest.param(
+            "cool",
+            26,
+            "auto",
+            [
+                0x2A,
+                0x20,
+                0xF9,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0xDF,
+                0x00,
+                0xE9,
+                0x07,
+                0x00,
+                0x00,
+                0x00,
+                0x80,
+                0x06,
+                0x08,
+                0xFB,
+                0xC7,
+                0x81,
+                0x56,
+            ],
+            id="cool-26-auto",
+        ),
+        pytest.param(
+            "cool",
+            27,
+            "auto",
+            [
+                0x2A,
+                0x20,
+                0xF9,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0xDF,
+                0x00,
+                0xE9,
+                0x07,
+                0x00,
+                0x00,
+                0x00,
+                0x80,
+                0x06,
+                0xC8,
+                0xFA,
+                0xC7,
+                0xC1,
+                0x56,
+            ],
+            id="cool-27-auto",
+        ),
+        pytest.param(
+            "cool",
+            30,
+            "auto",
+            [
+                0x2A,
+                0x20,
+                0xF9,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0xDF,
+                0x00,
+                0xE9,
+                0x07,
+                0x00,
+                0x00,
+                0x00,
+                0x80,
+                0x06,
+                0xC8,
+                0xFA,
+                0xC7,
+                0x81,
+                0x57,
+            ],
+            id="cool-30-auto",
+        ),
+        pytest.param(
+            "heat",
+            24,
+            "auto",
+            [
+                0x2A,
+                0x20,
+                0xF9,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0xDF,
+                0x00,
+                0xE9,
+                0x07,
+                0x00,
+                0x00,
+                0x00,
+                0x80,
+                0x06,
+                0x88,
+                0xFB,
+                0xC7,
+                0x01,
+                0x06,
+            ],
+            id="heat-24-auto",
+        ),
+        pytest.param(
+            "dry",
+            24,
+            "auto",
+            [
+                0x2A,
+                0x20,
+                0xF9,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0xDF,
+                0x00,
+                0xE9,
+                0x07,
+                0x00,
+                0x00,
+                0x00,
+                0x80,
+                0x06,
+                0x88,
+                0xFB,
+                0xC7,
+                0x01,
+                0x86,
+            ],
+            id="dry-24-auto",
+        ),
+        pytest.param(
+            "fan_only",
+            24,
+            "auto",
+            [
+                0x2A,
+                0x20,
+                0xF9,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0xDF,
+                0x00,
+                0xE9,
+                0x07,
+                0x00,
+                0x00,
+                0x00,
+                0x80,
+                0x06,
+                0x08,
+                0xFB,
+                0xC7,
+                0x01,
+                0xD6,
+            ],
+            id="fan-only-24-auto",
+        ),
+    ],
+)
+def test_samsung_ac_2a20_state_builder(
+    hvac_mode: SamsungAC2A20HvacMode,
+    target_temperature: int,
+    fan_mode: SamsungACFanMode,
+    expected_payload: list[int],
+) -> None:
+    """Test Samsung AC 2A20 state builder payloads and timings."""
+    builder = SamsungAC2A20StateBuilder(
+        hvac_mode=hvac_mode,
+        target_temperature=target_temperature,
+        fan_mode=fan_mode,
+    )
+
+    command = builder.to_command()
+
+    assert isinstance(command, SamsungAC2A20Command)
+    assert command.payload == expected_payload
+    assert command.modulation == 38000
+    assert command.get_raw_timings() == _compile_2a20_timings(expected_payload)
+
+
+def test_samsung_ac_2a20_state_builder_off() -> None:
+    """Test Samsung AC 2A20 off state payload and timings."""
+    expected_payload = [
+        0x2A,
+        0x20,
+        0xFB,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0xDC,
+        0x00,
+        0xE9,
+        0x07,
+        0x00,
+        0x00,
+        0x00,
+        0x80,
+        0x06,
+        0x88,
+        0xFB,
+        0xC7,
+        0x01,
+        0x6E,
     ]
 
-    leader_high = 3000
-    leader_low = 3000
-    bit_high = 600
-    zero_low = 400
-    one_low = 1400
-    gap_low = 4000
+    builder = SamsungAC2A20StateBuilder(
+        hvac_mode="off",
+        target_temperature=24,
+        fan_mode="auto",
+    )
+    command = builder.to_command()
 
-    # 1. Test ON states, modes, temperatures, and fans
-    for mode, temp, fan, b16, b17, b19, b20 in test_cases:
-        expected_payload = [0x00] * 21
-        expected_payload[0:7] = [0x2A, 0x20, 0xF9, 0x00, 0x00, 0x00, 0x00]
-        expected_payload[7:14] = [0xDF, 0x00, 0xE9, 0x07, 0x00, 0x00, 0x00]
-        expected_payload[14:21] = [0x80, 0x06, b16, b17, 0xC7, b19, b20]
-
-        expected_raw_timings = _compile_timings(expected_payload, leader_high, leader_low, bit_high, one_low, zero_low, gap_low)
-
-        builder = SamsungACStateBuilder(hvac_mode=mode, target_temperature=temp, fan_mode=fan)
-        command = builder.to_command()
-        assert command.get_raw_timings() == expected_raw_timings, f"Failed ON timings check for {mode}, {temp}°C, fan {fan}"
-
-    # 2. Test OFF state
-    expected_off_payload = [0x00] * 21
-    expected_off_payload[0:7] = [0x2A, 0x20, 0xFB, 0x00, 0x00, 0x00, 0x00]
-    expected_off_payload[7:14] = [0xDC, 0x00, 0xE9, 0x07, 0x00, 0x00, 0x00]
-    expected_off_payload[14:21] = [0x80, 0x06, 0x88, 0xFB, 0xC7, 0x01, 0x6E]
-    
-    expected_off_timings = _compile_timings(expected_off_payload, leader_high, leader_low, bit_high, one_low, zero_low, gap_low)
-    
-    builder_off = SamsungACStateBuilder(hvac_mode="off", target_temperature=24, fan_mode="auto")
-    assert builder_off.to_command().get_raw_timings() == expected_off_timings
+    assert isinstance(command, SamsungAC2A20Command)
+    assert command.payload == expected_payload
+    assert command.get_raw_timings() == _compile_2a20_timings(expected_payload)
 
 
-def _compile_timings(
-    payload: list[int],
-    leader_high: int,
-    leader_low: int,
-    bit_high: int,
-    one_low: int,
-    zero_low: int,
-    gap_low: int,
-) -> list[int]:
-    """Helper to compile raw timings from a payload list."""
-    timings = []
+@pytest.mark.parametrize(
+    (
+        "hvac_mode",
+        "target_temperature",
+        "fan_mode",
+        "swing_mode",
+        "expected_payload",
+    ),
+    [
+        pytest.param(
+            "cool",
+            16,
+            "auto",
+            "off",
+            [
+                0x02,
+                0x92,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0xF0,
+                0x01,
+                0xD2,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x01,
+                0xF2,
+                0xFE,
+                0x71,
+                0x00,
+                0x11,
+                0xF0,
+            ],
+            id="cool-16-auto-off",
+        ),
+        pytest.param(
+            "cool",
+            23,
+            "auto",
+            "off",
+            [
+                0x02,
+                0x92,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0xF0,
+                0x01,
+                0xD2,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x01,
+                0xC2,
+                0xFE,
+                0x71,
+                0x70,
+                0x11,
+                0xF0,
+            ],
+            id="cool-23-auto-off",
+        ),
+        pytest.param(
+            "cool",
+            24,
+            "auto",
+            "off",
+            [
+                0x02,
+                0x92,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0xF0,
+                0x01,
+                0xD2,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x01,
+                0xE2,
+                0xFE,
+                0x71,
+                0x80,
+                0x11,
+                0xF0,
+            ],
+            id="cool-24-auto-off",
+        ),
+        pytest.param(
+            "cool",
+            25,
+            "auto",
+            "off",
+            [
+                0x02,
+                0x92,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0xF0,
+                0x01,
+                0xD2,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x01,
+                0xD2,
+                0xFE,
+                0x71,
+                0x90,
+                0x11,
+                0xF0,
+            ],
+            id="cool-25-auto-off",
+        ),
+        pytest.param(
+            "cool",
+            26,
+            "auto",
+            "off",
+            [
+                0x02,
+                0x92,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0xF0,
+                0x01,
+                0xD2,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x01,
+                0xD2,
+                0xFE,
+                0x71,
+                0xA0,
+                0x11,
+                0xF0,
+            ],
+            id="cool-26-auto-off",
+        ),
+        pytest.param(
+            "cool",
+            27,
+            "auto",
+            "off",
+            [
+                0x02,
+                0x92,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0xF0,
+                0x01,
+                0xD2,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x01,
+                0xC2,
+                0xFE,
+                0x71,
+                0xB0,
+                0x11,
+                0xF0,
+            ],
+            id="cool-27-auto-off",
+        ),
+        pytest.param(
+            "cool",
+            30,
+            "auto",
+            "off",
+            [
+                0x02,
+                0x92,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0xF0,
+                0x01,
+                0xD2,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x01,
+                0xC2,
+                0xFE,
+                0x71,
+                0xE0,
+                0x11,
+                0xF0,
+            ],
+            id="cool-30-auto-off",
+        ),
+        pytest.param(
+            "cool",
+            24,
+            "low",
+            "off",
+            [
+                0x02,
+                0x92,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0xF0,
+                0x01,
+                0xD2,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x01,
+                0xD2,
+                0xFE,
+                0x71,
+                0x80,
+                0x15,
+                0xF0,
+            ],
+            id="cool-24-low-off",
+        ),
+        pytest.param(
+            "cool",
+            24,
+            "medium",
+            "off",
+            [
+                0x02,
+                0x92,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0xF0,
+                0x01,
+                0xD2,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x01,
+                0xD2,
+                0xFE,
+                0x71,
+                0x80,
+                0x19,
+                0xF0,
+            ],
+            id="cool-24-medium-off",
+        ),
+        pytest.param(
+            "cool",
+            24,
+            "high",
+            "off",
+            [
+                0x02,
+                0x92,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0xF0,
+                0x01,
+                0xD2,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x01,
+                0xC2,
+                0xFE,
+                0x71,
+                0x80,
+                0x1B,
+                0xF0,
+            ],
+            id="cool-24-high-off",
+        ),
+        pytest.param(
+            "heat",
+            24,
+            "auto",
+            "off",
+            [
+                0x02,
+                0x92,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0xF0,
+                0x01,
+                0xD2,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x01,
+                0xE2,
+                0xFE,
+                0x71,
+                0x80,
+                0x41,
+                0xF0,
+            ],
+            id="heat-24-auto-off",
+        ),
+        pytest.param(
+            "dry",
+            24,
+            "auto",
+            "off",
+            [
+                0x02,
+                0x92,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0xF0,
+                0x01,
+                0xD2,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x01,
+                0xE2,
+                0xFE,
+                0x71,
+                0x80,
+                0x21,
+                0xF0,
+            ],
+            id="dry-24-auto-off",
+        ),
+        pytest.param(
+            "fan_only",
+            24,
+            "auto",
+            "off",
+            [
+                0x02,
+                0x92,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0xF0,
+                0x01,
+                0xD2,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x01,
+                0xD2,
+                0xFE,
+                0x71,
+                0x80,
+                0x31,
+                0xF0,
+            ],
+            id="fan-only-24-auto-off",
+        ),
+        pytest.param(
+            "cool",
+            25,
+            "medium",
+            "vertical",
+            [
+                0x02,
+                0x92,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0xF0,
+                0x01,
+                0xD2,
+                0x0F,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x01,
+                0xE2,
+                0xAE,
+                0x71,
+                0x90,
+                0x19,
+                0xF0,
+            ],
+            id="cool-25-medium-vertical",
+        ),
+    ],
+)
+def test_samsung_ac_0292_state_builder(
+    hvac_mode: SamsungAC0292HvacMode,
+    target_temperature: int,
+    fan_mode: SamsungACFanMode,
+    swing_mode: SamsungACSwingMode,
+    expected_payload: list[int],
+) -> None:
+    """Test Samsung AC 0292 state builder payloads and timings."""
+    builder = SamsungAC0292StateBuilder(
+        hvac_mode=hvac_mode,
+        target_temperature=target_temperature,
+        fan_mode=fan_mode,
+        swing_mode=swing_mode,
+    )
+
+    command = builder.to_command()
+
+    assert isinstance(command, SamsungAC0292Command)
+    assert command.payload == expected_payload
+    assert command.modulation == 38000
+    assert command.get_raw_timings() == _compile_0292_timings(expected_payload)
+
+
+def test_samsung_ac_0292_state_builder_off() -> None:
+    """Test Samsung AC 0292 off state payload and timings."""
+    expected_payload = [
+        0x02,
+        0xB2,
+        0x0F,
+        0x00,
+        0x00,
+        0x00,
+        0xC0,
+        0x01,
+        0xD2,
+        0x0F,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x01,
+        0x02,
+        0xFF,
+        0x71,
+        0x80,
+        0x11,
+        0xC0,
+    ]
+
+    builder = SamsungAC0292StateBuilder(
+        hvac_mode="off",
+        target_temperature=24,
+        fan_mode="auto",
+    )
+    command = builder.to_command()
+
+    assert isinstance(command, SamsungAC0292Command)
+    assert command.payload == expected_payload
+    assert command.get_raw_timings() == _compile_0292_timings(expected_payload)
+
+
+def test_samsung_ac_0292_command_rejects_invalid_payload_length() -> None:
+    """Test Samsung AC 0292 payload length validation."""
+    with pytest.raises(ValueError, match="exactly 21 bytes"):
+        SamsungAC0292Command(payload=[0x00])
+
+
+def _compile_2a20_timings(payload: list[int]) -> list[int]:
+    timings: list[int] = []
     for packet_idx in range(3):
-        timings.append(leader_high)
-        timings.append(-leader_low)
-        start_byte = packet_idx * 7
-        packet_bytes = payload[start_byte : start_byte + 7]
-        for byte in packet_bytes:
-            for _ in range(8):
-                bit = byte & 1
-                timings.append(bit_high)
-                timings.append(-one_low if bit else -zero_low)
-                byte >>= 1
+        timings.extend([3000, -3000])
+        for byte in payload[packet_idx * 7 : packet_idx * 7 + 7]:
+            for bit in range(8):
+                timings.extend([600, -1400 if (byte >> bit) & 1 else -400])
         if packet_idx < 2:
-            timings.append(bit_high)
-            timings.append(-gap_low)
-    timings.append(bit_high)
+            timings.extend([600, -4000])
+    timings.append(600)
+    return timings
+
+
+def _compile_0292_timings(payload: list[int]) -> list[int]:
+    timings: list[int] = [690, -17844]
+    for offset in range(0, len(payload), 7):
+        timings.extend([3086, -8864])
+        for byte in payload[offset : offset + 7]:
+            for bit in range(8):
+                timings.extend([586, -1432 if (byte >> bit) & 1 else -436])
+        timings.extend([586, -30000 if offset + 7 >= len(payload) else -2886])
     return timings

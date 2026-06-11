@@ -1,4 +1,4 @@
-"""Samsung32 IR command."""
+"""Samsung IR commands."""
 
 from typing import override
 
@@ -90,8 +90,8 @@ class Samsung32Command(Command):
         return timings
 
 
-class SamsungACCommand(Command):
-    """Samsung AC 21-byte (extended) IR command."""
+class SamsungAC2A20Command(Command):
+    """Samsung AC 2A20 21-byte IR command."""
 
     payload: list[int]
 
@@ -102,16 +102,15 @@ class SamsungACCommand(Command):
         modulation: int = 38000,
         repeat_count: int = 0,
     ) -> None:
-        """Initialize the Samsung AC IR command."""
+        """Initialize the Samsung AC 2A20 IR command."""
         super().__init__(modulation=modulation, repeat_count=repeat_count)
-        # Updated validation to expect 21 bytes instead of 14
         if len(payload) != 21:
-            raise ValueError("Samsung AC payload must be exactly 21 bytes")
+            raise ValueError("Samsung AC 2A20 payload must be exactly 21 bytes")
         self.payload = payload
 
     @override
     def get_raw_timings(self) -> list[int]:
-        """Get raw timings for the Samsung AC command.
+        """Get raw timings for the Samsung AC 2A20 command.
 
         Samsung AC protocol timing (in microseconds):
         - Leader pulse: 3000µs high, 3000µs low
@@ -163,3 +162,38 @@ class SamsungACCommand(Command):
                 timings.extend(base_frame)
 
         return timings
+
+
+class SamsungAC0292Command(Command):
+    """Samsung AC 0292 21-byte IR command."""
+
+    payload: list[int]
+
+    def __init__(
+        self,
+        *,
+        payload: list[int],
+        modulation: int = 38000,
+    ) -> None:
+        """Initialize the Samsung AC 0292 IR command."""
+        super().__init__(modulation=modulation, repeat_count=0)
+        if len(payload) != 21:
+            raise ValueError("Samsung AC 0292 payload must be exactly 21 bytes")
+        self.payload = payload
+
+    @override
+    def get_raw_timings(self) -> list[int]:
+        """Get raw timings for the Samsung AC 0292 command."""
+        timings: list[int] = [690, -17844]
+
+        for offset in range(0, len(self.payload), 7):
+            timings.extend([3086, -8864])
+            for byte in self.payload[offset : offset + 7]:
+                for bit in range(8):
+                    timings.extend([586, -1432 if (byte >> bit) & 1 else -436])
+            timings.extend([586, -30000 if offset + 7 >= len(self.payload) else -2886])
+
+        return timings
+
+
+SamsungACCommand = SamsungAC2A20Command
