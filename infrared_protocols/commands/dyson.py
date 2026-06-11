@@ -49,12 +49,11 @@ class DysonCoolCommand(Command):
             timings.append(leader_low)
             
             data = self.payload
-            for i in range(15, -1, -1):
+            for i in range(16):
                 bit = (data >> i) & 1
                 timings.append(bit_high)
                 timings.append(one_low if bit else zero_low)
                     
-            
             timings.append(bit_high)
             
             if packet_idx < self.repeat_count:
