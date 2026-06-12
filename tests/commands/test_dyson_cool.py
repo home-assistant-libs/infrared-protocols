@@ -1,126 +1,109 @@
-"""Standalone verification: compare generated timings against real Broadlink-captured raw durations for all 8 Dyson commands.
+"""Tests for Dyson Cool command."""
 
-Run: python3 test_dyson_fix.py
-"""
+import pytest
 
-import base64
-
-UNIT = 32.84
-
-CAPTURED = {
-    "cool_on": "JgAkAEoaGjMaGhoZGzIaGRoZGhkaGxoZGxkaGhoZGhkaGRoyGgANBQAAAAA=",
-    "off": "JgAkAEobGTMaGhoaGjIaGRoZGhkaGxoaGhoZGhoZGhoaMRsZGQANBQAAAAA=",
-    "on": "JgAkAEsaGjIbGRsZGjIbGBsYGxgbGhoaGhoaGRsZGhkaGRoZGgANBQAAAAA=",
-    "speed_up": "JgBIAEobGTMaGhkbGTMZGxkaGRoYHBk0GRsZMxkbGTMZGhkaGQAM0UobGTMaGhoaGTMaGRoZGhkaGxoyGxoZMxoaGTIbGRoZGQANBQ==",
-    "speed_down": "JgBIAEobGTMaGhoaGjIaGRoZGhkaMxsyGzIbMhoyGzEbGRoxGwAM9ksaGjIbGhkaGjIaGhoZGhkZNBozGjIbMhsxGzIaGRoyGgANBQ==",
-    "time_up": "JgBIAEsaGjIbGhkaGjIaGhoZGhkZGxozGjIbMhoyGxkaMhoZGgAMpEsaGjIbGhkaGjIaGhoZGhkZGxozGjIbMhsxGxkaMhoZGgANBQ==",
-    "time_down": "JgBIAEobGTMaGhoaGTIbGRoZGhkaMxsyGxoZGhoyGjIbGRoZGQAMuUoaGjMaGRsZGjIbGBsYGxgbMxozGhoaGRozGjIaGRoZGgANBQ==",
-    "swing": "JgBIAEoaGjMaGhoZGjMaGRoZGhkaMxsZGzIaGhoyGhkbGBsxGwAMvUoaGjMaGRoaGjIaGhoZGhgaNBoaGjMaGRozGhkaGRoyGgANBQ==",
-}
-
-ACTION_MAPPING = {
-    "on": 0x4800,
-    "cool_on": 0x4801,
-    "off": 0x4802,
-    "swing": 0x48A9,
-    "speed_up": 0x4854,
-    "speed_down": 0x48FD,
-    "time_up": 0x487A,
-    "time_down": 0x48CC,
-}
-
-REPEAT_MAPPING = {
-    "on": 1, "cool_on": 1, "off": 1, "swing": 2,
-    "speed_up": 2, "speed_down": 2, "time_up": 2, "time_down": 2,
-}
+from infrared_protocols.commands.dyson import DysonCoolCommand
 
 
-def get_captured_durations(b64: str) -> list[int]:
-    """Decode base64-encoded Broadlink IR data and extract duration timings.
-    
-    Args:
-        b64: Base64-encoded IR data string.
-        
-    Returns:
-        List of duration values in microseconds.
+def test_dyson_cool_command_initialization() -> None:
+    """Verify DysonCoolCommand initializes with default and custom values."""
+    cmd = DysonCoolCommand(payload=0x1234)
+    assert cmd.payload == 0x1234
+    assert cmd.modulation == 38000
+    assert cmd.repeat_count == 1
+
+    cmd_custom = DysonCoolCommand(payload=0x7FFF, modulation=36000, repeat_count=3)
+    assert cmd_custom.payload == 0x7FFF
+    assert cmd_custom.modulation == 36000
+    assert cmd_custom.repeat_count == 3
+
+
+def test_dyson_cool_command_invalid_payload() -> None:
+    """Ensure DysonCoolCommand raises ValueError for invalid payloads.
+
+    The Dyson payload must fit in 15 bits (0 to 0x7FFF). This test checks
+    that negative values and values >= 0x8000 raise the expected error.
     """
-    raw = base64.b64decode(b64)
-    length = raw[2] | (raw[3] << 8)
-    data = raw[4:4 + length]
-    durations = []
-    i = 0
-    while i < len(data):
-        v = data[i]
-        if v == 0:
-            ext = (data[i + 1] << 8) | data[i + 2]
-            durations.append(round(ext * UNIT))
-            i += 3
-        else:
-            durations.append(round(v * UNIT))
-            i += 1
-    # drop trailing zeros/footer gap marker (last >5000us = gap, not part of bit data)
-    return durations
+    msg = "Dyson payload must be a valid 15-bit integer"
+
+    with pytest.raises(ValueError, match=msg):
+        DysonCoolCommand(payload=-1)
+
+    with pytest.raises(ValueError, match=msg):
+        DysonCoolCommand(payload=0x8000)
 
 
-def generate_timings(payload: int, repeat_count: int) -> list[int]:
-    """Generate Dyson IR packet timings for a given payload and repeat count.
+def test_dyson_cool_command_get_raw_timings() -> None:
+    """Verify get_raw_timings produces expected timing sequences.
 
-    Args:
-        payload: 15-bit command payload.
-        repeat_count: Number of packets to generate, including repeats.
-
-    Returns:
-        A list of durations in microseconds representing the IR signal.
+    This test checks the base timings for a given payload and ensures that
+    repeat_count values of 0, 1, and 2 produce the correct concatenated
+    timing sequences including the inter-command gap.
     """
-    header_mark = 2440
-    header_space = 870
-    bit_mark = 850
-    zero_space = 850
-    one_space = 1660
-    footer_mark = 850
-    repeat_gap = 108000
+    expected_raw_timings = [
+        2440,
+        870,
+        850,
+        1660,
+        850,
+        850,
+        850,
+        850,
+        850,
+        850,
+        850,
+        850,
+        850,
+        850,
+        850,
+        850,
+        850,
+        850,
+        850,
+        850,
+        850,
+        850,
+        850,
+        850,
+        850,
+        850,
+        850,
+        850,
+        850,
+        850,
+        850,
+        1660,
+        850,
+    ]
 
-    timings: list[int] = []
-    for packet_idx in range(repeat_count):
-        timings.append(header_mark)
-        timings.append(header_space)
-        for i in range(14, -1, -1):
-            bit = (payload >> i) & 1
-            timings.append(bit_mark)
-            timings.append(one_space if bit else zero_space)
-        timings.append(footer_mark)
-        if packet_idx < repeat_count - 1:
-            timings.append(repeat_gap)
-    return timings
+    command = DysonCoolCommand(payload=0x4001, repeat_count=0)
+    timings = command.get_raw_timings()
 
+    assert timings == expected_raw_timings
+    assert command.modulation == 38000
 
-def bits_from_durations(durations: list[int]) -> str:
-    """Extract the 15-bit payload from a captured duration list (first frame only)."""
-    bits = ""
-    j = 2
-    while j + 1 < len(durations) and len(bits) < 15:
-        s = durations[j + 1]
-        if s > 5000:
-            break
-        bits += "1" if s > 1200 else "0"
-        j += 2
-    return bits
+    command_with_repeats = DysonCoolCommand(
+        payload=command.payload,
+        repeat_count=1,
+    )
+    timings_with_repeats = command_with_repeats.get_raw_timings()
 
+    assert timings_with_repeats == [
+        *expected_raw_timings,
+        108000,
+        *expected_raw_timings,
+    ]
 
-print(f"{'action':12s} {'captured 15-bit':17s} {'generated 15-bit':17s} match")
-print("-" * 60)
-all_ok = True
-for action, b64 in CAPTURED.items():
-    captured = get_captured_durations(b64)
-    captured_bits = bits_from_durations(captured)
+    command_with_double_repeats = DysonCoolCommand(
+        payload=command.payload,
+        repeat_count=2,
+    )
+    timings_with_double_repeats = command_with_double_repeats.get_raw_timings()
 
-    payload = ACTION_MAPPING[action]
-    generated_bits = format(payload, "015b")
-
-    ok = captured_bits == generated_bits
-    all_ok &= ok
-    status = "OK" if ok else "MISMATCH"
-    print(f"{action:12s} {captured_bits:17s} {generated_bits:17s} {status}")
-
-print("-" * 60)
-print("ALL PAYLOADS MATCH" if all_ok else "SOME PAYLOADS MISMATCH")
+    assert timings_with_double_repeats == [
+        *expected_raw_timings,
+        108000,
+        *expected_raw_timings,
+        108000,
+        *expected_raw_timings,
+    ]

@@ -1,4 +1,13 @@
+"""Commands for Dyson infrared protocol.
+
+This module provides the DysonCoolCommand class which encodes
+Dyson "Cool" remote control infrared frames (reverse-engineered
+from Broadlink captures). It exposes construction and conversion
+to raw timings used by the higher-level infrared sending code.
+"""
+
 from typing import override
+
 from . import Command
 
 

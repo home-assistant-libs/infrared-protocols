@@ -17,7 +17,7 @@ from ...commands.dyson import DysonCoolCommand
 @dataclass(frozen=True)
 class DysonCoolStateBuilder:
     """Builder for converting high-level Dyson cool mode actions to commands.
-    
+
     Attributes:
         action: The action to perform, one of: on, cool_on, off, swing,
                 speed_up, speed_down, time_up, time_down.
@@ -25,10 +25,14 @@ class DysonCoolStateBuilder:
     """
 
     action: Literal[
-        "on", "cool_on", "off",
+        "on",
+        "cool_on",
+        "off",
         "swing",
-        "speed_up", "speed_down",
-        "time_up", "time_down"
+        "speed_up",
+        "speed_down",
+        "time_up",
+        "time_down",
     ]
 
     def to_command(self) -> Command:
@@ -41,13 +45,13 @@ class DysonCoolStateBuilder:
         """
         # 15-bit values: preamble 1001000 + 8-bit command byte
         action_mapping = {
-            "on": 0x4800,         # cmd 0x00
-            "cool_on": 0x4801,    # cmd 0x01
-            "off": 0x4802,        # cmd 0x02 (cool_off)
-            "swing": 0x48A9,      # cmd 0xA9
-            "speed_up": 0x4854,   # cmd 0x54 (temp_up)
-            "speed_down": 0x48FD, # cmd 0xFD (temp_down)
-            "time_up": 0x487A,    # cmd 0x7A
+            "on": 0x4800,  # cmd 0x00
+            "cool_on": 0x4801,  # cmd 0x01
+            "off": 0x4802,  # cmd 0x02 (cool_off)
+            "swing": 0x48A9,  # cmd 0xA9
+            "speed_up": 0x4854,  # cmd 0x54 (temp_up)
+            "speed_down": 0x48FD,  # cmd 0xFD (temp_down)
+            "time_up": 0x487A,  # cmd 0x7A
             "time_down": 0x48CC,  # cmd 0xCC
         }
 
