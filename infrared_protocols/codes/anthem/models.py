@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from infrared_protocols.codes.anthem.mrx_x20_x40_avm_x import AnthemCode
+from .mrx_x20_x40_avm_x import AnthemCode
 
 
 @dataclass(frozen=True, slots=True)
