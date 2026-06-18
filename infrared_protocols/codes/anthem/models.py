@@ -137,7 +137,7 @@ _EXTENDED_INPUTS = frozenset(
 
 GENERIC = AnthemModel(
     name="Generic Anthem MRX/AVM",
-    codes=_BASE | _EXTENDED_INPUTS,
+    codes=frozenset(AnthemCode),
 )
 
 
@@ -157,8 +157,8 @@ AVM_70 = AnthemModel(name="AVM 70", codes=_BASE | _EXTENDED_INPUTS)
 AVM_90 = AnthemModel(name="AVM 90", codes=_BASE | _EXTENDED_INPUTS)
 
 
-# All known Anthem MRX/AVM models, for iteration. Generic is first so
-# integrations using this list as a UI source default to the catch-all.
+"""All known Anthem MRX/AVM models, for iteration. Generic is first so
+    integrations using this list as a UI source default to the catch-all."""
 ALL_MODELS: tuple[AnthemModel, ...] = (
     GENERIC,
     MRX_310,
