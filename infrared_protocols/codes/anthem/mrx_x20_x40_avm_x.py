@@ -11,8 +11,8 @@ This was verified with Anthem Technical Support.
 
 from enum import Enum
 
-from infrared_protocols.commands import Command
-from infrared_protocols.commands.nec import NECCommand
+from ...commands import Command
+from ...commands.nec import NECCommand
 
 _ADDR_MAIN = 0x6A85
 _ADDR_EXT = 0x9A85
