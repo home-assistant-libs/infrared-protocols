@@ -137,7 +137,7 @@ _EXTENDED_INPUTS = frozenset(
 
 GENERIC = AnthemModel(
     name="Generic Anthem MRX/AVM",
-    codes=_BASE | _EXTENDED_INPUTS,
+    codes=frozenset(AnthemCode),
 )
 
 
