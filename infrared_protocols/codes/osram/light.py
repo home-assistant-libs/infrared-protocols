@@ -42,7 +42,7 @@ class OsramLightCode(IntEnum):
     MODE = 0x1B
 
     def to_command(self, repeat_count: int = 0) -> Command:
-        """Build an NEC command for this OSRAM LEDVANCE light code."""
+        """Build a NECCommand for a light code."""
         return NECCommand(
             address=OSRAM_ADDRESS,
             command=self.value,
