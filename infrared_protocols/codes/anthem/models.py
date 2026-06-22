@@ -108,7 +108,7 @@ _BASE = frozenset(
 
 #: Inputs 21-30. Per Anthem's documentation, the factory MRX x10 remote does
 #: not include these -- they exist for programmable remotes on MRX x20, AVM 60,
-#: and the newer MRX x40 / AVM 70 / AVM 90 generation including 4k and 8k models.
+#: and the newer MRX x40 / AVM 70 / AVM 90 generation including 4K and 8k models.
 _EXTENDED_INPUTS = frozenset(
     {
         AnthemCode.INPUT_21,
