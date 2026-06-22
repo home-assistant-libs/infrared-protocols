@@ -19,7 +19,7 @@ class AnthemModel:
 
 _BASE = frozenset(
     {
-        AnthemCode.ON,
+        AnthemCode.POWER,
         AnthemCode.STANDBY,
         AnthemCode.BASS,
         AnthemCode.DIM,
@@ -75,7 +75,7 @@ _BASE = frozenset(
         AnthemCode.INPUT_18,
         AnthemCode.INPUT_19,
         AnthemCode.INPUT_20,
-        AnthemCode.ZONE2_ON,
+        AnthemCode.ZONE2_POWER,
         AnthemCode.ZONE2_STANDBY,
         AnthemCode.ZONE2_VOLUME_UP,
         AnthemCode.ZONE2_VOLUME_DOWN,
