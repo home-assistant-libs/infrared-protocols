@@ -25,7 +25,7 @@ class AnthemCode(Enum):
     """
 
     # Main Zone
-    ON = (_ADDR_MAIN, 0x97)
+    POWER = (_ADDR_MAIN, 0x97)
     STANDBY = (_ADDR_MAIN, 0x93)
     BASS = (_ADDR_MAIN, 0x6F)
     DIM = (_ADDR_MAIN, 0xF3)
@@ -93,7 +93,7 @@ class AnthemCode(Enum):
     INPUT_30 = (_ADDR_EXT, 0xCF)
 
     # Zone 2
-    ZONE2_ON = (_ADDR_EXT, 0xD0)
+    ZONE2_POWER = (_ADDR_EXT, 0xD0)
     ZONE2_STANDBY = (_ADDR_EXT, 0xD1)
     ZONE2_VOLUME_UP = (_ADDR_EXT, 0xE7)
     ZONE2_VOLUME_DOWN = (_ADDR_EXT, 0xE8)
