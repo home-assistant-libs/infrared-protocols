@@ -4,6 +4,11 @@
   change must therefore be accompanied by a corresponding **draft** PR in the
   home-assistant/core repository that consumes it, so reviewers can see how the
   change is actually used.
+
+  Note: there is no requirement to implement a given protocol or its codes in
+  this library. An integration may use a separate, dedicated library instead,
+  as long as that library depends on this one for the underlying types. This
+  library's primary role is to provide the shared, foundational types.
 -->
 
 ## Summary
