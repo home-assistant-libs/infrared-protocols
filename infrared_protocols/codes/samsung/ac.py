@@ -56,6 +56,7 @@ _0292_OFF_PAYLOAD = [
     0xC0,
 ]
 
+
 @dataclass(frozen=True, slots=True)
 class SamsungAC0292StateBuilder:
     """Builder for Samsung AC 0292 21-byte IR commands."""

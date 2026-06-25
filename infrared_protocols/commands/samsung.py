@@ -88,7 +88,8 @@ class Samsung32Command(Command):
                 timings.extend(base_frame)
 
         return timings
-    
+
+
 class SamsungAC0292Command(Command):
     """Samsung AC 0292 21-byte IR command."""
 
@@ -119,5 +120,3 @@ class SamsungAC0292Command(Command):
             timings.extend([586, -30000 if offset + 7 >= len(self.payload) else -2886])
 
         return timings
-
-
