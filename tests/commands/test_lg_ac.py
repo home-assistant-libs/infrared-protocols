@@ -205,7 +205,31 @@ def test_decode_returns_none_for_bad_checksum() -> None:
 
 def test_decode_returns_none_for_unknown_mode() -> None:
     """decode must return None when mode nibbles have no mapping."""
-    # (nibs[4], nibs[3]) = (0xF, 0xF) is not in _CMD_NIBS_TO_MODE
+    # (nibs[4], nibs[3]) = (0xF, 0xF) maps to no known mode
     frame = _checksum(0x88FF000)
     timings = _encode_frame(frame, _HDR_MARK, _HDR_SPACE)
     assert decode(timings) is None
+
+
+# ── Decoder: command-nibble variant bit (bit 3 of nibble 3) ───────────────────
+
+
+@pytest.mark.parametrize(
+    ("nibble3", "expected_mode"),
+    [
+        pytest.param(0x8, LgAcMode.COOL, id="cool_variant"),
+        pytest.param(0x9, LgAcMode.DRY, id="dry_variant"),
+        pytest.param(0xA, LgAcMode.FAN_ONLY, id="fan_only_variant"),
+        pytest.param(0xC, LgAcMode.HEAT, id="heat_variant"),
+    ],
+)
+def test_decode_command_nibble_variant_bit(
+    nibble3: int, expected_mode: LgAcMode
+) -> None:
+    """Bit 3 set in command nibble 3 must decode to the same base mode."""
+    # nibble4 = 0, nibble3 = variant; temp/fan nibbles zero
+    frame = _checksum(0x8800000 | (nibble3 << 12))
+    timings = _encode_frame(frame, _HDR_MARK, _HDR_SPACE)
+    result = decode(timings)
+    assert result is not None
+    assert result.mode == expected_mode

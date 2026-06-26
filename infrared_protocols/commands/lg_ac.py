@@ -33,36 +33,34 @@ _BIT_ZERO_SPACE = 550
 _BASE = 0x8800000
 _BITS = 28
 
-_CMD_ON_COOL = 0x00000
-_CMD_ON_DRY = 0x01000
-_CMD_ON_FAN = 0x02000
-_CMD_ON_HEAT = 0x04000
-_CMD_OFF = 0xC0000
-
 # Dry mode always encodes fixed 24 °C regardless of setpoint — verified from captures.
 _DRY_TEMP_FIELD = 0x900
+
+# Some remotes set bit 3 of the command's low nibble as a variant flag without
+# changing the operating mode; mask it off before mapping back to a mode.
+_CMD_VARIANT_BIT = 0x08
 
 _HDR_TOLERANCE = 2000
 
 
 class LgAcMode(IntEnum):
-    """AC operating mode."""
+    """AC operating mode; value is the command byte at frame bits 19-12."""
 
-    OFF = 0
-    COOL = 1
-    DRY = 2
-    FAN_ONLY = 3
-    HEAT = 4
+    COOL = 0x00
+    DRY = 0x01
+    FAN_ONLY = 0x02
+    HEAT = 0x04
+    OFF = 0xC0
 
 
 class LgAcFanSpeed(IntEnum):
-    """Fan speed."""
+    """Fan speed; value is the protocol nibble at frame bits 7-4."""
 
-    AUTO = 0
-    QUIET = 1
-    LOW = 2
-    MEDIUM = 3
-    HIGH = 4
+    LOW = 0x0
+    QUIET = 0x1
+    MEDIUM = 0x2
+    HIGH = 0x4
+    AUTO = 0x5
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,36 +70,6 @@ class LgAcState:
     mode: LgAcMode
     fan: LgAcFanSpeed
     temp_c: int | None
-
-
-_MODE_TO_CMD: dict[LgAcMode, int] = {
-    LgAcMode.COOL: _CMD_ON_COOL,
-    LgAcMode.DRY: _CMD_ON_DRY,
-    LgAcMode.FAN_ONLY: _CMD_ON_FAN,
-    LgAcMode.HEAT: _CMD_ON_HEAT,
-}
-
-_FAN_TO_BITS: dict[LgAcFanSpeed, int] = {
-    LgAcFanSpeed.AUTO: 0x50,
-    LgAcFanSpeed.QUIET: 0x10,
-    LgAcFanSpeed.LOW: 0x00,
-    LgAcFanSpeed.MEDIUM: 0x20,
-    LgAcFanSpeed.HIGH: 0x40,
-}
-_FAN_BITS_TO_SPEED: dict[int, LgAcFanSpeed] = {v: k for k, v in _FAN_TO_BITS.items()}
-
-# Decode: (nibble4, nibble3) → LgAcMode
-_CMD_NIBS_TO_MODE: dict[tuple[int, int], LgAcMode] = {
-    (0, 0x0): LgAcMode.COOL,
-    (0, 0x8): LgAcMode.COOL,
-    (0, 0x1): LgAcMode.DRY,
-    (0, 0x9): LgAcMode.DRY,
-    (0, 0x2): LgAcMode.FAN_ONLY,
-    (0, 0xA): LgAcMode.FAN_ONLY,
-    (0, 0x4): LgAcMode.HEAT,
-    (0, 0xC): LgAcMode.HEAT,
-    (0xC, 0x0): LgAcMode.OFF,
-}
 
 
 def _checksum(value: int) -> int:
@@ -159,11 +127,16 @@ def decode(timings: list[int]) -> LgAcState | None:
     if sum(nibs[1:7]) & 0xF != nibs[0]:
         return None
 
-    mode = _CMD_NIBS_TO_MODE.get((nibs[4], nibs[3]))
-    if mode is None:
+    cmd_byte = ((nibs[4] << 4) | nibs[3]) & ~_CMD_VARIANT_BIT
+    try:
+        mode = LgAcMode(cmd_byte)
+    except ValueError:
         return None
 
-    fan = _FAN_BITS_TO_SPEED.get(nibs[1] << 4, LgAcFanSpeed.AUTO)
+    try:
+        fan = LgAcFanSpeed(nibs[1])
+    except ValueError:
+        fan = LgAcFanSpeed.AUTO
     temp_c: int | None = None
     if mode not in (LgAcMode.OFF, LgAcMode.DRY, LgAcMode.FAN_ONLY) and nibs[2] > 0:
         temp_c = nibs[2] + 15
@@ -198,22 +171,24 @@ class LgAcCommand(Command):
                     f"temperature {temperature} out of range {MIN_TEMP}..{MAX_TEMP}"
                 )
 
-        fan_bits = _FAN_TO_BITS[fan]
+        cmd = mode.value << 12
+        fan_bits = fan.value << 4
 
-        if mode is LgAcMode.OFF:
-            frame = _checksum(_BASE | _CMD_OFF | fan_bits)
-            self._timings = _encode_frame(frame, _OFF_HDR_MARK, _OFF_HDR_SPACE)
-        elif mode is LgAcMode.DRY:
-            frame = _checksum(_BASE | _CMD_ON_DRY | fan_bits | _DRY_TEMP_FIELD)
-            self._timings = _encode_frame(frame, _HDR_MARK, _HDR_SPACE)
-        elif mode is LgAcMode.FAN_ONLY:
-            frame = _checksum(_BASE | _CMD_ON_FAN | fan_bits)
-            self._timings = _encode_frame(frame, _HDR_MARK, _HDR_SPACE)
-        else:
-            cmd = _MODE_TO_CMD[mode]
+        if mode is LgAcMode.DRY:
+            temp_field = _DRY_TEMP_FIELD
+        elif mode in (LgAcMode.COOL, LgAcMode.HEAT):
             temp_field = max(0, min(15, (temperature or MIN_TEMP) - 15)) << 8
-            frame = _checksum(_BASE | cmd | fan_bits | temp_field)
-            self._timings = _encode_frame(frame, _HDR_MARK, _HDR_SPACE)
+        else:
+            temp_field = 0
+
+        # Power-off is the only mode that uses the LG2 short-burst header.
+        if mode is LgAcMode.OFF:
+            header = (_OFF_HDR_MARK, _OFF_HDR_SPACE)
+        else:
+            header = (_HDR_MARK, _HDR_SPACE)
+
+        frame = _checksum(_BASE | cmd | fan_bits | temp_field)
+        self._timings = _encode_frame(frame, *header)
 
     def get_raw_timings(self) -> list[int]:
         """Return signed µs timings."""
