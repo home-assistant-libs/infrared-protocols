@@ -11,18 +11,18 @@
   library's primary role is to provide the shared, foundational types.
 -->
 
-## Summary
+## Proposed change
 
 <!-- Describe what this PR changes and why. -->
 
-## Home Assistant Core PR
+## Additional information
 
 <!--
   Link to the draft PR in home-assistant/core that uses this change. This is
   required: it demonstrates the real-world usage that motivates the change.
 -->
 
-- Home Assistant Core PR: <!-- e.g. https://github.com/home-assistant/core/pull/XXXXX (draft) -->
+- Link to core pull request: <!-- e.g. https://github.com/home-assistant/core/pull/XXXXX (draft) -->
 
 ## Checklist
 
