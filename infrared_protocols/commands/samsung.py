@@ -1,4 +1,4 @@
-"""Samsung32 IR command."""
+"""Samsung IR commands."""
 
 from typing import override
 
@@ -86,5 +86,37 @@ class Samsung32Command(Command):
             for _ in range(self.repeat_count):
                 timings.append(-gap)
                 timings.extend(base_frame)
+
+        return timings
+
+
+class SamsungAC0292Command(Command):
+    """Samsung AC 0292 21-byte IR command."""
+
+    payload: list[int]
+
+    def __init__(
+        self,
+        *,
+        payload: list[int],
+        modulation: int = 38000,
+    ) -> None:
+        """Initialize the Samsung AC 0292 IR command."""
+        super().__init__(modulation=modulation, repeat_count=0)
+        if len(payload) != 21:
+            raise ValueError("Samsung AC 0292 payload must be exactly 21 bytes")
+        self.payload = payload
+
+    @override
+    def get_raw_timings(self) -> list[int]:
+        """Get raw timings for the Samsung AC 0292 command."""
+        timings: list[int] = [690, -17844]
+
+        for offset in range(0, len(self.payload), 7):
+            timings.extend([3086, -8864])
+            for byte in self.payload[offset : offset + 7]:
+                for bit in range(8):
+                    timings.extend([586, -1432 if (byte >> bit) & 1 else -436])
+            timings.extend([586, -30000 if offset + 7 >= len(self.payload) else -2886])
 
         return timings
