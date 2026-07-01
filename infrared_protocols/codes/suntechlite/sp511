@@ -12,46 +12,46 @@ from ...commands.nec import NECCommand
 class SuntechLiteSp511eCode(IntEnum):
     """Suntech Lite SP511E IR command codes."""
 
-    ON = 0xA35C
-    OFF = 0xBF40
-    BRIGHTNESS_UP = 0xEC13
-    BRIGHTNESS_DOWN = 0xED12
-    SPEED_UP = 0xE817
-    SPEED_DOWN = 0xE916
-    SENSITIVITY_UP = 0xF00F
-    SENSITIVITY_DOWN = 0xF10E
-    MODE_UP = 0xEA15
-    MODE_DOWN = 0xEB14
-    MODE_AUTO = 0xEF10
-    COLOR_PICKER = 0xEE11
-    DIY1 = 0xF708
-    DIY2 = 0xF609
-    DIY3 = 0xF50A
-    DIY4 = 0xF40B
-    MUSIC_UP = 0xF20D
-    MUSIC_DOWN = 0xF30C
+    ON = 0x5C
+    OFF = 0x40
+    BRIGHTNESS_UP = 0x13
+    BRIGHTNESS_DOWN = 0x12
+    SPEED_UP = 0x17
+    SPEED_DOWN = 0x16
+    SENSITIVITY_UP = 0x0F
+    SENSITIVITY_DOWN = 0x0E
+    MODE_UP = 0x15
+    MODE_DOWN = 0x14
+    MODE_AUTO = 0x10
+    COLOR_PICKER = 0x11
+    DIY1 = 0x08
+    DIY2 = 0x09
+    DIY3 = 0x0A
+    DIY4 = 0x0B
+    MUSIC_UP = 0x0D
+    MUSIC_DOWN = 0x0C
 
-    RAINBOW = 0xB748
-    METEOR = 0xB34C
-    STARS = 0xE01F
-    FIRE = 0xE41B
+    RAINBOW = 0x48
+    METEOR = 0x4C
+    STARS = 0x1F
+    FIRE = 0x1B
 
-    RED = 0xA758
-    GREEN = 0xA659
-    BLUE = 0xBA45
-    WHITE = 0xBB44
-    TOMATO = 0xAB54
-    LIGHT_GREEN = 0xAA55
-    SKY_BLUE = 0xB649
-    ORANGE_RED = 0xAF50
-    CYAN = 0xAE51
-    REBECCA_PURPLE = 0xB24D
-    ORANGE = 0xE31C
-    TURQUOISE = 0xE21D
-    PURPLE = 0xE11E
-    YELLOW = 0xE718
-    DARK_CYAN = 0xE619
-    PLUM = 0xE51A
+    RED = 0x58
+    GREEN = 0x59
+    BLUE = 0x45
+    WHITE = 0x44
+    TOMATO = 0x54
+    LIGHT_GREEN = 0x55
+    SKY_BLUE = 0x49
+    ORANGE_RED = 0x50
+    CYAN = 0x51
+    REBECCA_PURPLE = 0x4D
+    ORANGE = 0x1C
+    TURQUOISE = 0x1D
+    PURPLE = 0x1E
+    YELLOW = 0x18
+    DARK_CYAN = 0x19
+    PLUM = 0x1A
 
     def to_command(self, repeat_count: int = 0) -> Command:
         """Build a NEC command."""
