@@ -31,6 +31,14 @@ class NECCommand(Command):
     ) -> None:
         """Initialize the NEC IR command."""
         super().__init__(modulation=modulation, repeat_count=repeat_count)
+        if not 0 <= address <= 0xFFFF:
+            raise ValueError(
+                f"address must be a 16-bit value (0-0xFFFF), got {address:#x}"
+            )
+        if not 0 <= command <= 0xFF:
+            raise ValueError(
+                f"command must be an 8-bit value (0-0xFF), got {command:#x}"
+            )
         self.address = address
         self.command = command
 
