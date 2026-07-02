@@ -2,8 +2,8 @@
 
 from enum import IntEnum
 
-from ...commands import Command
-from ...commands.nec import NECCommand
+from ....commands import Command
+from ....commands.nec import NECCommand
 
 
 class Generic13KeyCode(IntEnum):
