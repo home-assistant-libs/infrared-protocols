@@ -7,6 +7,7 @@ class EdifierCommandSet(StrEnum):
     """Edifier command set groupings."""
 
     R1700BT = "r1700bt"
+    R1380DB = "r3280db"
     R1280DB = "r1280db"
     R1280T = "r1280t"
     S360DB = "s360db"
@@ -22,6 +23,9 @@ class EdifierModel(StrEnum):
     RC17A = "RC17A"
     RC80B = "RC80B"
     R1855DB = "R1855DB"
+    # R1380DB command set
+    R1380DB = "R1380DB"
+    RC13D = "R1380DB"
     # R1280DB command set
     R1280DB = "R1280DB"
     R2730DB = "R2730DB"
@@ -43,6 +47,9 @@ MODEL_TO_COMMAND_SET: dict[EdifierModel, EdifierCommandSet] = {
     EdifierModel.RC17A: EdifierCommandSet.R1700BT,
     EdifierModel.RC80B: EdifierCommandSet.R1700BT,
     EdifierModel.R1855DB: EdifierCommandSet.R1700BT,
+    # R1380DB command set
+    EdifierModel.R1380DB: EdifierCommandSet.R1380DB,
+    EdifierModel.RC13D: EdifierCommandSet.R1380DB,
     # R1280DB command set
     EdifierModel.R1280DB: EdifierCommandSet.R1280DB,
     EdifierModel.R2730DB: EdifierCommandSet.R1280DB,
