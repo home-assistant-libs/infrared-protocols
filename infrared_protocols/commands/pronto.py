@@ -1,146 +1,262 @@
-"""Pronto IR command code format."""
+"""Pronto HEX command support.
 
-import struct
-from textwrap import wrap
-from typing import Self, override
+Public API:
+- ProntoCommand: Command implementation for learned/raw Pronto HEX type 0000.
+- ProntoCommand(pronto_hex=...): create a command from complete Pronto HEX.
+- ProntoCommand.from_raw_timings(...): create a command from signed raw timings.
+- decode_pronto_hex(...): decode Pronto HEX into modulation and signed timings.
+- encode_pronto_hex(...): encode signed raw timings as Pronto HEX.
+- ProntoCode: decoded modulation and signed timing data.
+- ProntoError: raised for malformed or unsupported Pronto data.
+
+Only learned/raw Pronto HEX type 0000 is supported. Public timings use the
+infrared-protocols signed convention: positive values are marks, negative values
+are spaces, and durations are in microseconds.
+"""
+
+from collections.abc import Iterable
+from dataclasses import dataclass
+from typing import Self
 
 from . import Command
 
-PRONTO_PREAMBLE_LEARNED_TOKEN = b"\x00\x00"
-# To get the unit pulse length in microseconds,
-# divide 1000 * 1000 (microseconds per second) by reference frequency
-PRONTO_REFERENCE_FREQUENCY = 4145146
-PRONTO_DEFAULT_FREQUENCY = 38000
+__all__ = [
+    "ProntoCode",
+    "ProntoCommand",
+    "ProntoError",
+    "decode_pronto_hex",
+    "encode_pronto_hex",
+]
+
+_PRONTO_TYPE_LEARNED_RAW = 0x0000
+_PRONTO_FREQUENCY_REFERENCE_US = 0.241246
+_PRONTO_HEADER_WORD_COUNT = 4
+_PRONTO_MAX_WORD = 0xFFFF
+
+_DEFAULT_MODULATION = 38_000
+_DEFAULT_TRAILING_GAP_US = 100_000
+
+
+@dataclass(frozen=True, slots=True)
+class ProntoCode:
+    """Decoded Pronto modulation and signed timing data."""
+
+    modulation: int
+    timings: tuple[int, ...]
+
+
+class ProntoError(ValueError):
+    """Raised when Pronto data cannot be parsed or generated."""
 
 
 class ProntoCommand(Command):
-    """Pronto IR command.
-
-    A pronto code consists of a 4 word preamble and timing data.
-    A data word of pronto is 2 bytes long.
-    Two data words (4 bytes) encode one content bit.
-    The preamble consists of:
-    1 word indicating the token source (currently supported: learned).
-    1 word indicating the modulation frequency.
-    1 word indicating the length of the timing data in content bits.
-    1 word indicating the amount of repeats of the timing data.
-    After the preamble, the timing data follows in pairs of two words
-    (mark and space duration).
-
-    Most of the code has been ported from the ESPHome sources at
-    https://github.com/esphome/esphome/blob/dev/esphome/components/remote_base/pronto_protocol.cpp.
-    """
-
-    timing_data: bytes
+    """Command implementation for learned/raw Pronto HEX type 0000."""
 
     def __init__(
         self,
         *,
-        timing_data: bytes,
-        modulation: int = PRONTO_DEFAULT_FREQUENCY,
+        pronto_hex: str,
         repeat_count: int = 0,
     ) -> None:
-        """Initialize the Pronto IR command."""
-        super().__init__(modulation=modulation, repeat_count=repeat_count)
-        self.timing_data = timing_data
-
-    def __repr__(self) -> str:
-        """Get string representation for this pronto code."""
-        content_bytes_hex = b"".join(
-            [
-                PRONTO_PREAMBLE_LEARNED_TOKEN,
-                ProntoCommand._int_to_pronto(
-                    value=round(PRONTO_REFERENCE_FREQUENCY / self.modulation)
-                ),  # Modulation
-                ProntoCommand._int_to_pronto(
-                    value=int(len(self.timing_data) / 4)
-                ),  # in content bits
-                ProntoCommand._int_to_pronto(value=self.repeat_count),  # repeats
-                self.timing_data,
-            ]
-        ).hex()
-        return " ".join(wrap(content_bytes_hex, 4))
-
-    @staticmethod
-    def _int_to_pronto(value: int) -> bytes:
-        return struct.pack(">h", value)
-
-    @staticmethod
-    def _pronto_to_int(pronto_block: bytes) -> int:
-        return struct.unpack(">h", pronto_block)[0]
-
-    @staticmethod
-    def _time_base(modulation: int) -> float:
-        """Calculate base pulse length in microseconds for a given modulation."""
-        return 1000000 / modulation
-
-    @staticmethod
-    def _compensate_duration(value: int, time_base: float) -> int:
-        """Compensate positive/negative durations to positive ones."""
-        if value > 0:
-            result = value - 20
-        else:
-            result = -value + 20
-        return round((result + time_base / 2) / time_base)
-
-    @override
-    def get_raw_timings(self) -> list[int]:
-        """Get raw timings for the Pronto command.
-
-        Durations are encoded in the pronto timing data and only need to be converted.
-        """
-        time_base = ProntoCommand._time_base(self.modulation)
-        return [
-            symbol
-            for value in zip(
-                self.timing_data[::4],
-                self.timing_data[1::4],
-                self.timing_data[2::4],
-                self.timing_data[3::4],
-                strict=True,
-            )
-            for symbol in (
-                # mark
-                min(
-                    round(
-                        ProntoCommand._pronto_to_int(pronto_block=bytes(value[:2]))
-                        * time_base
-                    ),
-                    0xFFFF,
-                ),
-                # space
-                -min(
-                    round(
-                        ProntoCommand._pronto_to_int(pronto_block=bytes(value[2:]))
-                        * time_base
-                    ),
-                    0xFFFF,
-                ),
-            )
-        ] * (self.repeat_count + 1)
+        """Initialize a command from complete Pronto HEX."""
+        decoded = decode_pronto_hex(pronto_hex)
+        super().__init__(
+            modulation=decoded.modulation,
+            repeat_count=repeat_count,
+        )
+        self._timings = decoded.timings
+        self._pronto_hex = _normalize_pronto_hex(pronto_hex)
 
     @classmethod
     def from_raw_timings(
-        cls, timings: list[int], modulation: int | None = None
+        cls,
+        timings: Iterable[int],
+        modulation: int = _DEFAULT_MODULATION,
+        *,
+        repeat_count: int = 0,
+        trailing_gap_us: int | None = _DEFAULT_TRAILING_GAP_US,
     ) -> Self:
-        """Decode raw IR timings into a ProntoCommand.
-
-        If modulation is None, the typical 38000 kHz are used.
-        Returns a ProntoCommand.
-        """
-        if modulation is None:
-            modulation = PRONTO_DEFAULT_FREQUENCY
-        time_base = ProntoCommand._time_base(modulation=modulation)
-        timing_data = b"".join(
-            ProntoCommand._int_to_pronto(
-                value=ProntoCommand._compensate_duration(
-                    value=timing, time_base=time_base
-                )
-            )
-            for timing in timings
-        )
+        """Create a command from signed raw timings."""
         return cls(
-            timing_data=timing_data,
-            modulation=modulation,
-            repeat_count=0,
+            pronto_hex=encode_pronto_hex(
+                timings,
+                modulation,
+                trailing_gap_us=trailing_gap_us,
+            ),
+            repeat_count=repeat_count,
         )
+
+    def get_raw_timings(self) -> list[int]:
+        """Return signed raw timings for this command."""
+        return list(self._timings) * (self.repeat_count + 1)
+
+    def to_pronto_hex(self) -> str:
+        """Return normalized learned/raw Pronto HEX."""
+        return self._pronto_hex
+
+    def __str__(self) -> str:
+        """Return normalized learned/raw Pronto HEX."""
+        return self.to_pronto_hex()
+
+
+def decode_pronto_hex(pronto_hex: str) -> ProntoCode:
+    """Decode learned/raw Pronto HEX type 0000."""
+    words = _parse_pronto_words(pronto_hex)
+
+    if len(words) < _PRONTO_HEADER_WORD_COUNT:
+        raise ProntoError("Pronto HEX is too short")
+
+    pronto_type, frequency_word, intro_pairs, repeat_pairs = words[:4]
+
+    if pronto_type != _PRONTO_TYPE_LEARNED_RAW:
+        raise ProntoError("Only learned/raw Pronto HEX type 0000 is supported")
+
+    if frequency_word <= 0:
+        raise ProntoError("Pronto frequency word must be greater than zero")
+
+    pair_count = intro_pairs + repeat_pairs
+    if pair_count <= 0:
+        raise ProntoError("Pronto HEX must contain at least one timing pair")
+
+    timing_words = words[_PRONTO_HEADER_WORD_COUNT:]
+    expected_timing_word_count = pair_count * 2
+
+    if len(timing_words) != expected_timing_word_count:
+        raise ProntoError("Pronto timing word count does not match header")
+
+    if any(word <= 0 for word in timing_words):
+        raise ProntoError("Pronto timing words must be greater than zero")
+
+    modulation = round(
+        1_000_000 / (frequency_word * _PRONTO_FREQUENCY_REFERENCE_US)
+    )
+    timings = tuple(
+        _apply_timing_sign(index, _pronto_word_to_microseconds(word, frequency_word))
+        for index, word in enumerate(timing_words)
+    )
+
+    return ProntoCode(modulation=modulation, timings=timings)
+
+
+def _parse_pronto_words(pronto_hex: str) -> list[int]:
+    """Parse Pronto HEX words."""
+    if not pronto_hex.strip():
+        raise ProntoError("Pronto HEX cannot be empty")
+
+    words: list[int] = []
+
+    for word in pronto_hex.split():
+        if len(word) != 4 or any(
+            character not in "0123456789abcdefABCDEF" for character in word
+        ):
+            raise ProntoError("Pronto HEX words must contain four hex digits")
+
+        words.append(int(word, 16))
+
+    return words
+
+
+def _normalize_pronto_hex(pronto_hex: str) -> str:
+    """Return normalized uppercase Pronto HEX."""
+    return " ".join(f"{word:04X}" for word in _parse_pronto_words(pronto_hex))
+
+
+def _pronto_word_to_microseconds(word: int, frequency_word: int) -> int:
+    """Convert a Pronto timing word to microseconds."""
+    return round(word * frequency_word * _PRONTO_FREQUENCY_REFERENCE_US)
+
+
+def _apply_timing_sign(index: int, timing: int) -> int:
+    """Apply signed mark/space timing convention."""
+    return timing if index % 2 == 0 else -timing
+
+
+def encode_pronto_hex(
+    timings: Iterable[int],
+    modulation: int,
+    *,
+    trailing_gap_us: int | None = _DEFAULT_TRAILING_GAP_US,
+) -> str:
+    """Encode signed raw timings as learned/raw Pronto HEX type 0000."""
+    frequency_word = _modulation_to_frequency_word(modulation)
+    timing_durations = _normalize_encode_timings(timings, trailing_gap_us)
+
+    pair_count = len(timing_durations) // 2
+    if pair_count > _PRONTO_MAX_WORD:
+        raise ProntoError("Pronto timing pair count exceeds 16-bit value")
+
+    timing_words = [
+        _microseconds_to_pronto_word(duration, frequency_word)
+        for duration in timing_durations
+    ]
+
+    words = [
+        _PRONTO_TYPE_LEARNED_RAW,
+        frequency_word,
+        pair_count,
+        0x0000,
+        *timing_words,
+    ]
+
+    return " ".join(f"{word:04X}" for word in words)
+
+
+def _modulation_to_frequency_word(modulation: int) -> int:
+    """Convert modulation frequency to a Pronto frequency word."""
+    if type(modulation) is not int or modulation <= 0:
+        raise ProntoError("modulation must be a positive integer")
+
+    frequency_word = round(
+        1_000_000 / (modulation * _PRONTO_FREQUENCY_REFERENCE_US)
+    )
+
+    if frequency_word <= 0:
+        raise ProntoError("Pronto frequency word must be greater than zero")
+
+    if frequency_word > _PRONTO_MAX_WORD:
+        raise ProntoError("Pronto frequency word exceeds 16-bit value")
+
+    return frequency_word
+
+
+def _normalize_encode_timings(
+    timings: Iterable[int],
+    trailing_gap_us: int | None,
+) -> list[int]:
+    """Normalize raw timings for Pronto encoding."""
+    timing_durations = [_normalize_duration(timing) for timing in timings]
+
+    if not timing_durations:
+        raise ProntoError("timings cannot be empty")
+
+    if len(timing_durations) % 2:
+        if trailing_gap_us is None:
+            raise ProntoError("timings must contain mark/space pairs")
+
+        timing_durations.append(_normalize_duration(-trailing_gap_us))
+
+    return timing_durations
+
+
+def _normalize_duration(timing: int) -> int:
+    """Normalize a signed timing to an unsigned Pronto duration."""
+    if type(timing) is not int:
+        raise ProntoError("timings must be integers")
+
+    if timing == 0:
+        raise ProntoError("timings must be non-zero")
+
+    return abs(timing)
+
+
+def _microseconds_to_pronto_word(duration: int, frequency_word: int) -> int:
+    """Convert microseconds to a Pronto timing word."""
+    word = round(duration / (frequency_word * _PRONTO_FREQUENCY_REFERENCE_US))
+
+    if word <= 0:
+        raise ProntoError("Pronto timing word must be greater than zero")
+
+    if word > _PRONTO_MAX_WORD:
+        raise ProntoError("Pronto timing word exceeds 16-bit value")
+
+    return word
