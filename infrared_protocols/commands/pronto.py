@@ -127,9 +127,7 @@ def decode_pronto_hex(pronto_hex: str) -> ProntoCode:
     if any(word <= 0 for word in timing_words):
         raise ProntoError("Pronto timing words must be greater than zero")
 
-    modulation = round(
-        1_000_000 / (frequency_word * _PRONTO_FREQUENCY_REFERENCE_US)
-    )
+    modulation = round(1_000_000 / (frequency_word * _PRONTO_FREQUENCY_REFERENCE_US))
     timings = tuple(
         _apply_timing_sign(index, _pronto_word_to_microseconds(word, frequency_word))
         for index, word in enumerate(timing_words)
@@ -206,9 +204,7 @@ def _modulation_to_frequency_word(modulation: int) -> int:
     if type(modulation) is not int or modulation <= 0:
         raise ProntoError("modulation must be a positive integer")
 
-    frequency_word = round(
-        1_000_000 / (modulation * _PRONTO_FREQUENCY_REFERENCE_US)
-    )
+    frequency_word = round(1_000_000 / (modulation * _PRONTO_FREQUENCY_REFERENCE_US))
 
     if frequency_word <= 0:
         raise ProntoError("Pronto frequency word must be greater than zero")
