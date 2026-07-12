@@ -20,12 +20,14 @@ class NECCommand(Command):
 
     address: int
     command: int
+    subfunction: int | None
 
     def __init__(
         self,
         *,
         address: int,
         command: int,
+        subfunction: int | None = None,
         modulation: int = 38000,
         repeat_count: int = 0,
     ) -> None:
@@ -33,6 +35,7 @@ class NECCommand(Command):
         super().__init__(modulation=modulation, repeat_count=repeat_count)
         self.address = address
         self.command = command
+        self.subfunction = subfunction
 
     @override
     def get_raw_timings(self) -> list[int]:
@@ -51,11 +54,13 @@ class NECCommand(Command):
           + ~command (8-bit)
         - Extended NEC: address_low (8-bit) + address_high (8-bit) + command (8-bit)
           + ~command (8-bit)
+        - NEC1-f16: address_low (8-bit) + address_high (8-bit) + command (8-bit)
+          + subfunction (8-bit)
         """
         timings: list[int] = [LEADER_HIGH, -LEADER_LOW]
 
         # Determine if standard (8-bit) or extended (16-bit) address
-        if self.address <= 0xFF:
+        if self.subfunction is None and self.address <= 0xFF:
             # Standard NEC: address + inverted address
             address_low = self.address & 0xFF
             address_high = (~self.address) & 0xFF
@@ -65,14 +70,18 @@ class NECCommand(Command):
             address_high = (self.address >> 8) & 0xFF
 
         command_byte = self.command & 0xFF
-        command_inverted = (~self.command) & 0xFF
+        command_suffix = (
+            (~self.command) & 0xFF
+            if self.subfunction is None
+            else self.subfunction & 0xFF
+        )
 
         # Build 32-bit command data (LSB first in transmission)
         data = (
             address_low
             | (address_high << 8)
             | (command_byte << 16)
-            | (command_inverted << 24)
+            | (command_suffix << 24)
         )
 
         for _ in range(32):
@@ -142,6 +151,54 @@ class NECCommand(Command):
         # mismatch or truncated repeat frame; any remaining timings are ignored.
         repeat_count = cls._count_repeat_codes(timings, 67)
         return cls(address=address, command=command_byte, repeat_count=repeat_count)
+
+    @classmethod
+    def from_raw_timings_nec1_f16(cls, timings: list[int]) -> Self | None:
+        """Decode raw IR timings as an NEC1-f16 command.
+
+        This decoder interprets the fourth data byte as a subfunction; callers must
+        select it explicitly because NEC and NEC1-f16 framing is indistinguishable.
+        """
+        # Minimum: 1 leader pair (2) + 32 bit pairs (64) + 1 end pulse high (1) = 67
+        if len(timings) < 67:
+            return None
+
+        # Validate leader pulse
+        if not cls._is_close(timings[0], LEADER_HIGH) or not cls._is_close(
+            -timings[1], LEADER_LOW
+        ):
+            return None
+
+        # Decode 32 data bits (LSB first)
+        data = 0
+        for i in range(32):
+            bit = cls._decode_bit(timings[2 + 2 * i], -timings[3 + 2 * i])
+            if bit is None:
+                return None
+            data |= bit << i
+
+        # Validate end pulse
+        if not cls._is_close(timings[66], BIT_HIGH):
+            return None
+
+        # Extract bytes
+        address_low = data & 0xFF
+        address_high = (data >> 8) & 0xFF
+        command_byte = (data >> 16) & 0xFF
+        subfunction = (data >> 24) & 0xFF
+
+        # Reconstruct the full 16-bit address.
+        address = address_low | (address_high << 8)
+
+        # Count repeat codes after the end pulse. Counting stops at the first
+        # mismatch or truncated repeat frame; any remaining timings are ignored.
+        repeat_count = cls._count_repeat_codes(timings, 67)
+        return cls(
+            address=address,
+            command=command_byte,
+            subfunction=subfunction,
+            repeat_count=repeat_count,
+        )
 
     @staticmethod
     def _is_close(actual: int, expected: int) -> bool:
