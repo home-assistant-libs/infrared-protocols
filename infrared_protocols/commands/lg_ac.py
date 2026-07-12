@@ -1,84 +1,118 @@
 """LG air-conditioner IR protocol.
 
-LG 28-bit protocol. Frame layout (28 bits, MSB first):
+LG 28-bit protocol, LG2 timing variant. Frame layout (28 bits, MSB first):
   bits 27-20: 0x88 signature
-  bits 19-16: command upper nibble
-  bits 15-12: command lower nibble
-  bits 11-8:  temperature field (temp_c - 15, valid 0–15)
+  bits 19-16: mode high nibble
+  bits 15-12: mode low nibble
+  bits 11-8:  temperature field (temp_c - 15)
   bits 7-4:   fan speed nibble
-  bits 3-0:   checksum (sum of nibbles 1–6, low 4 bits)
+  bits 3-0:   checksum (sum of nibbles 1-6, low 4 bits)
 
-Power-on/mode-change commands use the LG standard header (8500/4250 µs).
-Power-off uses the LG2 short header (3200/9900 µs) as transmitted by the
-physical remote.
+Bit 3 of the mode's low nibble is a settings-only flag: a remote sets it to change a
+setting on a running unit. Cleared, the same frame also powers the unit on, so this
+encoder always emits it clear.
 """
 
-from dataclasses import dataclass
 from enum import IntEnum
+from typing import Self, override
 
 from . import Command
 
 MIN_TEMP = 16
 MAX_TEMP = 30
 
-_HDR_MARK = 8500
-_HDR_SPACE = 4250
-# Power-off uses a distinct short-burst header captured from the physical remote.
-_OFF_HDR_MARK = 3200
-_OFF_HDR_SPACE = 9900
+_TEMP_OFFSET = 15
+
+_HDR_MARK = 3200
+_HDR_SPACE = 9900
+# Some LG units use this longer header.
+_ALT_HDR_MARK = 8500
+_ALT_HDR_SPACE = 4250
+
 _BIT_MARK = 550
 _BIT_ONE_SPACE = 1600
 _BIT_ZERO_SPACE = 550
 
-_BASE = 0x8800000
+_SIGNATURE = 0x88
+_BASE = _SIGNATURE << 20
 _BITS = 28
 
-# Dry mode always encodes fixed 24 °C regardless of setpoint — verified from captures.
-_DRY_TEMP_FIELD = 0x900
+# Dry mode always encodes fixed 24 °C
+_DRY_TEMP = 24
 
-# Some remotes set bit 3 of the command's low nibble as a variant flag without
-# changing the operating mode; mask it off before mapping back to a mode.
-_CMD_VARIANT_BIT = 0x08
+# Marks a fixed code rather than a state frame. Power-off is one, the display toggle
+# (0x88C00A6) another. They differ only in bits 11-0, which carry no temperature or fan
+# here, so a fixed code is identified by its whole frame.
+_FIXED_CODE_MODE_BYTE = 0xC0
 
-_HDR_TOLERANCE = 2000
+_OFF_FRAME = 0x88C0051
+
+# Masked off when decoding, so a settings frame and a power-on frame give the same mode.
+_SETTINGS_ONLY_BIT = 0x08
+
+# IR receivers distort marks (AGC) but keep spaces accurate, and the space is what tells
+# the two header variants apart.
+_MARK_TOLERANCE = 0.7
+_SPACE_TOLERANCE = 0.25
+
+# A receiver skews a bit's mark and space by roughly a fixed number of microseconds
+# rather than a fixed proportion, so bits get an absolute tolerance. It covers the skew
+# seen in practice and still keeps the zero and one spaces apart (200-900 vs 1250-1950).
+_BIT_TOLERANCE = 350
 
 
 class LgAcMode(IntEnum):
-    """AC operating mode; value is the command byte at frame bits 19-12."""
+    """AC operating mode; value is the mode byte at frame bits 19-12."""
 
     COOL = 0x00
     DRY = 0x01
     FAN_ONLY = 0x02
     HEAT = 0x04
-    OFF = 0xC0
+    OFF = _FIXED_CODE_MODE_BYTE
 
 
 class LgAcFanSpeed(IntEnum):
-    """Fan speed; value is the protocol nibble at frame bits 7-4."""
+    """Fan speed; value is the protocol nibble at frame bits 7-4. Ordered by speed."""
 
-    LOW = 0x0
     QUIET = 0x1
+    LOW = 0x0
+    MEDIUM_LOW = 0x9
     MEDIUM = 0x2
+    MEDIUM_HIGH = 0xA
     HIGH = 0x4
     AUTO = 0x5
 
 
-@dataclass(frozen=True, slots=True)
-class LgAcState:
-    """Decoded AC state from an IR signal."""
-
-    mode: LgAcMode
-    fan: LgAcFanSpeed
-    temp_c: int | None
-
-
 def _checksum(value: int) -> int:
-    total = sum((value >> (i * 4)) & 0xF for i in range(1, 7))
-    return value | (total & 0xF)
+    """Return the checksum nibble: sum of nibbles 1-6, low 4 bits."""
+    return sum((value >> (i * 4)) & 0xF for i in range(1, 7)) & 0xF
 
 
-def _encode_frame(frame: int, hdr_mark: int, hdr_space: int) -> list[int]:
-    timings: list[int] = [hdr_mark, -hdr_space]
+def _is_close(actual: int, expected: int, tolerance: float) -> bool:
+    """Check if a timing is within the given relative tolerance of the expected."""
+    margin = expected * tolerance
+    return expected - margin <= actual <= expected + margin
+
+
+def _matches_header(mark: int, space: int, exp_mark: int, exp_space: int) -> bool:
+    return _is_close(mark, exp_mark, _MARK_TOLERANCE) and _is_close(
+        space, exp_space, _SPACE_TOLERANCE
+    )
+
+
+def _decode_bit(mark: int, space: int) -> int | None:
+    """Decode one bit from its mark and space, or None if it matches neither."""
+    if abs(mark - _BIT_MARK) > _BIT_TOLERANCE:
+        return None
+    if abs(space - _BIT_ZERO_SPACE) <= _BIT_TOLERANCE:
+        return 0
+    if abs(space - _BIT_ONE_SPACE) <= _BIT_TOLERANCE:
+        return 1
+    return None
+
+
+def _encode_frame(frame: int) -> list[int]:
+    timings: list[int] = [_HDR_MARK, -_HDR_SPACE]
     for i in range(_BITS - 1, -1, -1):
         bit = (frame >> i) & 1
         timings.append(_BIT_MARK)
@@ -87,70 +121,16 @@ def _encode_frame(frame: int, hdr_mark: int, hdr_space: int) -> list[int]:
     return timings
 
 
-def decode(timings: list[int]) -> LgAcState | None:
-    """Decode raw LG AC IR timings to an :class:`LgAcState`.
-
-    Returns ``None`` if the signal is not a recognised LG AC command.
-    """
-    if len(timings) < 58:  # header(2) + 28 bit-pairs(56)
-        return None
-
-    hdr_mark = timings[0]
-    hdr_space = abs(timings[1])
-
-    is_standard = (
-        _HDR_MARK - _HDR_TOLERANCE <= hdr_mark <= _HDR_MARK + _HDR_TOLERANCE
-        and _HDR_SPACE - _HDR_TOLERANCE <= hdr_space <= _HDR_SPACE + _HDR_TOLERANCE
-    )
-    is_lg2 = (
-        _OFF_HDR_MARK - _HDR_TOLERANCE <= hdr_mark <= _OFF_HDR_MARK + _HDR_TOLERANCE
-        and _OFF_HDR_SPACE - _HDR_TOLERANCE
-        <= hdr_space
-        <= _OFF_HDR_SPACE + _HDR_TOLERANCE
-    )
-    if not is_standard and not is_lg2:
-        return None
-
-    frame = 0
-    i = 2
-    bits_read = 0
-    while i + 1 < len(timings) and bits_read < _BITS:
-        frame = (frame << 1) | (1 if abs(timings[i + 1]) > 1000 else 0)
-        i += 2
-        bits_read += 1
-
-    if frame >> 20 != 0x88:
-        return None
-
-    nibs = [(frame >> (j * 4)) & 0xF for j in range(7)]
-
-    if sum(nibs[1:7]) & 0xF != nibs[0]:
-        return None
-
-    cmd_byte = ((nibs[4] << 4) | nibs[3]) & ~_CMD_VARIANT_BIT
-    try:
-        mode = LgAcMode(cmd_byte)
-    except ValueError:
-        return None
-
-    try:
-        fan = LgAcFanSpeed(nibs[1])
-    except ValueError:
-        fan = LgAcFanSpeed.AUTO
-    temp_c: int | None = None
-    if mode not in (LgAcMode.OFF, LgAcMode.DRY, LgAcMode.FAN_ONLY) and nibs[2] > 0:
-        temp_c = nibs[2] + 15
-
-    return LgAcState(mode=mode, fan=fan, temp_c=temp_c)
-
-
 class LgAcCommand(Command):
     """LG air-conditioner IR command.
 
-    ``mode=LgAcMode.OFF`` uses the LG2 short header; all other modes use the
-    LG standard header. ``temperature`` is required for ``COOL`` and ``HEAT``
-    modes and is ignored for ``DRY`` (protocol-fixed at 24 °C) and ``FAN_ONLY``.
+    ``temperature`` is required for ``COOL`` and ``HEAT``, and ignored otherwise.
+    ``fan`` is ignored for ``OFF``.
     """
+
+    mode: LgAcMode
+    temperature: int | None
+    fan: LgAcFanSpeed
 
     def __init__(
         self,
@@ -160,7 +140,7 @@ class LgAcCommand(Command):
         fan: LgAcFanSpeed = LgAcFanSpeed.AUTO,
         modulation: int = 38000,
     ) -> None:
-        """Build an LG AC IR command."""
+        """Initialize the LG AC IR command."""
         super().__init__(modulation=modulation)
 
         if mode in (LgAcMode.COOL, LgAcMode.HEAT):
@@ -171,25 +151,86 @@ class LgAcCommand(Command):
                     f"temperature {temperature} out of range {MIN_TEMP}..{MAX_TEMP}"
                 )
 
-        cmd = mode.value << 12
-        fan_bits = fan.value << 4
+        self.mode = mode
+        # Only cool and heat carry a temperature; storing one the frame cannot express
+        # would make a command unequal to itself after a roundtrip.
+        self.temperature = (
+            temperature if mode in (LgAcMode.COOL, LgAcMode.HEAT) else None
+        )
+        self.fan = fan
 
-        if mode is LgAcMode.DRY:
-            temp_field = _DRY_TEMP_FIELD
-        elif mode in (LgAcMode.COOL, LgAcMode.HEAT):
-            temp_field = max(0, min(15, (temperature or MIN_TEMP) - 15)) << 8
-        else:
-            temp_field = 0
-
-        # Power-off is the only mode that uses the LG2 short-burst header.
-        if mode is LgAcMode.OFF:
-            header = (_OFF_HDR_MARK, _OFF_HDR_SPACE)
-        else:
-            header = (_HDR_MARK, _HDR_SPACE)
-
-        frame = _checksum(_BASE | cmd | fan_bits | temp_field)
-        self._timings = _encode_frame(frame, *header)
-
+    @override
     def get_raw_timings(self) -> list[int]:
-        """Return signed µs timings."""
-        return self._timings
+        """Get raw timings for the LG AC command."""
+        if self.mode is LgAcMode.OFF:
+            return _encode_frame(_OFF_FRAME)
+
+        mode_bits = self.mode.value << 12
+        fan_bits = self.fan.value << 4
+
+        if self.mode is LgAcMode.DRY:
+            temp_bits = (_DRY_TEMP - _TEMP_OFFSET) << 8
+        elif self.temperature is not None:
+            temp_bits = (self.temperature - _TEMP_OFFSET) << 8
+        else:
+            temp_bits = 0
+
+        frame_data = _BASE | mode_bits | fan_bits | temp_bits
+        return _encode_frame(frame_data | _checksum(frame_data))
+
+    @classmethod
+    def from_raw_timings(cls, timings: list[int]) -> Self | None:
+        """Decode raw IR timings into an LgAcCommand.
+
+        Returns an LgAcCommand if the timings match, or None otherwise.
+        """
+        # Header pair (2) + 28 bit pairs (56) + the trailing mark (1)
+        if len(timings) < 2 + 2 * _BITS + 1:
+            return None
+
+        hdr_mark = timings[0]
+        hdr_space = abs(timings[1])
+        if not (
+            _matches_header(hdr_mark, hdr_space, _HDR_MARK, _HDR_SPACE)
+            or _matches_header(hdr_mark, hdr_space, _ALT_HDR_MARK, _ALT_HDR_SPACE)
+        ):
+            return None
+
+        frame = 0
+        for i in range(2, 2 + 2 * _BITS, 2):
+            bit = _decode_bit(timings[i], abs(timings[i + 1]))
+            if bit is None:
+                return None
+            frame = (frame << 1) | bit
+
+        if abs(timings[2 + 2 * _BITS] - _BIT_MARK) > _BIT_TOLERANCE:
+            return None
+
+        if frame >> 20 != _SIGNATURE:
+            return None
+
+        if _checksum(frame) != frame & 0xF:
+            return None
+
+        if frame == _OFF_FRAME:
+            return cls(mode=LgAcMode.OFF)
+
+        mode_byte = ((frame >> 12) & 0xFF) & ~_SETTINGS_ONLY_BIT
+        if mode_byte == _FIXED_CODE_MODE_BYTE:
+            # A fixed code this class does not model, such as the display toggle. The
+            # power-off code is the one exception, matched in full above.
+            return None
+
+        try:
+            mode = LgAcMode(mode_byte)
+            fan = LgAcFanSpeed((frame >> 4) & 0xF)
+        except ValueError:
+            return None
+
+        temperature: int | None = None
+        if mode in (LgAcMode.COOL, LgAcMode.HEAT):
+            temperature = ((frame >> 8) & 0xF) + _TEMP_OFFSET
+            if not MIN_TEMP <= temperature <= MAX_TEMP:
+                return None
+
+        return cls(mode=mode, temperature=temperature, fan=fan)

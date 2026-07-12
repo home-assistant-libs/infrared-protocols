@@ -1,80 +1,138 @@
-"""Tests for the LG air-conditioner IR command and decoder."""
+"""Tests for the LG air-conditioner IR command."""
 
 import pytest
 
 from infrared_protocols.commands.lg_ac import (
+    _BIT_MARK,
+    _BIT_ONE_SPACE,
+    _BIT_ZERO_SPACE,
+    _BITS,
     LgAcCommand,
     LgAcFanSpeed,
     LgAcMode,
-    LgAcState,
-    MIN_TEMP,
-    _OFF_HDR_MARK,
-    _OFF_HDR_SPACE,
-    _HDR_MARK,
-    _HDR_SPACE,
-    _checksum,
-    _encode_frame,
-    decode,
 )
 
+_HDR = (3200, 9900)
+_ALT_HDR = (8500, 4250)
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# Power-on frames: settings bit clear. The encoder emits these.
+_COOL_26_MEDIUM = 0x8800B2D
+_COOL_24_MEDIUM_LOW = 0x8800992
+_COOL_24_MEDIUM_HIGH = 0x88009A3
+_OFF = 0x88C0051
+
+# Settings frames: settings bit set. Decode-only.
+_SET_COOL_24_AUTO = 0x8808956
+_SET_COOL_16_MEDIUM_HIGH = 0x88081A3
+_SET_COOL_30_MEDIUM_HIGH = 0x8808FA1
+_SET_DRY_24_LOW = 0x8809902
+_SET_FAN_ONLY_24_HIGH = 0x880A947
+
+
+_ONE_THRESHOLD = (_BIT_ONE_SPACE + _BIT_ZERO_SPACE) // 2
 
 
 def _extract_frame(timings: list[int]) -> int:
-    """Extract the 28-bit frame integer from raw timings."""
+    """Extract the frame integer from raw timings, one bit per mark/space pair."""
     frame = 0
-    i = 2
-    bits_read = 0
-    while i + 1 < len(timings) and bits_read < 28:
-        frame = (frame << 1) | (1 if abs(timings[i + 1]) > 1000 else 0)
-        i += 2
-        bits_read += 1
+    for i in range(2, 2 + 2 * _BITS, 2):
+        frame = (frame << 1) | (1 if abs(timings[i + 1]) > _ONE_THRESHOLD else 0)
     return frame
 
 
-# ── Encoder: known-good frame values (verified against hardware captures) ────
+def _build_timings(frame: int, header: tuple[int, int] = _HDR) -> list[int]:
+    """Build raw timings for a frame without going through the encoder."""
+    timings = [header[0], -header[1]]
+    for i in reversed(range(_BITS)):
+        one = (frame >> i) & 1
+        timings += [_BIT_MARK, -(_BIT_ONE_SPACE if one else _BIT_ZERO_SPACE)]
+    timings.append(_BIT_MARK)
+    return timings
 
 
-def test_encode_off_frame() -> None:
-    """Power-off must produce frame 0x88C0051 with LG2-short header."""
-    cmd = LgAcCommand(mode=LgAcMode.OFF)
-    timings = cmd.get_raw_timings()
-    assert timings[0] == _OFF_HDR_MARK
-    assert abs(timings[1]) == _OFF_HDR_SPACE
-    assert _extract_frame(timings) == 0x88C0051
+def test_encode_timing_values() -> None:
+    """Pin the physical layer: LG2 header, bit mark, and the two bit spaces."""
+    timings = LgAcCommand(mode=LgAcMode.COOL, temperature=24).get_raw_timings()
 
-
-def test_encode_cool_24_auto_frame() -> None:
-    """Cool 24 °C / auto fan must produce frame 0x880095E."""
-    cmd = LgAcCommand(mode=LgAcMode.COOL, temperature=24, fan=LgAcFanSpeed.AUTO)
-    assert cmd.get_raw_timings()[0] == _HDR_MARK
-    assert _extract_frame(cmd.get_raw_timings()) == 0x880095E
-
-
-def test_encode_dry_auto_frame() -> None:
-    """Dry / auto fan must produce frame 0x880195F."""
-    cmd = LgAcCommand(mode=LgAcMode.DRY, fan=LgAcFanSpeed.AUTO)
-    assert _extract_frame(cmd.get_raw_timings()) == 0x880195F
+    assert timings[:2] == [3200, -9900]
+    assert len(timings) == 2 + 2 * 28 + 1
+    assert all(mark == 550 for mark in timings[2::2])
+    assert {abs(space) for space in timings[3::2]} == {550, 1600}
 
 
 @pytest.mark.parametrize(
-    ("temp", "fan", "expected_hex"),
+    ("mode", "temperature", "fan", "expected_frame"),
     [
-        pytest.param(18, LgAcFanSpeed.AUTO, 0x8800358, id="18_auto"),
-        pytest.param(30, LgAcFanSpeed.AUTO, 0x8800F54, id="30_auto"),
-        pytest.param(24, LgAcFanSpeed.LOW, 0x8800909, id="24_low"),
-        pytest.param(24, LgAcFanSpeed.MEDIUM, 0x880092B, id="24_medium"),
-        pytest.param(24, LgAcFanSpeed.HIGH, 0x880094D, id="24_high"),
+        pytest.param(
+            LgAcMode.COOL,
+            26,
+            LgAcFanSpeed.MEDIUM,
+            _COOL_26_MEDIUM,
+            id="cool_26_medium",
+        ),
+        pytest.param(
+            LgAcMode.COOL,
+            24,
+            LgAcFanSpeed.MEDIUM_LOW,
+            _COOL_24_MEDIUM_LOW,
+            id="cool_24_medium_low",
+        ),
+        pytest.param(
+            LgAcMode.COOL,
+            24,
+            LgAcFanSpeed.MEDIUM_HIGH,
+            _COOL_24_MEDIUM_HIGH,
+            id="cool_24_medium_high",
+        ),
+        pytest.param(LgAcMode.OFF, None, LgAcFanSpeed.AUTO, _OFF, id="off"),
     ],
 )
-def test_encode_cool_frames(temp: int, fan: LgAcFanSpeed, expected_hex: int) -> None:
-    """Verify cool encoder against known-good frames."""
-    cmd = LgAcCommand(mode=LgAcMode.COOL, temperature=temp, fan=fan)
-    assert _extract_frame(cmd.get_raw_timings()) == expected_hex
+def test_encode_matches_captured_frame(
+    mode: LgAcMode,
+    temperature: int | None,
+    fan: LgAcFanSpeed,
+    expected_frame: int,
+) -> None:
+    """Encoder output must equal the frame the remote sends."""
+    cmd = LgAcCommand(mode=mode, temperature=temperature, fan=fan)
+    assert _extract_frame(cmd.get_raw_timings()) == expected_frame
 
 
-# ── Encoder: modulation and repeat defaults ───────────────────────────────────
+@pytest.mark.parametrize(
+    "fan",
+    [
+        pytest.param(LgAcFanSpeed.LOW, id="low"),
+        pytest.param(LgAcFanSpeed.HIGH, id="high"),
+        pytest.param(LgAcFanSpeed.MEDIUM_HIGH, id="medium_high"),
+    ],
+)
+def test_encode_off_ignores_fan(fan: LgAcFanSpeed) -> None:
+    """Power-off is a fixed frame; the fan argument must not reach it."""
+    cmd = LgAcCommand(mode=LgAcMode.OFF, fan=fan)
+    assert _extract_frame(cmd.get_raw_timings()) == _OFF
+
+
+def test_encode_dry_pins_temperature() -> None:
+    """Dry encodes 24 °C whatever the caller asks for."""
+    dry = LgAcCommand(mode=LgAcMode.DRY, temperature=20, fan=LgAcFanSpeed.LOW)
+    cool_24 = LgAcCommand(mode=LgAcMode.COOL, temperature=24, fan=LgAcFanSpeed.LOW)
+
+    dry_temp_nibble = (_extract_frame(dry.get_raw_timings()) >> 8) & 0xF
+    cool_temp_nibble = (_extract_frame(cool_24.get_raw_timings()) >> 8) & 0xF
+    assert dry_temp_nibble == cool_temp_nibble
+
+
+@pytest.mark.parametrize(
+    "mode",
+    [
+        pytest.param(LgAcMode.OFF, id="off"),
+        pytest.param(LgAcMode.DRY, id="dry"),
+        pytest.param(LgAcMode.FAN_ONLY, id="fan_only"),
+    ],
+)
+def test_temperature_dropped_for_modes_that_ignore_it(mode: LgAcMode) -> None:
+    """A temperature the frame cannot carry must not be stored."""
+    assert LgAcCommand(mode=mode, temperature=25).temperature is None
 
 
 def test_default_modulation() -> None:
@@ -82,9 +140,6 @@ def test_default_modulation() -> None:
     cmd = LgAcCommand(mode=LgAcMode.OFF)
     assert cmd.modulation == 38000
     assert cmd.repeat_count == 0
-
-
-# ── Encoder: validation ───────────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize(
@@ -115,121 +170,137 @@ def test_temperature_out_of_range(temp: int, mode: LgAcMode) -> None:
         LgAcCommand(mode=mode, temperature=temp)
 
 
-# ── Decoder: roundtrips ───────────────────────────────────────────────────────
-
-
-def test_decode_roundtrip_cool() -> None:
-    """Decoded cool frame must reconstruct mode, fan, and temperature."""
-    cmd = LgAcCommand(mode=LgAcMode.COOL, temperature=22, fan=LgAcFanSpeed.HIGH)
-    result = decode(cmd.get_raw_timings())
-    assert result == LgAcState(mode=LgAcMode.COOL, fan=LgAcFanSpeed.HIGH, temp_c=22)
-
-
-def test_decode_roundtrip_off() -> None:
-    """Decoded off frame must return LgAcMode.OFF."""
-    result = decode(LgAcCommand(mode=LgAcMode.OFF).get_raw_timings())
+@pytest.mark.parametrize(
+    ("frame", "mode", "temperature", "fan"),
+    [
+        pytest.param(
+            _SET_COOL_24_AUTO, LgAcMode.COOL, 24, LgAcFanSpeed.AUTO, id="cool_24_auto"
+        ),
+        pytest.param(
+            _SET_COOL_16_MEDIUM_HIGH,
+            LgAcMode.COOL,
+            16,
+            LgAcFanSpeed.MEDIUM_HIGH,
+            id="cool_16_medium_high",
+        ),
+        pytest.param(
+            _SET_COOL_30_MEDIUM_HIGH,
+            LgAcMode.COOL,
+            30,
+            LgAcFanSpeed.MEDIUM_HIGH,
+            id="cool_30_medium_high",
+        ),
+        pytest.param(
+            _SET_DRY_24_LOW, LgAcMode.DRY, None, LgAcFanSpeed.LOW, id="dry_low"
+        ),
+        pytest.param(
+            _SET_FAN_ONLY_24_HIGH,
+            LgAcMode.FAN_ONLY,
+            None,
+            LgAcFanSpeed.HIGH,
+            id="fan_only_high",
+        ),
+        pytest.param(_OFF, LgAcMode.OFF, None, LgAcFanSpeed.AUTO, id="off"),
+        pytest.param(
+            _COOL_26_MEDIUM, LgAcMode.COOL, 26, LgAcFanSpeed.MEDIUM, id="cool_26_medium"
+        ),
+    ],
+)
+def test_decode_captured_frame(
+    frame: int, mode: LgAcMode, temperature: int | None, fan: LgAcFanSpeed
+) -> None:
+    """Settings frames and power-on frames must decode to the same state."""
+    result = LgAcCommand.from_raw_timings(_build_timings(frame))
     assert result is not None
-    assert result.mode == LgAcMode.OFF
-
-
-def test_decode_roundtrip_dry() -> None:
-    """Decoded dry frame must return DRY mode with correct fan."""
-    result = decode(LgAcCommand(mode=LgAcMode.DRY, fan=LgAcFanSpeed.LOW).get_raw_timings())
-    assert result is not None
-    assert result.mode == LgAcMode.DRY
-    assert result.fan == LgAcFanSpeed.LOW
-
-
-def test_decode_roundtrip_heat() -> None:
-    """Decoded heat frame must reconstruct mode, fan, and temperature."""
-    result = decode(
-        LgAcCommand(mode=LgAcMode.HEAT, temperature=26, fan=LgAcFanSpeed.MEDIUM).get_raw_timings()
-    )
-    assert result == LgAcState(mode=LgAcMode.HEAT, fan=LgAcFanSpeed.MEDIUM, temp_c=26)
-
-
-def test_decode_roundtrip_fan_only() -> None:
-    """Decoded fan-only frame must return FAN_ONLY with correct fan speed."""
-    result = decode(LgAcCommand(mode=LgAcMode.FAN_ONLY, fan=LgAcFanSpeed.HIGH).get_raw_timings())
-    assert result is not None
-    assert result.mode == LgAcMode.FAN_ONLY
-    assert result.fan == LgAcFanSpeed.HIGH
+    assert result.mode == mode
+    assert result.temperature == temperature
+    assert result.fan == fan
 
 
 @pytest.mark.parametrize(
-    ("mode", "temp", "fan"),
+    ("mode", "temperature", "fan"),
     [
-        pytest.param(LgAcMode.COOL, 24, LgAcFanSpeed.AUTO, id="cool_24_auto"),
-        pytest.param(LgAcMode.COOL, 18, LgAcFanSpeed.LOW, id="cool_18_low"),
-        pytest.param(LgAcMode.COOL, 30, LgAcFanSpeed.HIGH, id="cool_30_high"),
-        pytest.param(LgAcMode.HEAT, 20, LgAcFanSpeed.MEDIUM, id="heat_20_medium"),
-        pytest.param(LgAcMode.HEAT, 28, LgAcFanSpeed.QUIET, id="heat_28_quiet"),
+        pytest.param(LgAcMode.COOL, 22, LgAcFanSpeed.QUIET, id="cool_22_quiet"),
+        pytest.param(LgAcMode.HEAT, 26, LgAcFanSpeed.MEDIUM, id="heat_26_medium"),
+        pytest.param(LgAcMode.HEAT, 20, LgAcFanSpeed.LOW, id="heat_20_low"),
+        pytest.param(LgAcMode.FAN_ONLY, None, LgAcFanSpeed.AUTO, id="fan_only_auto"),
     ],
 )
-def test_decode_roundtrip_parametrized(
-    mode: LgAcMode, temp: int, fan: LgAcFanSpeed
-) -> None:
-    """Roundtrip encode→decode must preserve mode, fan, and temperature."""
-    cmd = LgAcCommand(mode=mode, temperature=temp, fan=fan)
-    result = decode(cmd.get_raw_timings())
-    assert result == LgAcState(mode=mode, fan=fan, temp_c=temp)
+def test_roundtrip(mode: LgAcMode, temperature: int | None, fan: LgAcFanSpeed) -> None:
+    """Roundtrip encode-decode must preserve mode, fan, and temperature."""
+    cmd = LgAcCommand(mode=mode, temperature=temperature, fan=fan)
+    result = LgAcCommand.from_raw_timings(cmd.get_raw_timings())
+    assert result is not None
+    assert result.mode == mode
+    assert result.temperature == temperature
+    assert result.fan == fan
 
 
-# ── Decoder: rejection cases ──────────────────────────────────────────────────
+def test_decode_accepts_stretched_header_mark() -> None:
+    """Receivers stretch marks; a 3200 µs header mark can arrive as 5121 µs."""
+    result = LgAcCommand.from_raw_timings(
+        _build_timings(_SET_COOL_24_AUTO, (5121, 9900))
+    )
+    assert result is not None
+    assert result.mode == LgAcMode.COOL
+
+
+def test_decode_accepts_alternate_header() -> None:
+    """Some LG units use the longer 8500/4250 header with an identical payload."""
+    result = LgAcCommand.from_raw_timings(_build_timings(_SET_COOL_24_AUTO, _ALT_HDR))
+    assert result is not None
+    assert result.mode == LgAcMode.COOL
+    assert result.temperature == 24
 
 
 def test_decode_returns_none_for_short_timings() -> None:
-    """decode must return None for incomplete signals."""
-    assert decode([500, -400]) is None
+    """from_raw_timings must return None for incomplete signals."""
+    assert LgAcCommand.from_raw_timings([500, -400]) is None
 
 
-def test_decode_returns_none_for_non_lg_ac() -> None:
-    """decode must return None for frames with wrong signature."""
-    # NEC-style header (9000/4500) with wrong signature
-    junk = [9000, -4500] + [550, -1600] * 32
-    assert decode(junk) is None
+def test_decode_returns_none_without_trailing_mark() -> None:
+    """A frame truncated before its trailing mark must not decode as valid."""
+    timings = _build_timings(_SET_COOL_24_AUTO)
+    assert LgAcCommand.from_raw_timings(timings[:-1]) is None
 
 
 def test_decode_returns_none_for_invalid_header() -> None:
-    """decode must return None when header matches neither LG standard nor LG2."""
-    timings = [500, -500] + [550, -550] * 28
-    assert decode(timings) is None
+    """from_raw_timings must return None when the header space matches no LG variant."""
+    timings = _build_timings(_SET_COOL_24_AUTO, (3200, 500))
+    assert LgAcCommand.from_raw_timings(timings) is None
 
 
-def test_decode_returns_none_for_bad_checksum() -> None:
-    """decode must return None when the checksum nibble is wrong."""
-    # 0x8800001: valid 0x88 signature but checksum nibble is 1, not 0
-    timings = _encode_frame(0x8800001, _HDR_MARK, _HDR_SPACE)
-    assert decode(timings) is None
+def test_decode_returns_none_for_nec_signal() -> None:
+    """A NEC leader is close enough to the alternate LG header to pass the header gate.
+
+    The signature is what rejects it, so it must keep doing so.
+    """
+    junk = [9000, -4500] + [560, -1690] * 32 + [560]
+    assert LgAcCommand.from_raw_timings(junk) is None
 
 
-def test_decode_returns_none_for_unknown_mode() -> None:
-    """decode must return None when mode nibbles have no mapping."""
-    # (nibs[4], nibs[3]) = (0xF, 0xF) maps to no known mode
-    frame = _checksum(0x88FF000)
-    timings = _encode_frame(frame, _HDR_MARK, _HDR_SPACE)
-    assert decode(timings) is None
-
-
-# ── Decoder: command-nibble variant bit (bit 3 of nibble 3) ───────────────────
+def test_decode_returns_none_for_out_of_tolerance_bit() -> None:
+    """A space matching neither a zero nor a one must reject the frame."""
+    timings = _build_timings(_SET_COOL_24_AUTO)
+    timings[3] = -1000  # between the zero (550) and one (1600) spaces
+    assert LgAcCommand.from_raw_timings(timings) is None
 
 
 @pytest.mark.parametrize(
-    ("nibble3", "expected_mode"),
+    "frame",
     [
-        pytest.param(0x8, LgAcMode.COOL, id="cool_variant"),
-        pytest.param(0x9, LgAcMode.DRY, id="dry_variant"),
-        pytest.param(0xA, LgAcMode.FAN_ONLY, id="fan_only_variant"),
-        pytest.param(0xC, LgAcMode.HEAT, id="heat_variant"),
+        # Valid signature and mode, checksum nibble 0x1 where 0x0 is correct.
+        pytest.param(0x8800001, id="bad_checksum"),
+        # Mode byte 0xFF maps to no LgAcMode; checksum 0xE is correct.
+        pytest.param(0x88FF00E, id="unknown_mode"),
+        # Fan nibble 0xF maps to no LgAcFanSpeed; checksum 0x0 is correct.
+        pytest.param(0x88089F0, id="unknown_fan"),
+        # COOL with temp nibble 0x0 decodes to 15 °C, below MIN_TEMP.
+        pytest.param(0x8800055, id="temp_below_min"),
+        # Display toggle: shares the 0xC0 mode byte with power-off but is not it.
+        pytest.param(0x88C00A6, id="display_toggle"),
     ],
 )
-def test_decode_command_nibble_variant_bit(
-    nibble3: int, expected_mode: LgAcMode
-) -> None:
-    """Bit 3 set in command nibble 3 must decode to the same base mode."""
-    # nibble4 = 0, nibble3 = variant; temp/fan nibbles zero
-    frame = _checksum(0x8800000 | (nibble3 << 12))
-    timings = _encode_frame(frame, _HDR_MARK, _HDR_SPACE)
-    result = decode(timings)
-    assert result is not None
-    assert result.mode == expected_mode
+def test_decode_returns_none_for_invalid_frame(frame: int) -> None:
+    """from_raw_timings must reject frames that fail validation."""
+    assert LgAcCommand.from_raw_timings(_build_timings(frame)) is None
