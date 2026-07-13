@@ -170,7 +170,7 @@ class ProntoCommand(Command):
                         value=round(PRONTO_REFERENCE_FREQUENCY / modulation)
                     ),  # modulation frequency
                     ProntoCommand._int_to_pronto(
-                        value=len(timing_data) // 4
+                        value=len(timings) // 2
                     ),  # once sequence burst pairs
                     ProntoCommand._int_to_pronto(
                         value=0
