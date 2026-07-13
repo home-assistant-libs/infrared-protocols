@@ -76,9 +76,13 @@ class ProntoCommand(Command):
         )
         self.pronto_data = pronto_data
 
+    def to_pronto_hex(self) -> str:
+        """Serialize this command to a space-separated pronto hex string."""
+        return " ".join(wrap(self.pronto_data.hex(), 4))
+
     def __repr__(self) -> str:
         """Get string representation for this pronto code."""
-        return " ".join(wrap(self.pronto_data.hex(), 4))
+        return self.to_pronto_hex()
 
     @staticmethod
     def _int_to_pronto(value: int) -> bytes:

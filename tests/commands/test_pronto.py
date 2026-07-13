@@ -41,15 +41,19 @@ def test_decode_pronto_to_timing():
         )
     )
 
-def test_pronto_repr():
+def test_pronto_to_pronto_hex():
     pronto = ProntoCommand.from_raw_timings(TEST_DATA_KNOWN_GOOD_RAW_TIMINGS)
-    assert repr(pronto) == TEST_DATA_KNOWN_GOOD_PRONTO_REPR
+    assert pronto.to_pronto_hex() == TEST_DATA_KNOWN_GOOD_PRONTO_REPR
+
+def test_pronto_repr_delegates_to_pronto_hex():
+    pronto = ProntoCommand.from_raw_timings(TEST_DATA_KNOWN_GOOD_RAW_TIMINGS)
+    assert repr(pronto) == pronto.to_pronto_hex()
 
 def test_decode_pronto_hex():
     pronto = ProntoCommand.from_pronto_hex(TEST_DATA_KNOWN_GOOD_PRONTO_REPR)
     assert pronto.pronto_data == TEST_DATA_KNOWN_GOOD_PRONTO_FULL
     assert pronto.modulation == TEST_DATA_KNOWN_GOOD_PRONTO_MODULATION
-    assert repr(pronto) == TEST_DATA_KNOWN_GOOD_PRONTO_REPR
+    assert pronto.to_pronto_hex() == TEST_DATA_KNOWN_GOOD_PRONTO_REPR
 
 def test_decode_pronto_hex_flexible_formatting():
     pronto = ProntoCommand.from_pronto_hex(
