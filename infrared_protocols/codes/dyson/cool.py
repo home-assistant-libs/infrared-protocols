@@ -1,73 +1,27 @@
-"""Dyson cool mode command mapping.
+"""Dyson cool mode command codes.
 
-Provides a small builder to convert high-level actions into
-DysonCoolCommand instances containing the appropriate payload.
-
-Payloads are 15-bit values: 7-bit preamble (0b1001000) + 8-bit command code,
+Codes are 15-bit values: 7-bit preamble (0b1001000) + 8-bit command byte,
 reverse-engineered from real Broadlink learn_command captures.
 """
 
-from dataclasses import dataclass
-from typing import Literal
+from enum import IntEnum
 
 from ...commands import Command
 from ...commands.dyson import DysonCoolCommand
 
 
-@dataclass(frozen=True)
-class DysonCoolStateBuilder:
-    """Builder for converting high-level Dyson cool mode actions to commands.
+class DysonCoolCode(IntEnum):
+    """Dyson Cool mode IR command codes."""
 
-    Attributes:
-        action: The action to perform, one of: on, cool_on, off, swing,
-                speed_up, speed_down, time_up, time_down.
+    ON = 0x4800
+    COOL_ON = 0x4801
+    OFF = 0x4802  # cool_off
+    SWING = 0x48A9
+    SPEED_UP = 0x4854  # temp_up
+    SPEED_DOWN = 0x48FD  # temp_down
+    TIME_UP = 0x487A
+    TIME_DOWN = 0x48CC
 
-    """
-
-    action: Literal[
-        "on",
-        "cool_on",
-        "off",
-        "swing",
-        "speed_up",
-        "speed_down",
-        "time_up",
-        "time_down",
-    ]
-
-    def to_command(self) -> Command:
-        """Convert the builder state into a DysonCoolCommand.
-
-        Returns:
-            Command: A DysonCoolCommand instance containing the payload
-            corresponding to the builder's action.
-
-        """
-        # 15-bit values: preamble 1001000 + 8-bit command byte
-        action_mapping = {
-            "on": 0x4800,  # cmd 0x00
-            "cool_on": 0x4801,  # cmd 0x01
-            "off": 0x4802,  # cmd 0x02 (cool_off)
-            "swing": 0x48A9,  # cmd 0xA9
-            "speed_up": 0x4854,  # cmd 0x54 (temp_up)
-            "speed_down": 0x48FD,  # cmd 0xFD (temp_down)
-            "time_up": 0x487A,  # cmd 0x7A
-            "time_down": 0x48CC,  # cmd 0xCC
-        }
-
-        # repeat_count = 1 for single-frame commands (on/cool_on/off),
-        # repeat_count = 2 for "hold" commands (sent twice in captures)
-        repeat_mapping = {
-            "on": 1,
-            "cool_on": 1,
-            "off": 1,
-            "swing": 2,
-            "speed_up": 2,
-            "speed_down": 2,
-            "time_up": 2,
-            "time_down": 2,
-        }
-
-        payload = action_mapping[self.action]
-        repeat_count = repeat_mapping[self.action]
-        return DysonCoolCommand(payload=payload, repeat_count=repeat_count)
+    def to_command(self, repeat_count: int = 0) -> Command:
+        """Build a Dyson Cool command for this code."""
+        return DysonCoolCommand(payload=self.value, repeat_count=repeat_count)

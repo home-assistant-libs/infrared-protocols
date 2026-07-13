@@ -10,7 +10,7 @@ def test_dyson_cool_command_initialization() -> None:
     cmd = DysonCoolCommand(payload=0x1234)
     assert cmd.payload == 0x1234
     assert cmd.modulation == 38000
-    assert cmd.repeat_count == 1
+    assert cmd.repeat_count == 0
 
     cmd_custom = DysonCoolCommand(payload=0x7FFF, modulation=36000, repeat_count=3)
     assert cmd_custom.payload == 0x7FFF
@@ -34,76 +34,60 @@ def test_dyson_cool_command_invalid_payload() -> None:
 
 
 def test_dyson_cool_command_get_raw_timings() -> None:
-    """Verify get_raw_timings produces expected timing sequences.
+    """Verify get_raw_timings produces the expected single-frame sequence.
 
-    This test checks the base timings for a given payload and ensures that
-    repeat_count values of 0, 1, and 2 produce the correct concatenated
-    timing sequences including the inter-command gap.
+    Timings alternate positive (mark) / negative (space) values. Repeat
+    handling is not this method's responsibility, so only a single frame
+    is checked here regardless of repeat_count.
     """
     expected_raw_timings = [
         2440,
-        870,
+        -870,
         850,
-        1660,
+        -1660,
         850,
+        -850,
         850,
+        -850,
         850,
+        -850,
         850,
+        -850,
         850,
+        -850,
         850,
+        -850,
         850,
+        -850,
         850,
+        -850,
         850,
+        -850,
         850,
+        -850,
         850,
+        -850,
         850,
+        -850,
         850,
+        -850,
         850,
-        850,
-        850,
-        850,
-        850,
-        850,
-        850,
-        850,
-        850,
-        850,
-        850,
-        850,
-        850,
-        850,
-        1660,
+        -1660,
         850,
     ]
 
-    command = DysonCoolCommand(payload=0x4001, repeat_count=0)
+    command = DysonCoolCommand(payload=0x4001)
     timings = command.get_raw_timings()
 
     assert timings == expected_raw_timings
     assert command.modulation == 38000
+    assert command.repeat_count == 0
 
+    # repeat_count only affects how the frame is repeated externally,
+    # not the output of get_raw_timings itself.
     command_with_repeats = DysonCoolCommand(
-        payload=command.payload,
-        repeat_count=1,
-    )
-    timings_with_repeats = command_with_repeats.get_raw_timings()
-
-    assert timings_with_repeats == [
-        *expected_raw_timings,
-        108000,
-        *expected_raw_timings,
-    ]
-
-    command_with_double_repeats = DysonCoolCommand(
         payload=command.payload,
         repeat_count=2,
     )
-    timings_with_double_repeats = command_with_double_repeats.get_raw_timings()
-
-    assert timings_with_double_repeats == [
-        *expected_raw_timings,
-        108000,
-        *expected_raw_timings,
-        108000,
-        *expected_raw_timings,
-    ]
+    assert command_with_repeats.get_raw_timings() == expected_raw_timings
+    assert command_with_repeats.repeat_count == 2
