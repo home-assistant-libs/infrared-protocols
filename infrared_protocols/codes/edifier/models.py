@@ -11,6 +11,7 @@ class EdifierCommandSet(StrEnum):
     R1280T = "r1280t"
     S360DB = "s360db"
     RC20G = "rc20g"
+    S3000PRO = "s3000pro"
 
 
 class EdifierModel(StrEnum):
@@ -34,6 +35,8 @@ class EdifierModel(StrEnum):
     RC31A = "RC31A"
     # RC20G command set (unique left/right volume controls)
     RC20G = "RC20G"
+    # S3000 Pro command set (RCA10B remote)
+    S3000PRO = "S3000 Pro"
 
 
 MODEL_TO_COMMAND_SET: dict[EdifierModel, EdifierCommandSet] = {
@@ -55,4 +58,6 @@ MODEL_TO_COMMAND_SET: dict[EdifierModel, EdifierCommandSet] = {
     EdifierModel.RC31A: EdifierCommandSet.S360DB,
     # RC20G command set
     EdifierModel.RC20G: EdifierCommandSet.RC20G,
+    # S3000 Pro command set
+    EdifierModel.S3000PRO: EdifierCommandSet.S3000PRO,
 }
