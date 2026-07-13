@@ -9,7 +9,7 @@ from . import Command
 class DysonCoolCommand(Command):
     """Dyson Cool infrared command.
 
-    Real protocol (reverse-engineered from Broadlink learn_command captures):
+    Protocol specification:
       - Header: 2440us mark, 870us space
       - Bit mark: 850us (constant)
       - Bit space: 850us = "0", 1660us = "1"
