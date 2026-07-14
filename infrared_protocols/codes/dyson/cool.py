@@ -22,6 +22,6 @@ class DysonCoolCode(IntEnum):
     TIME_UP = 0x487A
     TIME_DOWN = 0x48CC
 
-    def to_command(self, repeat_count: int = 0) -> Command:
+    def to_command(self) -> Command:
         """Build a Dyson Cool command for this code."""
-        return DysonCoolCommand(payload=self.value, repeat_count=repeat_count)
+        return DysonCoolCommand(payload=self.value)

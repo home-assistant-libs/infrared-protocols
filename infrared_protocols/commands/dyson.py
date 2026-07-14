@@ -4,6 +4,10 @@ from typing import override
 
 from . import Command
 
+# 7-bit preamble fixed by the protocol; occupies the upper bits of the
+# 15-bit payload (bits 14-8), with the 8-bit command code in bits 7-0.
+_PREAMBLE = 0b1001000
+
 
 class DysonCoolCommand(Command):
     """Dyson Cool infrared command.
@@ -14,6 +18,8 @@ class DysonCoolCommand(Command):
       - Bit space: 850us = "0", 1660us = "1"
       - 15-bit payload, MSB-first: 1001000 (7-bit preamble) + 8-bit command
       - Footer: 850us mark
+      - Every transmission is a fixed pair of two identical 15-bit frames,
+        separated by a 108ms inter-frame space.
     """
 
     payload: int
@@ -23,19 +29,21 @@ class DysonCoolCommand(Command):
         *,
         payload: int,
         modulation: int = 38000,
-        repeat_count: int = 0,
     ) -> None:
         """Initialize a Dyson Cool command.
 
         Args:
-            payload: 15-bit payload value.
+            payload: 15-bit payload value. The upper 7 bits must match the
+                fixed Dyson preamble (0b1001000); the lower 8 bits carry the
+                command code.
             modulation: Carrier frequency in Hz.
-            repeat_count: Number of times the full frame is repeated.
 
         """
-        super().__init__(modulation=modulation, repeat_count=repeat_count)
+        super().__init__(modulation=modulation)
         if payload < 0 or payload > 0x7FFF:
             raise ValueError("Dyson payload must be a valid 15-bit integer")
+        if (payload >> 8) != _PREAMBLE:
+            raise ValueError("Dyson payload must start with the 0b1001000 preamble")
         self.payload = payload
 
     @override
@@ -46,15 +54,16 @@ class DysonCoolCommand(Command):
         zero_space = 850
         one_space = 1660
         footer_mark = 850
+        inter_frame_space = 108000
 
-        timings: list[int] = [header_mark, -header_space]
+        def encode_frame() -> list[int]:
+            frame: list[int] = [header_mark, -header_space]
+            # 15 bits, MSB-first
+            for i in range(14, -1, -1):
+                bit = (self.payload >> i) & 1
+                frame.append(bit_mark)
+                frame.append(-(one_space if bit else zero_space))
+            frame.append(footer_mark)
+            return frame
 
-        # 15 bits, MSB-first
-        for i in range(14, -1, -1):
-            bit = (self.payload >> i) & 1
-            timings.append(bit_mark)
-            timings.append(-(one_space if bit else zero_space))
-
-        timings.append(footer_mark)
-
-        return timings
+        return [*encode_frame(), -inter_frame_space, *encode_frame()]
