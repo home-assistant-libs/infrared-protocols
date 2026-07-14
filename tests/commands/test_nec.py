@@ -193,6 +193,21 @@ def test_nec_command_get_raw_timings(address: int, expected_frame: list[int]) ->
 
 
 @pytest.mark.parametrize(
+    ("address", "command"),
+    [
+        pytest.param(-1, COMMAND, id="address_negative"),
+        pytest.param(0x10000, COMMAND, id="address_too_large"),
+        pytest.param(STANDARD_ADDRESS, -1, id="command_negative"),
+        pytest.param(STANDARD_ADDRESS, 0x100, id="command_too_large"),
+    ],
+)
+def test_nec_command_rejects_out_of_range(address: int, command: int) -> None:
+    """Test that out-of-range address or command values raise ValueError."""
+    with pytest.raises(ValueError, match="8-bit value|16-bit value"):
+        NECCommand(address=address, command=command)
+
+
+@pytest.mark.parametrize(
     ("frame", "expected_address"),
     [
         pytest.param(STANDARD_FRAME, STANDARD_DECODED_ADDRESS, id="standard"),
@@ -265,7 +280,9 @@ def test_nec_command_from_raw_timings_invalid(timings: list[int]) -> None:
         pytest.param([-12345], 0, id="trailing_garbage"),
         pytest.param([-41000, 9000], 0, id="incomplete_repeat"),
         pytest.param([-100, 9000, -2250, 562], 0, id="invalid_repeat_gap"),
-        pytest.param([*TWO_REPEATS_TAIL, -12345], 2, id="repeats_then_trailing_garbage"),
+        pytest.param(
+            [*TWO_REPEATS_TAIL, -12345], 2, id="repeats_then_trailing_garbage"
+        ),
     ],
 )
 def test_nec_command_from_raw_timings_ignores_trailing(
