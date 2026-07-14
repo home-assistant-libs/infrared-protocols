@@ -280,7 +280,9 @@ def test_nec_command_from_raw_timings_invalid(timings: list[int]) -> None:
         pytest.param([-12345], 0, id="trailing_garbage"),
         pytest.param([-41000, 9000], 0, id="incomplete_repeat"),
         pytest.param([-100, 9000, -2250, 562], 0, id="invalid_repeat_gap"),
-        pytest.param([*TWO_REPEATS_TAIL, -12345], 2, id="repeats_then_trailing_garbage"),
+        pytest.param(
+            [*TWO_REPEATS_TAIL, -12345], 2, id="repeats_then_trailing_garbage"
+        ),
     ],
 )
 def test_nec_command_from_raw_timings_ignores_trailing(
