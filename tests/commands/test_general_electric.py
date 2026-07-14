@@ -113,8 +113,7 @@ def test_ge_ac_command_roundtrip_all_codes(address: int, command: int) -> None:
 def test_ge_ac_command_from_raw_timings_within_tolerance() -> None:
     """Test decoding succeeds when timings deviate within the 40% tolerance."""
     skewed = [
-        int(t * 1.2) if i % 2 == 0 else int(t * 0.8)
-        for i, t in enumerate(POWER_FRAME)
+        int(t * 1.2) if i % 2 == 0 else int(t * 0.8) for i, t in enumerate(POWER_FRAME)
     ]
     command = GEACCommand.from_raw_timings(skewed)
     assert command is not None

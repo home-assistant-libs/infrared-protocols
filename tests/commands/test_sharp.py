@@ -59,7 +59,7 @@ class TestSharpCommandEncoding:
             *_BIT_ONE,
             # endregion Extension and Check inverted (2 bits, LSB first: 0,1)
             320, -40000,  # Trailer
-        ]
+        ]  # fmt: skip
 
     def test_aquos_power_button(self) -> None:
         """AQUOS TV power button: address=1, command=22, extension=1."""
@@ -109,7 +109,7 @@ class TestSharpCommandEncoding:
             *_BIT_ONE,
             # endregion Extension and Check inverted (2 bits, LSB first: 0,1)
             320, -40000,  # Trailer
-        ]
+        ]  # fmt: skip
 
     def test_frame_length(self) -> None:
         """Total timings: 2 frames × (15 bits × 2 + trailer × 2) = 64 values."""
@@ -161,9 +161,7 @@ class TestSharpCommandEncoding:
         (0x00, 0x00, 2),
     ],
 )
-def test_sharp_rejects_out_of_range(
-    address: int, command: int, extension: int
-) -> None:
+def test_sharp_rejects_out_of_range(address: int, command: int, extension: int) -> None:
     """5-bit address, 8-bit command, 1-bit extension — anything else is invalid."""
     with pytest.raises(ValueError):
         SharpCommand(address=address, command=command, extension=extension)
