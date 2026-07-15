@@ -14,10 +14,10 @@ class DysonCoolCode(IntEnum):
 
     ON = 0x4800
     COOL_ON = 0x4801
-    OFF = 0x4802  # cool_off
+    OFF = 0x4802
     SWING = 0x48A9
-    SPEED_UP = 0x4854  # temp_up
-    SPEED_DOWN = 0x48FD  # temp_down
+    SPEED_UP = 0x4854
+    SPEED_DOWN = 0x48FD
     TIME_UP = 0x487A
     TIME_DOWN = 0x48CC
 

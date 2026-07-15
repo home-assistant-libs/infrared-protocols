@@ -18,8 +18,6 @@ class DysonCoolCommand(Command):
       - Bit space: 850us = "0", 1660us = "1"
       - 15-bit payload, MSB-first: 1001000 (7-bit preamble) + 8-bit command
       - Footer: 850us mark
-      - Every transmission is a fixed pair of two identical 15-bit frames,
-        separated by a 108ms inter-frame space.
     """
 
     payload: int
@@ -54,16 +52,15 @@ class DysonCoolCommand(Command):
         zero_space = 850
         one_space = 1660
         footer_mark = 850
-        inter_frame_space = 108000
 
-        def encode_frame() -> list[int]:
-            frame: list[int] = [header_mark, -header_space]
-            # 15 bits, MSB-first
-            for i in range(14, -1, -1):
-                bit = (self.payload >> i) & 1
-                frame.append(bit_mark)
-                frame.append(-(one_space if bit else zero_space))
-            frame.append(footer_mark)
-            return frame
+        timings: list[int] = [header_mark, -header_space]
 
-        return [*encode_frame(), -inter_frame_space, *encode_frame()]
+        # 15 bits, MSB-first
+        for i in range(14, -1, -1):
+            bit = (self.payload >> i) & 1
+            timings.append(bit_mark)
+            timings.append(-(one_space if bit else zero_space))
+
+        timings.append(footer_mark)
+
+        return timings

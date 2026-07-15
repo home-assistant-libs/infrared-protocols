@@ -48,13 +48,11 @@ def test_dyson_cool_command_invalid_payload_preamble() -> None:
 
 
 def test_dyson_cool_command_get_raw_timings() -> None:
-    """Verify get_raw_timings produces the expected two-frame sequence.
+    """Verify get_raw_timings produces the expected single-frame sequence.
 
-    Every Dyson transmission is a fixed pair of two identical 15-bit
-    frames separated by a 108ms inter-frame space. Timings alternate
-    positive (mark) / negative (space) values.
+    Timings alternate positive (mark) / negative (space) values.
     """
-    expected_frame = [
+    expected_raw_timings = [
         2440,
         -870,
         850,
@@ -88,11 +86,6 @@ def test_dyson_cool_command_get_raw_timings() -> None:
         850,
         -1660,
         850,
-    ]
-    expected_raw_timings = [
-        *expected_frame,
-        -108000,
-        *expected_frame,
     ]
 
     command = DysonCoolCommand(payload=0x4801)
