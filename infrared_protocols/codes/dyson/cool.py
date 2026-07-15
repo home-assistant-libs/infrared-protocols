@@ -1,7 +1,6 @@
 """Dyson cool mode command codes.
 
-Codes are 15-bit values: 7-bit preamble (0b1001000) + 8-bit command byte,
-reverse-engineered from real Broadlink learn_command captures.
+Codes are 15-bit values: 7-bit preamble (0b1001000) + 8-bit command byte.
 """
 
 from enum import IntEnum
