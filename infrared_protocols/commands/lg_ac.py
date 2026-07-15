@@ -72,7 +72,7 @@ class LgAcMode(IntEnum):
 
 
 class LgAcFanSpeed(IntEnum):
-    """Fan speed; value is the protocol nibble at frame bits 7-4. Ordered by speed."""
+    """Fan speed; value is the protocol nibble at frame bits 7-4."""
 
     QUIET = 0x1
     LOW = 0x0
@@ -130,7 +130,7 @@ class LgAcCommand(Command):
 
     mode: LgAcMode
     temperature: int | None
-    fan: LgAcFanSpeed
+    fan: LgAcFanSpeed | None
 
     def __init__(
         self,
@@ -157,7 +157,9 @@ class LgAcCommand(Command):
         self.temperature = (
             temperature if mode in (LgAcMode.COOL, LgAcMode.HEAT) else None
         )
-        self.fan = fan
+        # OFF is a fixed frame that carries no fan; like temperature it is dropped to
+        # None, so the field never claims a fan the frame does not send.
+        self.fan = None if mode is LgAcMode.OFF else fan
 
     @override
     def get_raw_timings(self) -> list[int]:
@@ -165,6 +167,7 @@ class LgAcCommand(Command):
         if self.mode is LgAcMode.OFF:
             return _encode_frame(_OFF_FRAME)
 
+        assert self.fan is not None, "fan missing for non-OFF mode"
         mode_bits = self.mode.value << 12
         fan_bits = self.fan.value << 4
 

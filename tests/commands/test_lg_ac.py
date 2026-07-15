@@ -3,14 +3,17 @@
 import pytest
 
 from infrared_protocols.commands.lg_ac import (
-    _BIT_MARK,
-    _BIT_ONE_SPACE,
-    _BIT_ZERO_SPACE,
-    _BITS,
     LgAcCommand,
     LgAcFanSpeed,
     LgAcMode,
 )
+
+# Physical-layer constants are duplicated here rather than imported
+# so the tests are independent
+_BITS = 28
+_BIT_MARK = 550
+_BIT_ONE_SPACE = 1600
+_BIT_ZERO_SPACE = 550
 
 _HDR = (3200, 9900)
 _ALT_HDR = (8500, 4250)
@@ -135,6 +138,11 @@ def test_temperature_dropped_for_modes_that_ignore_it(mode: LgAcMode) -> None:
     assert LgAcCommand(mode=mode, temperature=25).temperature is None
 
 
+def test_fan_dropped_for_off() -> None:
+    """OFF is a fixed frame; a fan the caller passes must not be stored."""
+    assert LgAcCommand(mode=LgAcMode.OFF, fan=LgAcFanSpeed.HIGH).fan is None
+
+
 def test_default_modulation() -> None:
     """Default modulation must be 38 kHz."""
     cmd = LgAcCommand(mode=LgAcMode.OFF)
@@ -200,14 +208,14 @@ def test_temperature_out_of_range(temp: int, mode: LgAcMode) -> None:
             LgAcFanSpeed.HIGH,
             id="fan_only_high",
         ),
-        pytest.param(_OFF, LgAcMode.OFF, None, LgAcFanSpeed.AUTO, id="off"),
+        pytest.param(_OFF, LgAcMode.OFF, None, None, id="off"),
         pytest.param(
             _COOL_26_MEDIUM, LgAcMode.COOL, 26, LgAcFanSpeed.MEDIUM, id="cool_26_medium"
         ),
     ],
 )
 def test_decode_captured_frame(
-    frame: int, mode: LgAcMode, temperature: int | None, fan: LgAcFanSpeed
+    frame: int, mode: LgAcMode, temperature: int | None, fan: LgAcFanSpeed | None
 ) -> None:
     """Settings frames and power-on frames must decode to the same state."""
     result = LgAcCommand.from_raw_timings(_build_timings(frame))
