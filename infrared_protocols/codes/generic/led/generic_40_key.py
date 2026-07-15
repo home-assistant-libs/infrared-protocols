@@ -28,10 +28,10 @@ class Generic40KeyCode(IntEnum):
     SLOW = 0x0B
 
     JUMP3 = 0x0C
-    FADE3 = 0xDF
+    FADE3 = 0x0D
     JUMP7 = 0x0E
     FADE7 = 0x08
-    FLASH = 0x0B
+    FLASH = 0x09
     AUTO = 0x0A
 
     RED = 0x58
