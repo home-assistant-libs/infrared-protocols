@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name         = "infrared-protocols"
-version      = "7.5.1"
+version      = "8.0.0"
 license      = "MIT"
 description  = "Library to decode and encode infrared signals."
 readme       = "README.md"
