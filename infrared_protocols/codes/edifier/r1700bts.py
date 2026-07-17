@@ -1,6 +1,6 @@
-"""Command codes for Edifier R1700BT speakers.
+"""Command codes for Edifier R1700BTs speakers.
 
-Shared command set used by R1700BT, R1700BTs, RC17A, RC80B, and R1855DB.
+Shared command set used by R1700BTs, RC17A, RC80B, and R1855DB.
 """
 
 from enum import IntEnum
@@ -9,8 +9,8 @@ from ...commands import Command
 from ...commands.nec import NECCommand
 
 
-class EdifierR1700BTCode(IntEnum):
-    """Edifier R1700BT speaker IR command codes."""
+class EdifierR1700BTsCode(IntEnum):
+    """Edifier R1700BTs speaker IR command codes."""
 
     POWER = 0x46
     VOLUME_UP = 0x06
