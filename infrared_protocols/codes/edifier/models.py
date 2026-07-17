@@ -11,6 +11,7 @@ class EdifierCommandSet(StrEnum):
     """Edifier command set groupings."""
 
     R1700BT_PRE_2017 = "r1700bt_pre_2017"
+    R1700BT_2017 = "r1700bt_2017"
     R1700BTS = "r1700bts"
     R1280DB = "r1280db"
     R1280T = "r1280t"
@@ -24,6 +25,8 @@ class EdifierModel(StrEnum):
 
     # R1700BT (pre-2017) command set
     R1700BT_PRE_2017 = "R1700BT (pre-2017)"
+    # R1700BT (2017) command set
+    R1700BT_2017 = "R1700BT (2017)"
     # R1700BTs command set
     R1700BTS = "R1700BTs"
     RC17A = "RC17A"
@@ -48,6 +51,8 @@ class EdifierModel(StrEnum):
 MODEL_TO_COMMAND_SET: dict[EdifierModel, EdifierCommandSet] = {
     # R1700BT (pre-2017) command set
     EdifierModel.R1700BT_PRE_2017: EdifierCommandSet.R1700BT_PRE_2017,
+    # R1700BT (2017) command set
+    EdifierModel.R1700BT_2017: EdifierCommandSet.R1700BT_2017,
     # R1700BTs command set
     EdifierModel.R1700BTS: EdifierCommandSet.R1700BTS,
     EdifierModel.RC17A: EdifierCommandSet.R1700BTS,

@@ -1,13 +1,6 @@
 """Command codes for Edifier R1700BT (pre-2017) speakers.
 
-The R1700BT was sold in two hardware revisions with incompatible IR code
-sets:
-
-- Pre-2017 revision: RC10B remote (5 buttons, no power button). This
-  module covers its codes.
-- 2017 revision: RC10G remote (6 buttons, including power), which uses
-  the RC10D/R1280DB-family code values with a different function
-  mapping. Not covered by this module.
+The Pre-2017 revision of the R1700BT uses the RC10B remote (5 buttons, no power button).
 """
 
 from enum import IntEnum
