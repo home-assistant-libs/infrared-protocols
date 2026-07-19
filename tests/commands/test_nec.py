@@ -327,7 +327,9 @@ def test_nec1_f16_command_uses_supplied_16_bit_address() -> None:
     """Test NEC1-f16 does not invert an address below 0x100."""
     command = NECCommand(address=0x04, command=0xDB, subfunction=0x32)
 
-    decoded = NECCommand.from_raw_timings(command.get_raw_timings(), decode_subfunction=True)
+    decoded = NECCommand.from_raw_timings(
+        command.get_raw_timings(), decode_subfunction=True
+    )
 
     assert decoded is not None
     assert decoded.address == 0x0004
@@ -395,7 +397,9 @@ def test_nec_command_from_raw_timings_invalid(timings: list[int]) -> None:
         pytest.param([-12345], 0, id="trailing_garbage"),
         pytest.param([-41000, 9000], 0, id="incomplete_repeat"),
         pytest.param([-100, 9000, -2250, 562], 0, id="invalid_repeat_gap"),
-        pytest.param([*TWO_REPEATS_TAIL, -12345], 2, id="repeats_then_trailing_garbage"),
+        pytest.param(
+            [*TWO_REPEATS_TAIL, -12345], 2, id="repeats_then_trailing_garbage"
+        ),
     ],
 )
 def test_nec_command_from_raw_timings_ignores_trailing(
