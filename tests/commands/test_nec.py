@@ -298,7 +298,7 @@ def test_nec_command_from_raw_timings(frame: list[int], expected_address: int) -
 
 def test_nec1_f16_command_from_raw_timings() -> None:
     """Test decoding raw timings produced by NEC1-f16 commands."""
-    command = NECCommand.from_raw_timings_nec1_f16(NEC1_F16_FRAME)
+    command = NECCommand.from_raw_timings(NEC1_F16_FRAME, decode_subfunction=True)
 
     assert command is not None
     assert command.address == NEC1_F16_ADDRESS
@@ -315,8 +315,8 @@ def test_nec_command_from_raw_timings_rejects_nec1_f16() -> None:
 
 def test_nec1_f16_command_from_raw_timings_with_repeats() -> None:
     """Test NEC1-f16 decoding counts trailing repeat codes."""
-    command = NECCommand.from_raw_timings_nec1_f16(
-        [*NEC1_F16_FRAME, *TWO_REPEATS_TAIL]
+    command = NECCommand.from_raw_timings(
+        [*NEC1_F16_FRAME, *TWO_REPEATS_TAIL], decode_subfunction=True
     )
 
     assert command is not None
@@ -327,7 +327,7 @@ def test_nec1_f16_command_uses_supplied_16_bit_address() -> None:
     """Test NEC1-f16 does not invert an address below 0x100."""
     command = NECCommand(address=0x04, command=0xDB, subfunction=0x32)
 
-    decoded = NECCommand.from_raw_timings_nec1_f16(command.get_raw_timings())
+    decoded = NECCommand.from_raw_timings(command.get_raw_timings(), decode_subfunction=True)
 
     assert decoded is not None
     assert decoded.address == 0x0004
@@ -366,6 +366,10 @@ def test_nec_command_from_raw_timings_within_tolerance() -> None:
         pytest.param(
             [STANDARD_FRAME[0], -100, *STANDARD_FRAME[2:]], id="invalid_leader_low"
         ),
+        pytest.param(
+            [*STANDARD_FRAME[:2], 5000, *STANDARD_FRAME[3:]],
+            id="invalid_bit_high",
+        ),
         # First bit's space (index 3) set well outside both the 0 and 1 ranges.
         pytest.param(
             [*STANDARD_FRAME[:3], -3000, *STANDARD_FRAME[4:]], id="invalid_bit"
@@ -383,35 +387,6 @@ def test_nec_command_from_raw_timings_within_tolerance() -> None:
 def test_nec_command_from_raw_timings_invalid(timings: list[int]) -> None:
     """Test from_raw_timings returns None for malformed inputs."""
     assert NECCommand.from_raw_timings(timings) is None
-
-
-@pytest.mark.parametrize(
-    "timings",
-    [
-        pytest.param([], id="empty"),
-        pytest.param([9000, -4500, 562], id="too_short"),
-        pytest.param([1000, *NEC1_F16_FRAME[1:]], id="invalid_leader_high"),
-        pytest.param(
-            [NEC1_F16_FRAME[0], -100, *NEC1_F16_FRAME[2:]],
-            id="invalid_leader_low",
-        ),
-        pytest.param(
-            [*NEC1_F16_FRAME[:2], 5000, *NEC1_F16_FRAME[3:]],
-            id="invalid_bit_high",
-        ),
-        pytest.param(
-            [*NEC1_F16_FRAME[:3], -3000, *NEC1_F16_FRAME[4:]],
-            id="invalid_bit",
-        ),
-        pytest.param(
-            [*NEC1_F16_FRAME[:66], 5000],
-            id="invalid_end_pulse",
-        ),
-    ],
-)
-def test_nec1_f16_command_from_raw_timings_invalid(timings: list[int]) -> None:
-    """Test NEC1-f16 decoding returns None for malformed inputs."""
-    assert NECCommand.from_raw_timings_nec1_f16(timings) is None
 
 
 @pytest.mark.parametrize(

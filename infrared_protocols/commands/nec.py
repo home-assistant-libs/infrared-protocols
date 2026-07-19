@@ -102,8 +102,16 @@ class NECCommand(Command):
         return timings
 
     @classmethod
-    def from_raw_timings(cls, timings: list[int]) -> Self | None:
+    def from_raw_timings(
+        cls,
+        timings: list[int],
+        *,
+        decode_subfunction: bool = False,
+    ) -> Self | None:
         """Decode raw IR timings into a NECCommand.
+
+        Set decode_subfunction to True to interpret the fourth data byte as an
+        NEC1-f16 subfunction instead of validating it as an inverted command byte.
 
         Returns a NECCommand if the timings match, or None otherwise.
         """
@@ -133,10 +141,10 @@ class NECCommand(Command):
         address_low = data & 0xFF
         address_high = (data >> 8) & 0xFF
         command_byte = (data >> 16) & 0xFF
-        command_inverted = (data >> 24) & 0xFF
+        command_suffix = (data >> 24) & 0xFF
 
-        # Validate command checksum
-        if command_byte ^ command_inverted != 0xFF:
+        # Validate the command checksum unless decoding an NEC1-f16 subfunction.
+        if not decode_subfunction and (command_byte ^ command_suffix != 0xFF):
             return None
 
         # Reconstruct the full 16-bit address.
@@ -150,53 +158,10 @@ class NECCommand(Command):
         # Count repeat codes after the end pulse. Counting stops at the first
         # mismatch or truncated repeat frame; any remaining timings are ignored.
         repeat_count = cls._count_repeat_codes(timings, 67)
-        return cls(address=address, command=command_byte, repeat_count=repeat_count)
-
-    @classmethod
-    def from_raw_timings_nec1_f16(cls, timings: list[int]) -> Self | None:
-        """Decode raw IR timings as an NEC1-f16 command.
-
-        This decoder interprets the fourth data byte as a subfunction; callers must
-        select it explicitly because NEC and NEC1-f16 framing is indistinguishable.
-        """
-        # Minimum: 1 leader pair (2) + 32 bit pairs (64) + 1 end pulse high (1) = 67
-        if len(timings) < 67:
-            return None
-
-        # Validate leader pulse
-        if not cls._is_close(timings[0], LEADER_HIGH) or not cls._is_close(
-            -timings[1], LEADER_LOW
-        ):
-            return None
-
-        # Decode 32 data bits (LSB first)
-        data = 0
-        for i in range(32):
-            bit = cls._decode_bit(timings[2 + 2 * i], -timings[3 + 2 * i])
-            if bit is None:
-                return None
-            data |= bit << i
-
-        # Validate end pulse
-        if not cls._is_close(timings[66], BIT_HIGH):
-            return None
-
-        # Extract bytes
-        address_low = data & 0xFF
-        address_high = (data >> 8) & 0xFF
-        command_byte = (data >> 16) & 0xFF
-        subfunction = (data >> 24) & 0xFF
-
-        # Reconstruct the full 16-bit address.
-        address = address_low | (address_high << 8)
-
-        # Count repeat codes after the end pulse. Counting stops at the first
-        # mismatch or truncated repeat frame; any remaining timings are ignored.
-        repeat_count = cls._count_repeat_codes(timings, 67)
         return cls(
             address=address,
             command=command_byte,
-            subfunction=subfunction,
+            subfunction=command_suffix if decode_subfunction else None,
             repeat_count=repeat_count,
         )
 
