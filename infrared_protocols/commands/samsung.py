@@ -258,11 +258,7 @@ class SamsungAC0292Command(Command):
                 )
 
         self.hvac_mode = hvac_mode
-        # Only a running unit carries a temperature; storing one the frame cannot
-        # express would make a command unequal to itself after a roundtrip.
         self.target_temperature = None if hvac_mode == "off" else target_temperature
-        # Off carries no fan at all, and auto always encodes a fixed fan value, so
-        # neither stores a user-supplied fan_mode.
         self.fan_mode = None if hvac_mode in ("off", "auto") else fan_mode
         self.swing_mode = swing_mode
 
@@ -362,10 +358,20 @@ class SamsungAC0292Command(Command):
         section1 = payload[0:7]
         section2 = payload[7:14]
         section3 = payload[14:21]
-        if not (
-            _verify_checksum(section1)
-            and _verify_checksum(section2)
-            and _verify_checksum(section3)
+
+        if not all(
+            _verify_checksum(section) for section in (section1, section2, section3)
+        ):
+            return None
+
+        if (
+            section1 != _apply_checksum([0x02, 0x02, 0x00, 0x00, 0x00, 0x00, 0xF0])
+            or section2 != _apply_checksum([0x01, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00])
+            or section3[0] != 0x01
+            or (section3[1] & 0x0F) != 0x02
+            or section3[3] != 0x71
+            or (section3[4] & 0x0F) != 0
+            or section3[6] != 0xF0
         ):
             return None
 
@@ -390,10 +396,12 @@ class SamsungAC0292Command(Command):
         if hvac_mode is None:
             return None
 
+        fan_nibble = (combined >> 1) & 0x7
         if hvac_mode == "auto":
+            if fan_nibble != 6:
+                return None
             fan_mode: SamsungACFanMode = "auto"
         else:
-            fan_nibble = (combined >> 1) & 0x7
             fan_mode_candidate = _FAN_MODE_BY_VALUE.get(fan_nibble)
             if fan_mode_candidate is None:
                 return None

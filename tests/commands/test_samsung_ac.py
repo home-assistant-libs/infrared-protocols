@@ -7,6 +7,7 @@ from infrared_protocols.commands.samsung import (
     SamsungAC0292HvacMode,
     SamsungACFanMode,
     SamsungACSwingMode,
+    _apply_checksum,
 )
 
 
@@ -218,3 +219,136 @@ def test_samsung_ac_0292_command_rejects_temperature_out_of_range(
     """Test that target_temperature outside 16..30 raises."""
     with pytest.raises(ValueError, match="out of range"):
         SamsungAC0292Command(hvac_mode="cool", target_temperature=target_temperature)
+
+
+def test_samsung_ac_0292_from_raw_timings_off() -> None:
+    """Test decoding the off command's raw timings."""
+    command = SamsungAC0292Command(hvac_mode="off")
+
+    decoded = SamsungAC0292Command.from_raw_timings(command.get_raw_timings())
+
+    assert decoded is not None
+    assert decoded.hvac_mode == "off"
+    assert decoded.target_temperature is None
+    assert decoded.fan_mode is None
+
+
+@pytest.mark.parametrize(
+    ("hvac_mode", "target_temperature", "fan_mode", "swing_mode"),
+    [
+        ("cool", 16, "auto", "off"),
+        ("cool", 23, "auto", "off"),
+        ("cool", 24, "auto", "off"),
+        ("cool", 25, "auto", "off"),
+        ("cool", 26, "auto", "off"),
+        ("cool", 27, "auto", "off"),
+        ("cool", 30, "auto", "off"),
+        ("cool", 24, "low", "off"),
+        ("cool", 24, "medium", "off"),
+        ("cool", 24, "high", "off"),
+        ("heat", 24, "auto", "off"),
+        ("dry", 24, "auto", "off"),
+        ("fan_only", 24, "auto", "off"),
+        ("cool", 25, "medium", "vertical"),
+        ("auto", 24, "auto", "off"),
+    ],
+)
+def test_samsung_ac_0292_roundtrip(
+    hvac_mode: SamsungAC0292HvacMode,
+    target_temperature: int,
+    fan_mode: SamsungACFanMode,
+    swing_mode: SamsungACSwingMode,
+) -> None:
+    """Test that encoding then decoding a command reproduces the original state."""
+    command = SamsungAC0292Command(
+        hvac_mode=hvac_mode,
+        target_temperature=target_temperature,
+        fan_mode=fan_mode,
+        swing_mode=swing_mode,
+    )
+
+    decoded = SamsungAC0292Command.from_raw_timings(command.get_raw_timings())
+
+    assert decoded is not None
+    assert decoded.hvac_mode == command.hvac_mode
+    assert decoded.target_temperature == command.target_temperature
+    assert decoded.fan_mode == command.fan_mode
+    assert decoded.swing_mode == command.swing_mode
+
+
+def test_samsung_ac_0292_from_raw_timings_rejects_wrong_length() -> None:
+    """Test that timings of the wrong length are rejected."""
+    command = SamsungAC0292Command(hvac_mode="cool", target_temperature=24)
+    timings = command.get_raw_timings()[:-1]
+
+    assert SamsungAC0292Command.from_raw_timings(timings) is None
+
+
+def test_samsung_ac_0292_from_raw_timings_rejects_bad_header() -> None:
+    """Test that a malformed header mark/space is rejected."""
+    command = SamsungAC0292Command(hvac_mode="cool", target_temperature=24)
+    timings = command.get_raw_timings()
+    timings[0] = 100  # nowhere near _HDR_MARK
+
+    assert SamsungAC0292Command.from_raw_timings(timings) is None
+
+
+def test_samsung_ac_0292_from_raw_timings_rejects_bad_bit_timing() -> None:
+    """Test that a mark/space pair matching neither bit value is rejected."""
+    command = SamsungAC0292Command(hvac_mode="cool", target_temperature=24)
+    timings = command.get_raw_timings()
+    # First data bit's space, forced to a value that decodes to neither 0 nor 1.
+    timings[3] = -1000
+
+    assert SamsungAC0292Command.from_raw_timings(timings) is None
+
+
+def test_samsung_ac_0292_from_raw_timings_rejects_invalid_checksum() -> None:
+    """Test that a payload with a corrupted checksum nibble is rejected."""
+    command = SamsungAC0292Command(hvac_mode="cool", target_temperature=24)
+    payload = command._build_payload()
+    payload[1] ^= 0xF0  # flip the checksum nibble embedded in section1[1]
+
+    timings = _compile_0292_timings(payload)
+
+    assert SamsungAC0292Command.from_raw_timings(timings) is None
+
+
+def test_samsung_ac_0292_from_raw_timings_rejects_altered_fixed_field() -> None:
+    """Test that a payload with valid checksums but an altered fixed field is rejected.
+
+    Checksum validity alone doesn't confirm this is a frame the encoder would
+    produce, since the checksum only covers bit-count consistency, not the fixed
+    section headers and reserved bytes.
+    """
+    command = SamsungAC0292Command(hvac_mode="cool", target_temperature=24)
+    payload = command._build_payload()
+
+    # Corrupt a reserved/fixed byte (section3[3], always 0x71) and recompute its
+    # section's checksum so the checksum check alone would otherwise pass.
+    section3 = list(payload[14:21])
+    section3[3] = 0x70
+    payload[14:21] = _apply_checksum(section3)
+
+    timings = _compile_0292_timings(payload)
+
+    assert SamsungAC0292Command.from_raw_timings(timings) is None
+
+
+def test_samsung_ac_0292_from_raw_timings_rejects_auto_with_wrong_fan_nibble() -> None:
+    """Test that an auto-mode frame with a non-6 fan nibble is rejected.
+
+    The encoder always forces fan code 6 for auto mode; a frame claiming auto with
+    a different fan nibble isn't one this library would produce, even though it
+    would otherwise decode to a plausible fan_mode via _FAN_MODE_BY_VALUE.
+    """
+    command = SamsungAC0292Command(hvac_mode="auto", target_temperature=24)
+    payload = command._build_payload()
+
+    section3 = list(payload[14:21])
+    section3[5] = 0x01 | (2 << 1) | (0 << 4)
+    payload[14:21] = _apply_checksum(section3)
+
+    timings = _compile_0292_timings(payload)
+
+    assert SamsungAC0292Command.from_raw_timings(timings) is None
