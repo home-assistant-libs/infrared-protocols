@@ -7,6 +7,9 @@ from infrared_protocols.commands.nec import NECCommand
 STANDARD_ADDRESS = 0x04
 EXTENDED_ADDRESS = 0x04FB
 COMMAND = 0x08
+NEC1_F16_ADDRESS = 0xFB04
+NEC1_F16_COMMAND = 0xDB
+NEC1_F16_SUBFUNCTION = 0x00
 # Standard NEC has no extended-vs-standard distinction in the raw timings, so
 # from_raw_timings always returns the 16-bit form: low byte = address,
 # high byte = ~address. For STANDARD_ADDRESS (0x04) that is 0xFB04.
@@ -154,6 +157,77 @@ EXTENDED_FRAME: list[int] = [
     562,
 ]
 
+# NEC1-f16 frame for NEC1_F16_ADDRESS / NEC1_F16_COMMAND / NEC1_F16_SUBFUNCTION.
+NEC1_F16_FRAME: list[int] = [
+    9000,
+    -4500,
+    562,
+    -562,
+    562,
+    -562,
+    562,
+    -1687,
+    562,
+    -562,
+    562,
+    -562,
+    562,
+    -562,
+    562,
+    -562,
+    562,
+    -562,
+    562,
+    -1687,
+    562,
+    -1687,
+    562,
+    -562,
+    562,
+    -1687,
+    562,
+    -1687,
+    562,
+    -1687,
+    562,
+    -1687,
+    562,
+    -1687,
+    562,
+    -1687,
+    562,
+    -1687,
+    562,
+    -562,
+    562,
+    -1687,
+    562,
+    -1687,
+    562,
+    -562,
+    562,
+    -1687,
+    562,
+    -1687,
+    562,
+    -562,
+    562,
+    -562,
+    562,
+    -562,
+    562,
+    -562,
+    562,
+    -562,
+    562,
+    -562,
+    562,
+    -562,
+    562,
+    -562,
+    562,
+]
+
 # Trailing repeat codes for two repeats: initial 41ms gap, then standard 96ms gaps.
 TWO_REPEATS_TAIL: list[int] = [
     -41000,
@@ -192,6 +266,18 @@ def test_nec_command_get_raw_timings(address: int, expected_frame: list[int]) ->
     assert timings_with_repeats == [*expected_frame, *TWO_REPEATS_TAIL]
 
 
+def test_nec1_f16_command_get_raw_timings() -> None:
+    """Test NEC1-f16 command raw timings generation."""
+    command = NECCommand(
+        address=NEC1_F16_ADDRESS,
+        command=NEC1_F16_COMMAND,
+        subfunction=NEC1_F16_SUBFUNCTION,
+    )
+
+    assert command.get_raw_timings() == NEC1_F16_FRAME
+    assert command.subfunction == NEC1_F16_SUBFUNCTION
+
+
 @pytest.mark.parametrize(
     ("address", "command"),
     [
@@ -220,8 +306,50 @@ def test_nec_command_from_raw_timings(frame: list[int], expected_address: int) -
     assert command is not None
     assert command.address == expected_address
     assert command.command == COMMAND
+    assert command.subfunction is None
     assert command.repeat_count == 0
     assert command.modulation == 38000
+
+
+def test_nec1_f16_command_from_raw_timings() -> None:
+    """Test decoding raw timings produced by NEC1-f16 commands."""
+    command = NECCommand.from_raw_timings(NEC1_F16_FRAME, decode_subfunction=True)
+
+    assert command is not None
+    assert command.address == NEC1_F16_ADDRESS
+    assert command.command == NEC1_F16_COMMAND
+    assert command.subfunction == NEC1_F16_SUBFUNCTION
+    assert command.repeat_count == 0
+    assert command.modulation == 38000
+
+
+def test_nec_command_from_raw_timings_rejects_nec1_f16() -> None:
+    """Test strict NEC decoding rejects an NEC1-f16 command suffix."""
+    assert NECCommand.from_raw_timings(NEC1_F16_FRAME) is None
+
+
+def test_nec1_f16_command_from_raw_timings_with_repeats() -> None:
+    """Test NEC1-f16 decoding counts trailing repeat codes."""
+    command = NECCommand.from_raw_timings(
+        [*NEC1_F16_FRAME, *TWO_REPEATS_TAIL], decode_subfunction=True
+    )
+
+    assert command is not None
+    assert command.repeat_count == 2
+
+
+def test_nec1_f16_command_uses_supplied_16_bit_address() -> None:
+    """Test NEC1-f16 does not invert an address below 0x100."""
+    command = NECCommand(address=0x04, command=0xDB, subfunction=0x32)
+
+    decoded = NECCommand.from_raw_timings(
+        command.get_raw_timings(), decode_subfunction=True
+    )
+
+    assert decoded is not None
+    assert decoded.address == 0x0004
+    assert decoded.command == 0xDB
+    assert decoded.subfunction == 0x32
 
 
 def test_nec_command_from_raw_timings_with_repeats() -> None:
@@ -254,6 +382,10 @@ def test_nec_command_from_raw_timings_within_tolerance() -> None:
         pytest.param([1000, *STANDARD_FRAME[1:]], id="invalid_leader_high"),
         pytest.param(
             [STANDARD_FRAME[0], -100, *STANDARD_FRAME[2:]], id="invalid_leader_low"
+        ),
+        pytest.param(
+            [*STANDARD_FRAME[:2], 5000, *STANDARD_FRAME[3:]],
+            id="invalid_bit_high",
         ),
         # First bit's space (index 3) set well outside both the 0 and 1 ranges.
         pytest.param(
