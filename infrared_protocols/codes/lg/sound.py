@@ -1,4 +1,5 @@
 """Command codes for LG soundsystems (device id 0x3434) using Samsung32 protocol."""
+
 from enum import IntEnum
 
 from ...commands import Command
