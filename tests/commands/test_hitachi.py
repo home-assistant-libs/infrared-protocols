@@ -1,14 +1,18 @@
 """Tests for the Hitachi AC344 IR command."""
 
-import pytest
 from collections.abc import Callable
 
+import pytest
 
 from infrared_protocols.commands.hitachi import (
     HitachiAc344Command,
     HitachiAcButton,
+    HitachiAcDisplay,
     HitachiAcFanSpeed,
     HitachiAcMode,
+    HitachiAcMoldDuration,
+    HitachiAcSomatosensory,
+    HitachiAcSwingH,
 )
 
 # Target hex strings for validation
@@ -40,7 +44,15 @@ def _extract_bytes(timings: list[int]) -> list[int]:
     return payload
 
 
-def _build_timings(payload: list[int], header_mark: int = 3300, header_space: int = 1600, bit_mark: int = 400, bit_zero_space: int = 400, bit_one_space: int = 1200, footer_mark: int = 400) -> list[int]:
+def _build_timings(
+    payload: list[int],
+    header_mark: int = 3300,
+    header_space: int = 1600,
+    bit_mark: int = 400,
+    bit_zero_space: int = 400,
+    bit_one_space: int = 1200,
+    footer_mark: int = 400,
+) -> list[int]:
     """Build raw timings from payload bytes."""
     timings = [header_mark, -header_space]
     for byte_val in payload:
@@ -98,21 +110,221 @@ def test_encode_power_off() -> None:
 
 
 @pytest.mark.parametrize(
-    ("mode", "temperature", "fan", "power", "button"),
+    (
+        "mode",
+        "temperature",
+        "fan",
+        "power",
+        "swing_v",
+        "swing_h",
+        "eco",
+        "display",
+        "somatosensory",
+        "off_timer_mins",
+        "on_timer_mins",
+        "timer_daily",
+        "mold_prevention",
+        "mold_duration",
+        "button",
+    ),
     [
-        pytest.param(HitachiAcMode.COOL, 26, HitachiAcFanSpeed.HIGH, True, HitachiAcButton.POWER, id="cool_26_high_on_power"),
-        pytest.param(HitachiAcMode.HEAT, 20, HitachiAcFanSpeed.LOW, True, HitachiAcButton.TEMPERATURE, id="heat_20_low_on_temp"),
-        pytest.param(HitachiAcMode.DRY, 24, HitachiAcFanSpeed.SILENT, False, HitachiAcButton.MODE, id="dry_24_silent_off_mode"),
-        pytest.param(HitachiAcMode.FAN_ONLY, 32, HitachiAcFanSpeed.AUTO, True, HitachiAcButton.FAN, id="fan_32_auto_on_fan"),
+        pytest.param(
+            HitachiAcMode.COOL,
+            26,
+            HitachiAcFanSpeed.HIGH,
+            True,
+            False,
+            HitachiAcSwingH.MIDDLE,
+            False,
+            HitachiAcDisplay.BRIGHT,
+            HitachiAcSomatosensory.COMFORT,
+            None,
+            None,
+            False,
+            False,
+            HitachiAcMoldDuration.MINS_30,
+            HitachiAcButton.POWER,
+            id="cool_26_high_on_power",
+        ),
+        pytest.param(
+            HitachiAcMode.HEAT,
+            20,
+            HitachiAcFanSpeed.LOW,
+            True,
+            True,
+            HitachiAcSwingH.RIGHT_MAX,
+            True,
+            HitachiAcDisplay.MEDIUM,
+            HitachiAcSomatosensory.MOISTURIZING,
+            180,
+            None,
+            False,
+            False,
+            HitachiAcMoldDuration.MINS_30,
+            HitachiAcButton.TEMPERATURE,
+            id="heat_20_low_on_swing_off_timer",
+        ),
+        pytest.param(
+            HitachiAcMode.DRY,
+            24,
+            HitachiAcFanSpeed.SILENT,
+            False,
+            False,
+            HitachiAcSwingH.LEFT,
+            False,
+            HitachiAcDisplay.DIM,
+            HitachiAcSomatosensory.COMFORT,
+            None,
+            120,
+            True,
+            True,
+            HitachiAcMoldDuration.MINS_10,
+            HitachiAcButton.CLEAN,
+            id="dry_24_on_timer_mold_clean",
+        ),
+        pytest.param(
+            HitachiAcMode.AUTO,
+            3,
+            HitachiAcFanSpeed.HIGH,
+            True,
+            True,
+            HitachiAcSwingH.MIDDLE,
+            False,
+            HitachiAcDisplay.OFF,
+            HitachiAcSomatosensory.MOISTURIZING,
+            1440,
+            1440,
+            True,
+            True,
+            HitachiAcMoldDuration.MINS_60,
+            HitachiAcButton.MOLD,
+            id="auto_both_timers_mold_60_daily",
+        ),
+        pytest.param(
+            HitachiAcMode.AUTO,
+            -3,
+            HitachiAcFanSpeed.SILENT,
+            True,
+            False,
+            HitachiAcSwingH.LEFT_MAX,
+            False,
+            HitachiAcDisplay.BRIGHT,
+            HitachiAcSomatosensory.COMFORT,
+            60,
+            None,
+            False,
+            True,
+            HitachiAcMoldDuration.MINS_20,
+            HitachiAcButton.MOLD_TIME,
+            id="mold_20_mins_setup",
+        ),
+        pytest.param(
+            HitachiAcMode.COOL,
+            28,
+            HitachiAcFanSpeed.MEDIUM,
+            True,
+            False,
+            HitachiAcSwingH.RIGHT,
+            False,
+            HitachiAcDisplay.DIM,
+            HitachiAcSomatosensory.COMFORT,
+            None,
+            None,
+            False,
+            True,
+            HitachiAcMoldDuration.MINS_45,
+            HitachiAcButton.PM25,
+            id="pm25_display_mold_45",
+        ),
+        pytest.param(
+            HitachiAcMode.COOL,
+            26,
+            HitachiAcFanSpeed.AUTO,
+            True,
+            False,
+            HitachiAcSwingH.MIDDLE,
+            False,
+            HitachiAcDisplay.BRIGHT,
+            HitachiAcSomatosensory.COMFORT,
+            60,
+            None,
+            False,
+            False,
+            HitachiAcMoldDuration.MINS_30,
+            HitachiAcButton.OFF_TIMER,
+            id="off_timer_1_hour",
+        ),
+        pytest.param(
+            HitachiAcMode.COOL,
+            26,
+            HitachiAcFanSpeed.AUTO,
+            True,
+            False,
+            HitachiAcSwingH.MIDDLE,
+            False,
+            HitachiAcDisplay.BRIGHT,
+            HitachiAcSomatosensory.COMFORT,
+            120,
+            None,
+            False,
+            False,
+            HitachiAcMoldDuration.MINS_30,
+            HitachiAcButton.OFF_TIMER,
+            id="off_timer_2_hours",
+        ),
+        pytest.param(
+            HitachiAcMode.COOL,
+            26,
+            HitachiAcFanSpeed.AUTO,
+            True,
+            False,
+            HitachiAcSwingH.MIDDLE,
+            False,
+            HitachiAcDisplay.BRIGHT,
+            HitachiAcSomatosensory.COMFORT,
+            None,
+            None,
+            False,
+            False,
+            HitachiAcMoldDuration.MINS_30,
+            HitachiAcButton.CANCEL_TIMER,
+            id="cancel_timer_button",
+        ),
     ],
 )
-def test_roundtrip(mode: HitachiAcMode, temperature: int, fan: HitachiAcFanSpeed, power: bool, button: HitachiAcButton) -> None:
-    """Roundtrip encode-decode must preserve mode, temperature, fan, power, and button."""
+def test_roundtrip(
+    mode: HitachiAcMode,
+    temperature: int,
+    fan: HitachiAcFanSpeed,
+    power: bool,
+    swing_v: bool,
+    swing_h: HitachiAcSwingH,
+    eco: bool,
+    display: HitachiAcDisplay,
+    somatosensory: HitachiAcSomatosensory,
+    off_timer_mins: int | None,
+    on_timer_mins: int | None,
+    timer_daily: bool,
+    mold_prevention: bool,
+    mold_duration: HitachiAcMoldDuration,
+    button: HitachiAcButton,
+) -> None:
+    """Roundtrip encode-decode must preserve all Hitachi AC344 protocol fields."""
     cmd = HitachiAc344Command(
         mode=mode,
         temperature=temperature,
         fan=fan,
         power=power,
+        swing_v=swing_v,
+        swing_h=swing_h,
+        eco=eco,
+        display=display,
+        somatosensory=somatosensory,
+        off_timer_mins=off_timer_mins,
+        on_timer_mins=on_timer_mins,
+        timer_daily=timer_daily,
+        mold_prevention=mold_prevention,
+        mold_duration=mold_duration,
         button=button,
     )
     decoded = HitachiAc344Command.from_raw_timings(cmd.get_raw_timings())
@@ -121,6 +333,17 @@ def test_roundtrip(mode: HitachiAcMode, temperature: int, fan: HitachiAcFanSpeed
     assert decoded.temperature == temperature
     assert decoded.fan == fan
     assert decoded.power == power
+    assert decoded.swing_v == (False if mold_prevention else swing_v)
+    assert decoded.swing_h == swing_h
+    assert decoded.eco == eco
+    assert decoded.display == display
+    assert decoded.somatosensory == somatosensory
+    assert decoded.off_timer_mins == off_timer_mins
+    assert decoded.on_timer_mins == on_timer_mins
+    assert decoded.timer_daily == timer_daily
+    assert decoded.mold_prevention == mold_prevention
+    if mold_prevention:
+        assert decoded.mold_duration == mold_duration
     assert decoded.button == button
 
 
@@ -132,9 +355,57 @@ def test_roundtrip(mode: HitachiAcMode, temperature: int, fan: HitachiAcFanSpeed
     ],
 )
 def test_invalid_temperature_range(temp: int, msg: str) -> None:
-    """Out-of-range temperatures must raise ValueError."""
+    """Out-of-range temperatures in non-AUTO mode must raise ValueError."""
     with pytest.raises(ValueError, match=msg):
         HitachiAc344Command(mode=HitachiAcMode.COOL, temperature=temp)
+
+
+@pytest.mark.parametrize(
+    ("temp", "msg"),
+    [
+        pytest.param(-4, "out of range", id="auto_temp_below_min"),
+        pytest.param(4, "out of range", id="auto_temp_above_max"),
+    ],
+)
+def test_invalid_auto_temperature_range(temp: int, msg: str) -> None:
+    """Out-of-range temperatures in AUTO mode must raise ValueError."""
+    with pytest.raises(ValueError, match=msg):
+        HitachiAc344Command(mode=HitachiAcMode.AUTO, temperature=temp)
+
+
+@pytest.mark.parametrize(
+    ("mins", "msg"),
+    [
+        pytest.param(59, "out of range", id="off_timer_below_min"),
+        pytest.param(1441, "out of range", id="off_timer_above_max"),
+    ],
+)
+def test_invalid_off_timer_range(mins: int, msg: str) -> None:
+    """Out-of-range timer durations must raise ValueError."""
+    with pytest.raises(ValueError, match=msg):
+        HitachiAc344Command(
+            mode=HitachiAcMode.COOL,
+            temperature=26,
+            off_timer_mins=mins,
+        )
+
+
+@pytest.mark.parametrize(
+    ("mins", "msg"),
+    [
+        pytest.param(59, "out of range", id="on_timer_below_min"),
+        pytest.param(1441, "out of range", id="on_timer_above_max"),
+        pytest.param(121, "must be a multiple of 2", id="on_timer_not_even"),
+    ],
+)
+def test_invalid_on_timer_range(mins: int, msg: str) -> None:
+    """Out-of-range or odd timer durations must raise ValueError."""
+    with pytest.raises(ValueError, match=msg):
+        HitachiAc344Command(
+            mode=HitachiAcMode.COOL,
+            temperature=26,
+            on_timer_mins=mins,
+        )
 
 
 @pytest.mark.parametrize(
@@ -146,7 +417,9 @@ def test_invalid_temperature_range(temp: int, msg: str) -> None:
         pytest.param(lambda p: p.__setitem__(27, 0x00), id="bad_power_val"),
     ],
 )
-def test_decode_returns_none_for_corrupted_payload(payload_modifier: Callable[[list[int]], None]) -> None:
+def test_decode_returns_none_for_corrupted_payload(
+    payload_modifier: Callable[[list[int]], None],
+) -> None:
     """Decoded command must be None if the packet payload fields are corrupted."""
     base_payload = _parse_hex(_COOL_26_HIGH_ON_HEX)
     payload_modifier(base_payload)
@@ -163,7 +436,9 @@ def test_decode_returns_none_for_corrupted_payload(payload_modifier: Callable[[l
         pytest.param(lambda t: t.__setitem__(690, 1000), id="bad_footer_mark"),
     ],
 )
-def test_decode_returns_none_for_corrupted_timings(timings_modifier: Callable[[list[int]], None]) -> None:
+def test_decode_returns_none_for_corrupted_timings(
+    timings_modifier: Callable[[list[int]], None],
+) -> None:
     """Decoded command must be None if physical-layer timings are corrupted."""
     cmd = HitachiAc344Command(
         mode=HitachiAcMode.COOL,
