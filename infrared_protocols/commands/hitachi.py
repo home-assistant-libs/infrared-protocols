@@ -335,7 +335,7 @@ class HitachiAc344Command(Command):
         if self.mold_prevention:
             byte37_val |= 0x01
             byte37_val |= self.mold_duration.value
-        elif self.swing_v:
+        elif not self.swing_v:
             byte37_val |= 0x20
 
         payload[37] = byte37_val
@@ -443,7 +443,7 @@ class HitachiAc344Command(Command):
             swing_v = False
             mold_duration_val = byte37_val & 0x38
         else:
-            swing_v = (byte37_val & 0x20) != 0
+            swing_v = (byte37_val & 0x20) == 0
             mold_duration_val = 0x20  # default to MINS_30
 
         try:

@@ -89,6 +89,7 @@ def test_encode_cool_26_high_on() -> None:
         temperature=26,
         fan=HitachiAcFanSpeed.HIGH,
         power=True,
+        swing_v=True,
         button=HitachiAcButton.POWER,
     )
     expected_bytes = _parse_hex(_COOL_26_HIGH_ON_HEX)
