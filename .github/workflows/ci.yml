@@ -2,9 +2,13 @@ name: CI
 
 on: [push, pull_request]
 
+permissions: {}
+
 jobs:
   prek:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6.0.2
       - name: Run prek
@@ -14,6 +18,8 @@ jobs:
 
   pytest:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       matrix:
         python-version: ["3.14"]

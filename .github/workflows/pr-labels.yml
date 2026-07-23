@@ -10,10 +10,14 @@ on:
     branches:
       - main
 
+permissions: {}
+
 jobs:
   verify:
     name: Verify PR labels
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
     steps:
       - name: Verify PR has a valid label
         uses: ludeeus/action-require-labels@be19cd7f04c6fad46a85336f9e9cebdf961807bb # 2.0.0
