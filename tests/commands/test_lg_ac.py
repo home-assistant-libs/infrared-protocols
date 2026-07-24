@@ -2,9 +2,11 @@
 
 import pytest
 
+from infrared_protocols.codes.lg.ac import LgAcButton
 from infrared_protocols.commands.lg_ac import (
     LgAcCommand,
     LgAcFanSpeed,
+    LgAcFixedCommand,
     LgAcMode,
 )
 
@@ -312,3 +314,105 @@ def test_decode_returns_none_for_out_of_tolerance_bit() -> None:
 def test_decode_returns_none_for_invalid_frame(frame: int) -> None:
     """from_raw_timings must reject frames that fail validation."""
     assert LgAcCommand.from_raw_timings(_build_timings(frame)) is None
+
+
+# The full 28-bit frame each button transmits, from the captures and IRremoteESP8266's
+# ir_LG.h. Pins every button to its documented code and guards the 16-bit bodies against
+# a typo, since the encoder derives the signature and checksum and cannot reveal one.
+_BUTTON_FRAMES: dict[LgAcButton, int] = {
+    LgAcButton.ION_GENERATOR_ON: 0x88C000C,
+    LgAcButton.ION_GENERATOR_OFF: 0x88C0084,
+    LgAcButton.LIGHT_TOGGLE: 0x88C00A6,
+    LgAcButton.AUTO_CLEAN_ON: 0x88C00B7,
+    LgAcButton.AUTO_CLEAN_OFF: 0x88C00C8,
+    LgAcButton.WIFI_TOGGLE: 0x88C0297,
+    LgAcButton.AUDIO_TOGGLE: 0x88C0758,
+    LgAcButton.ENERGY_LIMIT_80: 0x88C07D0,
+    LgAcButton.ENERGY_LIMIT_60: 0x88C07E1,
+    LgAcButton.ENERGY_LIMIT_OFF: 0x88C07F2,
+    LgAcButton.ENERGY_LIMIT_40: 0x88C0804,
+    LgAcButton.DIAGNOSE: 0x88C0CE6,
+    LgAcButton.JET: 0x88100DE,
+    LgAcButton.DIET: 0x88101F1,
+    LgAcButton.AI_CONVERTIBLE: 0x881408D,
+    LgAcButton.SWING_V_TOGGLE: 0x8810001,
+    LgAcButton.SWING_V_LOWEST: 0x8813048,
+    LgAcButton.SWING_V_LOW: 0x8813059,
+    LgAcButton.SWING_V_MIDDLE_LOW: 0x881306A,
+    LgAcButton.SWING_V_MIDDLE_HIGH: 0x881307B,
+    LgAcButton.SWING_V_HIGH: 0x881308C,
+    LgAcButton.SWING_V_HIGHEST: 0x881309D,
+    LgAcButton.SWING_V_SWING: 0x8813149,
+    LgAcButton.SWING_V_OFF: 0x881315A,
+    LgAcButton.SWING_H_LEFT: 0x88130BF,
+    LgAcButton.SWING_H_MIDDLE_LEFT: 0x88130C0,
+    LgAcButton.SWING_H_MIDDLE: 0x88130D1,
+    LgAcButton.SWING_H_MIDDLE_RIGHT: 0x88130E2,
+    LgAcButton.SWING_H_RIGHT: 0x88130F3,
+    LgAcButton.SWING_H_MIDDLE_TO_LEFT: 0x8813105,
+    LgAcButton.SWING_H_MIDDLE_TO_RIGHT: 0x8813116,
+    LgAcButton.SWING_H_SWING: 0x881316B,
+    LgAcButton.SWING_H_OFF: 0x881317C,
+}
+
+
+def test_button_frame_table_covers_every_button() -> None:
+    """The expected-frame table must list every button, so parametrization is total."""
+    assert set(_BUTTON_FRAMES) == set(LgAcButton)
+
+
+def test_fixed_command_encodes_signature_and_checksum() -> None:
+    """A fixed-code command wraps its body in the LG2 header, signature and checksum."""
+    timings = LgAcFixedCommand(command=LgAcButton.LIGHT_TOGGLE).get_raw_timings()
+
+    assert timings[:2] == [3200, -9900]
+    assert len(timings) == 2 + 2 * _BITS + 1
+    assert _extract_frame(timings) == _BUTTON_FRAMES[LgAcButton.LIGHT_TOGGLE]
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        pytest.param(1 << 16, id="too_wide"),
+        pytest.param(-1, id="negative"),
+    ],
+)
+def test_fixed_command_rejects_out_of_range_command(command: int) -> None:
+    """A command body outside 16 bits must raise."""
+    with pytest.raises(ValueError, match="16-bit value"):
+        LgAcFixedCommand(command=command)
+
+
+def test_fixed_command_default_modulation() -> None:
+    """Default modulation must be 38 kHz."""
+    cmd = LgAcFixedCommand(command=LgAcButton.JET)
+    assert cmd.modulation == 38000
+    assert cmd.repeat_count == 0
+
+
+@pytest.mark.parametrize("button", list(LgAcButton), ids=lambda b: b.name)
+def test_button_to_command_encodes_expected_frame(button: LgAcButton) -> None:
+    """Each button must encode to its documented full frame."""
+    assert (
+        _extract_frame(button.to_command().get_raw_timings()) == _BUTTON_FRAMES[button]
+    )
+
+
+@pytest.mark.parametrize("button", list(LgAcButton), ids=lambda b: b.name)
+def test_fixed_command_roundtrip(button: LgAcButton) -> None:
+    """Encoding then decoding a button must recover its body."""
+    decoded = LgAcFixedCommand.from_raw_timings(button.to_command().get_raw_timings())
+    assert decoded is not None
+    assert decoded.command == button.value
+
+
+def test_fixed_command_decodes_captured_frame() -> None:
+    """A captured full frame must decode to the matching button body."""
+    decoded = LgAcFixedCommand.from_raw_timings(_build_timings(0x88C00A6))
+    assert decoded is not None
+    assert decoded.command == LgAcButton.LIGHT_TOGGLE
+
+
+def test_fixed_command_from_raw_timings_rejects_bad_checksum() -> None:
+    """A frame whose checksum nibble is wrong must not decode."""
+    assert LgAcFixedCommand.from_raw_timings(_build_timings(0x8800001)) is None
