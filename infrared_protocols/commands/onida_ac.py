@@ -1,17 +1,20 @@
 """Onida air-conditioner IR protocol.
 
-NEC-family timing (9000/4500 leader, 562 mark, 562/1687 spaces), but a custom
-two-frame structure reverse-engineered from a physical Onida remote. Each command
-is two frames sent back to back:
+NEC-family timing (9000/4500 leader, 562 mark, 562/1687 spaces), reverse-engineered
+from a physical Onida remote. A command is a single frame built from two bit blocks
+separated by a long space:
 
-  frame A: leader + 35 data bits + end pulse. Carries the full state.
-  frame B: 32 data bits + end pulse, no leader. Carries the swing detail and the
-           checksum.
+  leader + block A (35 data bits) + end pulse + ~20100 us space
+         + block B (32 data bits) + end pulse
+
+Block A carries the full state; block B carries the swing detail and the checksum.
+(An earlier capture with a too-short receiver idle split this into two frames; it is
+one frame with a long mid-space.)
 
 Bits are sent least-significant first within each field; index 0 below is the first
 transmitted bit.
 
-Frame A (35 bits):
+Block A (35 bits):
   bits 0-2:   mode
   bit 3:      power
   bits 4-5:   fan speed
@@ -22,13 +25,13 @@ Frame A (35 bits):
   bit 23:     blow
   bits 28,30,33: fixed trailer
 
-Frame B (32 bits):
+Block B (32 bits):
   bit 0:      vertical swing
   bit 4:      horizontal swing
   bit 13:     fixed signature
   bits 28-31: checksum
 
-Frame A's bit 6 only records that some swing is on; frame B's bits 0 and 4 say which.
+Block A's bit 6 only records that some swing is on; block B's bits 0 and 4 say which.
 """
 
 from enum import IntEnum
@@ -47,9 +50,8 @@ _BIT_MARK = 562
 _BIT_ONE_SPACE = 1687
 _BIT_ZERO_SPACE = 562
 
-# Between frame A and frame B, and after frame B. The receiver reports this as a
-# clamped idle, so the true gap may be longer; it is a transmit-tuning value.
-_FRAME_GAP = 10000
+# Long mid-frame space after block A, and the trailing space after block B.
+_FRAME_GAP = 20100
 
 _FRAME_A_BITS = 35
 _FRAME_B_BITS = 32
@@ -59,7 +61,7 @@ _TOLERANCE = 0.35
 # with an absolute window that keeps a zero and a one space apart (562 vs 1687).
 _BIT_TOLERANCE = 350
 
-# Frame A field positions (bit index, width), LSB-first within the field.
+# Block A field positions (bit index, width), LSB-first within the field.
 _A_MODE = (0, 3)
 _A_POWER = 3
 _A_FAN = (4, 2)
@@ -70,7 +72,7 @@ _A_DISPLAY = 21
 _A_BLOW = 23
 _A_TRAILER = (28, 30, 33)
 
-# Frame B field positions.
+# Block B field positions.
 _B_SWING_V = 0
 _B_SWING_H = 4
 _B_SIGNATURE = 13
@@ -81,7 +83,7 @@ _CHECKSUM_CONST = 12
 
 
 class OnidaAcMode(IntEnum):
-    """AC operating mode; value is the mode field at frame A bits 0-2."""
+    """AC operating mode; value is the mode field at block A bits 0-2."""
 
     AUTO = 0
     COOL = 1
@@ -91,7 +93,7 @@ class OnidaAcMode(IntEnum):
 
 
 class OnidaAcFanSpeed(IntEnum):
-    """Fan speed; value is the fan field at frame A bits 4-5."""
+    """Fan speed; value is the fan field at block A bits 4-5."""
 
     AUTO = 0
     LOW = 1
@@ -111,7 +113,7 @@ def _set_field(bits: list[int], start: int, width: int, value: int) -> None:
 
 
 def _checksum(*, mode: int, power: bool, temp: int, swing_h: bool) -> int:
-    """Return the frame B checksum nibble.
+    """Return the block B checksum nibble.
 
     Vertical swing does not enter the checksum; only horizontal does.
     """
@@ -243,12 +245,12 @@ class OnidaAcCommand(Command):
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
         """Decode raw IR timings into an OnidaAcCommand.
 
-        Expects frame A followed by frame B, as ``get_raw_timings`` emits them.
+        Expects block A followed by block B, as ``get_raw_timings`` emits them.
         Returns an OnidaAcCommand if the timings match, or None otherwise.
         """
-        # Frame A: leader (2) + 35 bit pairs (70) + end mark (1).
+        # Block A: leader (2) + 35 bit pairs (70) + end mark (1).
         frame_a_len = 2 + 2 * _FRAME_A_BITS + 1
-        # Then the inter-frame gap (1), then frame B: 32 bit pairs (64) + end mark (1).
+        # Then the mid-frame gap (1), then block B: 32 bit pairs (64) + end mark (1).
         if len(timings) < frame_a_len + 1 + 2 * _FRAME_B_BITS + 1:
             return None
 

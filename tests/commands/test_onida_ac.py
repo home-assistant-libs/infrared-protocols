@@ -17,7 +17,7 @@ _BIT_ZERO_SPACE = 562
 
 _ONE_THRESHOLD = (_BIT_ONE_SPACE + _BIT_ZERO_SPACE) // 2
 
-# Each entry is the (frame A, frame B) bitstrings, MSB index 0 = first
+# Each entry is the (block A, block B) bitstrings, MSB index 0 = first
 # transmitted bit, exactly as the remote sends them.
 _CAPTURED = {
     "cool_24_baseline": (
@@ -64,7 +64,7 @@ def _bits_to_int_lsb(bits: str, start: int, width: int) -> int:
 
 
 def _extract_frames(timings: list[int]) -> tuple[str, str]:
-    """Pull the frame A and frame B bitstrings back out of raw timings."""
+    """Pull the block A and block B bitstrings back out of raw timings."""
     frame_a = "".join(
         "1" if abs(timings[3 + 2 * i]) > _ONE_THRESHOLD else "0"
         for i in range(_FRAME_A_BITS)
@@ -78,12 +78,12 @@ def _extract_frames(timings: list[int]) -> tuple[str, str]:
 
 
 def _frame_a_space(index: int) -> int:
-    """Return the timing index of the space for frame A data bit ``index``."""
+    """Return the timing index of the space for block A data bit ``index``."""
     return 3 + 2 * index
 
 
 def _frame_b_space(index: int) -> int:
-    """Return the timing index of the space for frame B data bit ``index``."""
+    """Return the timing index of the space for block B data bit ``index``."""
     frame_b_start = 2 + 2 * _FRAME_A_BITS + 1 + 1
     return frame_b_start + 1 + 2 * index
 
@@ -113,7 +113,7 @@ def test_encode_timing_values() -> None:
     marks = [t for t in timings if t > 0]
     assert set(marks) == {9000, 562}
     spaces = {abs(t) for t in timings if t < 0}
-    assert spaces == {4500, 1687, 562, 10000}
+    assert spaces == {4500, 1687, 562, 20100}
 
 
 @pytest.mark.parametrize("label", list(_CAPTURED))
@@ -143,7 +143,7 @@ def test_decode_captured_frames(label: str) -> None:
 
 
 def test_swing_v_and_h_share_frame_a_bit() -> None:
-    """Frame A carries a single swing bit; frame B distinguishes v from h."""
+    """Block A carries a single swing bit; block B distinguishes v from h."""
     v_only = _extract_frames(
         OnidaAcCommand(
             mode=OnidaAcMode.COOL, temperature=24, swing_v=True
@@ -155,8 +155,8 @@ def test_swing_v_and_h_share_frame_a_bit() -> None:
         ).get_raw_timings()
     )
 
-    assert v_only[0] == h_only[0]  # frame A identical
-    assert v_only[1] != h_only[1]  # frame B differs
+    assert v_only[0] == h_only[0]  # block A identical
+    assert v_only[1] != h_only[1]  # block B differs
 
 
 def test_horizontal_swing_changes_checksum_vertical_does_not() -> None:
@@ -309,7 +309,7 @@ def test_decode_returns_none_for_invalid_leader(index: int, value: int) -> None:
 def test_decode_returns_none_for_bad_checksum() -> None:
     """A frame whose checksum does not match its state is rejected."""
     timings = OnidaAcCommand(mode=OnidaAcMode.COOL, temperature=24).get_raw_timings()
-    # Bit 28 of frame B is a one here; forcing it to a zero corrupts the checksum.
+    # Bit 28 of block B is a one here; forcing it to a zero corrupts the checksum.
     timings[_frame_b_space(28)] = -_BIT_ZERO_SPACE
 
     assert OnidaAcCommand.from_raw_timings(timings) is None
@@ -357,13 +357,13 @@ def test_decode_returns_none_for_decoded_temperature_out_of_range() -> None:
 def test_decode_returns_none_for_bad_data_bit() -> None:
     """A data bit whose mark is out of tolerance is rejected."""
     timings = OnidaAcCommand(mode=OnidaAcMode.COOL, temperature=24).get_raw_timings()
-    timings[2] = 3000  # first frame A bit mark, far from the 562 nominal
+    timings[2] = 3000  # first block A bit mark, far from the 562 nominal
 
     assert OnidaAcCommand.from_raw_timings(timings) is None
 
 
 def test_decode_returns_none_for_bad_frame_a_end_mark() -> None:
-    """A frame A whose terminating mark is out of tolerance is rejected."""
+    """A block A whose terminating mark is out of tolerance is rejected."""
     timings = OnidaAcCommand(mode=OnidaAcMode.COOL, temperature=24).get_raw_timings()
     timings[2 + 2 * _FRAME_A_BITS] = 3000
 
