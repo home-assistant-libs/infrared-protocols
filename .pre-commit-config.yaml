@@ -9,7 +9,7 @@ repos:
         files: ^(infrared_protocols|tests)/
 
   - repo: https://github.com/DetachHead/basedpyright-prek-mirror
-    rev: 1.38.1
+    rev: 1.39.9
     hooks:
       - id: basedpyright
         files: ^(infrared_protocols|tests)/
