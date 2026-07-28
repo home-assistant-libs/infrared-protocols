@@ -68,9 +68,7 @@ _AC0292_MARK_TOLERANCE = 0.3
 _AC0292_SPACE_TOLERANCE = 0.25
 _AC0292_BIT_TOLERANCE = 300
 
-_AC0292_TIMINGS_LEN = 2 + _AC0292_NUM_SECTIONS * (
-    2 + _AC0292_SECTION_LEN * 8 * 2 + 2
-)
+_AC0292_TIMINGS_LEN = 2 + _AC0292_NUM_SECTIONS * (2 + _AC0292_SECTION_LEN * 8 * 2 + 2)
 
 
 def _ac0292_is_close(actual: int, expected: int, tolerance: float) -> bool:
@@ -287,10 +285,11 @@ class SamsungAC0292Command(Command):
         ):
             return None
 
-
         if (
-            section1 != _ac0292_apply_checksum([0x02, 0x02, 0x00, 0x00, 0x00, 0x00, 0xF0])
-            or section2 != _ac0292_apply_checksum([0x01, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00])
+            section1
+            != _ac0292_apply_checksum([0x02, 0x02, 0x00, 0x00, 0x00, 0x00, 0xF0])
+            or section2
+            != _ac0292_apply_checksum([0x01, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00])
             or section3[0] != 0x01
             or (section3[1] & 0x0F) != 0x02
             or section3[3] != 0x71
@@ -298,7 +297,6 @@ class SamsungAC0292Command(Command):
             or section3[6] != 0xF0
         ):
             return None
-
 
         swing_nibble = (section3[2] >> 4) & 0xF
         try:
