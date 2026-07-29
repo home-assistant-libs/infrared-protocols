@@ -187,16 +187,20 @@ def test_samsung_ac_0292_command_off() -> None:
     assert command.get_raw_timings() == _compile_0292_timings(expected_payload)
 
 
-def test_samsung_ac_0292_command_off_ignores_temperature_and_fan() -> None:
-    """Test that off mode drops target_temperature and fan_mode after construction."""
-    command = SamsungAC0292Command(
-        hvac_mode=SamsungAC0292HvacMode.OFF,
-        target_temperature=24,
-        fan_mode=SamsungACFanMode.HIGH,
-    )
+def test_samsung_ac_0292_command_off_rejects_non_none_fields() -> None:
+    """Test that off mode raises if temperature, fan_mode, or swing_mode is given."""
+    with pytest.raises(ValueError, match="must be None when hvac_mode is OFF"):
+        SamsungAC0292Command(hvac_mode=SamsungAC0292HvacMode.OFF, target_temperature=24)
 
-    assert command.target_temperature is None
-    assert command.fan_mode is None
+    with pytest.raises(ValueError, match="must be None when hvac_mode is OFF"):
+        SamsungAC0292Command(
+            hvac_mode=SamsungAC0292HvacMode.OFF, fan_mode=SamsungACFanMode.HIGH
+        )
+
+    with pytest.raises(ValueError, match="must be None when hvac_mode is OFF"):
+        SamsungAC0292Command(
+            hvac_mode=SamsungAC0292HvacMode.OFF, swing_mode=SamsungACSwingMode.VERTICAL
+        )
 
 
 def test_samsung_ac_0292_command_auto_drops_fan_mode() -> None:
@@ -205,6 +209,7 @@ def test_samsung_ac_0292_command_auto_drops_fan_mode() -> None:
         hvac_mode=SamsungAC0292HvacMode.AUTO,
         target_temperature=24,
         fan_mode=SamsungACFanMode.HIGH,
+        swing_mode=SamsungACSwingMode.OFF,
     )
 
     assert command.fan_mode is None
@@ -228,6 +233,24 @@ def test_samsung_ac_0292_command_rejects_temperature_out_of_range(
         )
 
 
+def test_samsung_ac_0292_command_requires_fan_mode() -> None:
+    """Test that a non-off mode without fan_mode raises."""
+    with pytest.raises(ValueError, match="fan_mode is required"):
+        SamsungAC0292Command(
+            hvac_mode=SamsungAC0292HvacMode.COOL, target_temperature=24
+        )
+
+
+def test_samsung_ac_0292_command_requires_swing_mode() -> None:
+    """Test that a non-off mode without swing_mode raises."""
+    with pytest.raises(ValueError, match="swing_mode is required"):
+        SamsungAC0292Command(
+            hvac_mode=SamsungAC0292HvacMode.COOL,
+            target_temperature=24,
+            fan_mode=SamsungACFanMode.AUTO,
+        )
+
+
 def test_samsung_ac_0292_from_raw_timings_off() -> None:
     """Test decoding the off command's raw timings."""
     command = SamsungAC0292Command(hvac_mode=SamsungAC0292HvacMode.OFF)
@@ -238,6 +261,7 @@ def test_samsung_ac_0292_from_raw_timings_off() -> None:
     assert decoded.hvac_mode == SamsungAC0292HvacMode.OFF
     assert decoded.target_temperature is None
     assert decoded.fan_mode is None
+    assert decoded.swing_mode is None
 
 
 @pytest.mark.parametrize(
@@ -299,19 +323,59 @@ def test_samsung_ac_0292_roundtrip(
 
 
 def test_samsung_ac_0292_from_raw_timings_rejects_wrong_length() -> None:
-    """Test that timings of the wrong length are rejected."""
+    """Test that timings shorter than the tolerated minimum are rejected."""
     command = SamsungAC0292Command(
-        hvac_mode=SamsungAC0292HvacMode.COOL, target_temperature=24
+        hvac_mode=SamsungAC0292HvacMode.COOL,
+        target_temperature=24,
+        fan_mode=SamsungACFanMode.AUTO,
+        swing_mode=SamsungACSwingMode.OFF,
+    )
+    timings = command.get_raw_timings()[:-2]
+
+    assert SamsungAC0292Command.from_raw_timings(timings) is None
+
+
+def test_samsung_ac_0292_from_raw_timings_accepts_missing_final_trailer_space() -> None:
+    """Test that a signal missing only its final trailer space still decodes."""
+    command = SamsungAC0292Command(
+        hvac_mode=SamsungAC0292HvacMode.COOL,
+        target_temperature=24,
+        fan_mode=SamsungACFanMode.AUTO,
+        swing_mode=SamsungACSwingMode.OFF,
     )
     timings = command.get_raw_timings()[:-1]
 
-    assert SamsungAC0292Command.from_raw_timings(timings) is None
+    decoded = SamsungAC0292Command.from_raw_timings(timings)
+
+    assert decoded is not None
+    assert decoded.hvac_mode == command.hvac_mode
+    assert decoded.target_temperature == command.target_temperature
+
+
+def test_samsung_ac_0292_from_raw_timings_accepts_trailing_garbage() -> None:
+    """Test that extra timings after a complete signal are ignored, not rejected."""
+    command = SamsungAC0292Command(
+        hvac_mode=SamsungAC0292HvacMode.COOL,
+        target_temperature=24,
+        fan_mode=SamsungACFanMode.AUTO,
+        swing_mode=SamsungACSwingMode.OFF,
+    )
+    timings = [*command.get_raw_timings(), 12345, -6789]
+
+    decoded = SamsungAC0292Command.from_raw_timings(timings)
+
+    assert decoded is not None
+    assert decoded.hvac_mode == command.hvac_mode
+    assert decoded.target_temperature == command.target_temperature
 
 
 def test_samsung_ac_0292_from_raw_timings_rejects_bad_header() -> None:
     """Test that a malformed header mark/space is rejected."""
     command = SamsungAC0292Command(
-        hvac_mode=SamsungAC0292HvacMode.COOL, target_temperature=24
+        hvac_mode=SamsungAC0292HvacMode.COOL,
+        target_temperature=24,
+        fan_mode=SamsungACFanMode.AUTO,
+        swing_mode=SamsungACSwingMode.OFF,
     )
     timings = command.get_raw_timings()
     timings[0] = 100  # nowhere near the header mark
@@ -320,12 +384,20 @@ def test_samsung_ac_0292_from_raw_timings_rejects_bad_header() -> None:
 
 
 def test_samsung_ac_0292_from_raw_timings_rejects_bad_bit_timing() -> None:
-    """Test that a mark/space pair matching neither bit value is rejected."""
+    """Test that a mark/space pair matching neither bit value is rejected.
+
+    Index 4/5 is the mark/space of the first actual data bit (index 0/1 is the
+    header, 2/3 is the first section marker) -- this exercises _ac0292_decode_bit,
+    not the section-marker check.
+    """
     command = SamsungAC0292Command(
-        hvac_mode=SamsungAC0292HvacMode.COOL, target_temperature=24
+        hvac_mode=SamsungAC0292HvacMode.COOL,
+        target_temperature=24,
+        fan_mode=SamsungACFanMode.AUTO,
+        swing_mode=SamsungACSwingMode.OFF,
     )
     timings = command.get_raw_timings()
-    timings[3] = -1000
+    timings[5] = -1000
 
     assert SamsungAC0292Command.from_raw_timings(timings) is None
 
@@ -333,7 +405,10 @@ def test_samsung_ac_0292_from_raw_timings_rejects_bad_bit_timing() -> None:
 def test_samsung_ac_0292_from_raw_timings_rejects_invalid_checksum() -> None:
     """Test that a payload with a corrupted checksum nibble is rejected."""
     command = SamsungAC0292Command(
-        hvac_mode=SamsungAC0292HvacMode.COOL, target_temperature=24
+        hvac_mode=SamsungAC0292HvacMode.COOL,
+        target_temperature=24,
+        fan_mode=SamsungACFanMode.AUTO,
+        swing_mode=SamsungACSwingMode.OFF,
     )
     payload = command._build_payload()
     payload[1] ^= 0xF0
@@ -351,7 +426,10 @@ def test_samsung_ac_0292_from_raw_timings_rejects_altered_fixed_field() -> None:
     section headers and reserved bytes.
     """
     command = SamsungAC0292Command(
-        hvac_mode=SamsungAC0292HvacMode.COOL, target_temperature=24
+        hvac_mode=SamsungAC0292HvacMode.COOL,
+        target_temperature=24,
+        fan_mode=SamsungACFanMode.AUTO,
+        swing_mode=SamsungACSwingMode.OFF,
     )
     payload = command._build_payload()
 
@@ -372,7 +450,10 @@ def test_samsung_ac_0292_from_raw_timings_rejects_auto_with_wrong_fan_nibble() -
     would otherwise decode to a plausible fan_mode via SamsungACFanMode.
     """
     command = SamsungAC0292Command(
-        hvac_mode=SamsungAC0292HvacMode.AUTO, target_temperature=24
+        hvac_mode=SamsungAC0292HvacMode.AUTO,
+        target_temperature=24,
+        fan_mode=SamsungACFanMode.AUTO,
+        swing_mode=SamsungACSwingMode.OFF,
     )
     payload = command._build_payload()
 

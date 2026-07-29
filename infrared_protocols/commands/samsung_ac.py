@@ -40,7 +40,11 @@ class SamsungACSwingMode(IntEnum):
 AC0292_MIN_TEMP = 16
 AC0292_MAX_TEMP = 30
 
-_OFF_PAYLOAD = [
+_AC0292_SECTION1_BASE = [0x02, 0x02, 0x00, 0x00, 0x00, 0x00, 0xF0]
+_AC0292_SECTION2_BASE = [0x01, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00]
+_AC0292_SECTION3_BASE = [0x01, 0x02, 0x00, 0x71, 0x00, 0x11, 0xF0]
+
+_AC0292_OFF_PAYLOAD = [
     0x02, 0xB2, 0x0F, 0x00, 0x00, 0x00, 0xC0, 0x01, 0xD2, 0x0F, 0x00,
     0x00, 0x00, 0x00, 0x01, 0x02, 0xFF, 0x71, 0x80, 0x11, 0xC0
 ]  # fmt: skip
@@ -69,6 +73,8 @@ _AC0292_SPACE_TOLERANCE = 0.25
 _AC0292_BIT_TOLERANCE = 300
 
 _AC0292_TIMINGS_LEN = 2 + _AC0292_NUM_SECTIONS * (2 + _AC0292_SECTION_LEN * 8 * 2 + 2)
+
+_AC0292_MIN_TIMINGS_LEN = _AC0292_TIMINGS_LEN - 1
 
 
 def _ac0292_is_close(actual: int, expected: int, tolerance: float) -> bool:
@@ -121,33 +127,46 @@ def _ac0292_verify_checksum(section: list[int]) -> bool:
     return stored == _ac0292_section_checksum(section)
 
 
+_AC0292_SECTION1 = _ac0292_apply_checksum(_AC0292_SECTION1_BASE)
+_AC0292_SECTION2 = _ac0292_apply_checksum(_AC0292_SECTION2_BASE)
+
+
 class SamsungAC0292Command(Command):
     """Samsung AC 0292 21-byte IR command.
 
-    ``target_temperature`` is required unless ``hvac_mode`` is ``OFF``.
-    ``fan_mode`` carries no meaning when ``hvac_mode`` is ``OFF`` (the frame sends no
-    fan) or ``AUTO`` (the unit always encodes a fixed fan value regardless of what's
-    requested).
+    ``target_temperature``, ``fan_mode``, and ``swing_mode`` are required unless
+    ``hvac_mode`` is ``OFF``, in which case they must be left as ``None`` (the frame
+    for OFF is fixed and carries none of them).
     """
 
     hvac_mode: SamsungAC0292HvacMode
     target_temperature: int | None
     fan_mode: SamsungACFanMode | None
-    swing_mode: SamsungACSwingMode
+    swing_mode: SamsungACSwingMode | None
 
     def __init__(
         self,
         *,
         hvac_mode: SamsungAC0292HvacMode,
         target_temperature: int | None = None,
-        fan_mode: SamsungACFanMode = SamsungACFanMode.AUTO,
-        swing_mode: SamsungACSwingMode = SamsungACSwingMode.OFF,
+        fan_mode: SamsungACFanMode | None = None,
+        swing_mode: SamsungACSwingMode | None = None,
         modulation: int = 38000,
     ) -> None:
         """Initialize the Samsung AC 0292 IR command."""
         super().__init__(modulation=modulation, repeat_count=0)
 
-        if hvac_mode is not SamsungAC0292HvacMode.OFF:
+        if hvac_mode is SamsungAC0292HvacMode.OFF:
+            if (
+                target_temperature is not None
+                or fan_mode is not None
+                or swing_mode is not None
+            ):
+                raise ValueError(
+                    "target_temperature, fan_mode, and swing_mode must be None "
+                    "when hvac_mode is OFF"
+                )
+        else:
             if target_temperature is None:
                 raise ValueError(
                     f"target_temperature is required for hvac_mode {hvac_mode.name}"
@@ -157,18 +176,16 @@ class SamsungAC0292Command(Command):
                     f"target_temperature {target_temperature} out of range "
                     f"{AC0292_MIN_TEMP}..{AC0292_MAX_TEMP}"
                 )
+            if fan_mode is None:
+                raise ValueError(f"fan_mode is required for hvac_mode {hvac_mode.name}")
+            if swing_mode is None:
+                raise ValueError(
+                    f"swing_mode is required for hvac_mode {hvac_mode.name}"
+                )
 
         self.hvac_mode = hvac_mode
-
-        self.target_temperature = (
-            None if hvac_mode is SamsungAC0292HvacMode.OFF else target_temperature
-        )
-
-        self.fan_mode = (
-            None
-            if hvac_mode in (SamsungAC0292HvacMode.OFF, SamsungAC0292HvacMode.AUTO)
-            else fan_mode
-        )
+        self.target_temperature = target_temperature
+        self.fan_mode = None if hvac_mode is SamsungAC0292HvacMode.AUTO else fan_mode
         self.swing_mode = swing_mode
 
     @override
@@ -203,33 +220,35 @@ class SamsungAC0292Command(Command):
 
     def _build_payload(self) -> list[int]:
         if self.hvac_mode is SamsungAC0292HvacMode.OFF:
-            return _OFF_PAYLOAD.copy()
+            return _AC0292_OFF_PAYLOAD.copy()
 
-        section1 = _ac0292_apply_checksum([0x02, 0x02, 0x00, 0x00, 0x00, 0x00, 0xF0])
-        section2 = _ac0292_apply_checksum([0x01, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00])
-        section3 = [0x01, 0x02, 0x00, 0x71, 0x00, 0x11, 0xF0]
+        section3 = list(_AC0292_SECTION3_BASE)
 
+        assert self.swing_mode is not None
         section3[2] = 0x80 | (self.swing_mode.value << 4)
 
         assert self.target_temperature is not None
         section3[4] = (self.target_temperature - AC0292_MIN_TEMP) << 4
 
-        fan = (
-            6
-            if self.hvac_mode is SamsungAC0292HvacMode.AUTO
-            else (self.fan_mode or SamsungACFanMode.AUTO).value
-        )
+        if self.hvac_mode is SamsungAC0292HvacMode.AUTO:
+            fan = 6
+        else:
+            assert self.fan_mode is not None
+            fan = self.fan_mode.value
         section3[5] = 0x01 | (fan << 1) | (self.hvac_mode.value << 4)
 
-        return section1 + section2 + _ac0292_apply_checksum(section3)
+        return _AC0292_SECTION1 + _AC0292_SECTION2 + _ac0292_apply_checksum(section3)
 
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
         """Decode raw IR timings into a SamsungAC0292Command.
 
-        Returns a SamsungAC0292Command if the timings match, or None otherwise.
+        Returns a SamsungAC0292Command if the timings match, or None otherwise. A
+        missing final trailer space (some receivers don't record the trailing gap
+        after the last mark) and extra timings after the signal ends are both
+        tolerated.
         """
-        if len(timings) != _AC0292_TIMINGS_LEN:
+        if len(timings) < _AC0292_MIN_TIMINGS_LEN:
             return None
 
         if not _ac0292_matches_pair(
@@ -259,51 +278,57 @@ class SamsungAC0292Command(Command):
                     idx += 2
                 payload.append(byte)
 
-            is_last = section_index == _AC0292_NUM_SECTIONS - 1
+            is_last_section = section_index == _AC0292_NUM_SECTIONS - 1
             expected_trailer_space = (
-                _AC0292_TRAILER_SPACE_LAST if is_last else _AC0292_TRAILER_SPACE_MORE
+                _AC0292_TRAILER_SPACE_LAST
+                if is_last_section
+                else _AC0292_TRAILER_SPACE_MORE
             )
-            if not _ac0292_matches_pair(
-                timings[idx],
-                abs(timings[idx + 1]),
-                _AC0292_TRAILER_MARK,
-                expected_trailer_space,
+
+            if not _ac0292_is_close(
+                timings[idx], _AC0292_TRAILER_MARK, _AC0292_MARK_TOLERANCE
             ):
                 return None
-            idx += 2
+            idx += 1
 
-        if payload == _OFF_PAYLOAD:
+            if idx < len(timings):
+                if not _ac0292_is_close(
+                    abs(timings[idx]), expected_trailer_space, _AC0292_SPACE_TOLERANCE
+                ):
+                    return None
+                idx += 1
+            elif not is_last_section:
+                return None
+
+        if payload == _AC0292_OFF_PAYLOAD:
             return cls(hvac_mode=SamsungAC0292HvacMode.OFF)
 
         section1 = payload[0:7]
         section2 = payload[7:14]
         section3 = payload[14:21]
 
-        if not all(
-            _ac0292_verify_checksum(section)
-            for section in (section1, section2, section3)
-        ):
+        if section1 != _AC0292_SECTION1:
+            return None
+
+        if section2 != _AC0292_SECTION2:
             return None
 
         if (
-            section1
-            != _ac0292_apply_checksum([0x02, 0x02, 0x00, 0x00, 0x00, 0x00, 0xF0])
-            or section2
-            != _ac0292_apply_checksum([0x01, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00])
-            or section3[0] != 0x01
-            or (section3[1] & 0x0F) != 0x02
-            or section3[3] != 0x71
-            or (section3[4] & 0x0F) != 0
-            or section3[6] != 0xF0
+            section3[0] != _AC0292_SECTION3_BASE[0]
+            or (section3[1] & 0x0F) != (_AC0292_SECTION3_BASE[1] & 0x0F)
+            or section3[3] != _AC0292_SECTION3_BASE[3]
+            or (section3[4] & 0x0F) != (_AC0292_SECTION3_BASE[4] & 0x0F)
+            or section3[6] != _AC0292_SECTION3_BASE[6]
+            or not _ac0292_verify_checksum(section3)
         ):
             return None
 
         swing_nibble = (section3[2] >> 4) & 0xF
+        if swing_nibble & 0x8 == 0:
+            return None
         try:
             swing_mode = SamsungACSwingMode(swing_nibble & 0x7)
         except ValueError:
-            return None
-        if swing_nibble & 0x8 == 0:
             return None
 
         temperature = ((section3[4] >> 4) & 0xF) + AC0292_MIN_TEMP
