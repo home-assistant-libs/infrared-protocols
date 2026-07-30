@@ -63,7 +63,10 @@ class ProntoCommand(Command):
 
     @staticmethod
     def _int_to_pronto(value: int) -> bytes:
-        return struct.pack(">h", value)
+        try:
+            return struct.pack(">h", value)
+        except struct.error as err:
+            raise ValueError("Invalid data.") from err
 
     @staticmethod
     def _pronto_to_int(pronto_block: bytes) -> int:
