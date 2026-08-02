@@ -48,6 +48,8 @@ class ProntoCommand(Command):
         passes of the code's repeat sequence are emitted after the initial
         transmission.
         """
+        if repeat_count < 0:
+            raise ValueError("repeat_count must be non-negative")
         words = ProntoCommand._unpack_words(pronto_data=pronto_data)
         if len(words) < 4:
             raise ValueError("pronto code must start with a 4 word preamble")
