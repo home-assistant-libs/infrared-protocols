@@ -251,24 +251,29 @@ class LgAcCommand(Command):
 class LgAcFixedCommand(Command):
     """LG air-conditioner fixed-code command.
 
-    Some remote buttons emit a whole frame verbatim rather than a state frame.
-    ``command`` is the 16-bit body between the fixed 0x88 signature and the checksum
-    nibble.
+    Some remote buttons emit a whole frame verbatim rather than a state frame, so the
+    nibbles that carry temperature and fan in a state frame are part of the code itself.
+
+    ``code`` is the 16-bit body between the fixed 0x88 signature and the checksum
+    nibble; both are the same for every frame and are derived here rather than stored.
+    A full frame is ``0x88`` + the 16-bit body + a checksum nibble, e.g. the display
+    toggle ``0xC00A`` is transmitted as ``0x88C00A6``. See ``LgACCode`` for the known
+    bodies.
     """
 
-    command: int
+    code: int
 
-    def __init__(self, *, command: int, modulation: int = 38000) -> None:
+    def __init__(self, *, code: int, modulation: int = 38000) -> None:
         """Initialize the LG AC fixed-code command."""
         super().__init__(modulation=modulation)
-        if not 0 <= command <= 0xFFFF:
-            raise ValueError(f"command must be a 16-bit value, got {command:#x}")
-        self.command = command
+        if not 0 <= code <= 0xFFFF:
+            raise ValueError(f"code must be a 16-bit value, got {code:#x}")
+        self.code = code
 
     @override
     def get_raw_timings(self) -> list[int]:
         """Get raw timings for the fixed-code command."""
-        frame_data = _BASE | (self.command << 4)
+        frame_data = _BASE | (self.code << 4)
         return _encode_frame(frame_data | _checksum(frame_data))
 
     @classmethod
@@ -281,4 +286,4 @@ class LgAcFixedCommand(Command):
         frame = _decode_frame(timings)
         if frame is None:
             return None
-        return cls(command=(frame >> 4) & 0xFFFF)
+        return cls(code=(frame >> 4) & 0xFFFF)

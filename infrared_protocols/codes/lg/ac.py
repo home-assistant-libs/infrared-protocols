@@ -1,10 +1,7 @@
 """Fixed-code button codes for LG air conditioners.
 
 Each value is the 16-bit body of an LG2 frame the remote emits verbatim, unlike the
-state frames built by ``LgAcCommand``. The fixed 0x88 signature and the checksum nibble
-are the same for every frame, so they are not stored here; ``LgAcFixedCommand`` adds
-them. A full frame is ``0x88`` + the 16-bit value + a checksum nibble, e.g. the display
-toggle ``0xC00A`` is transmitted as ``0x88C00A6``.
+state frames built by ``LgAcCommand``.
 """
 
 from enum import IntEnum
@@ -13,15 +10,18 @@ from ...commands import Command
 from ...commands.lg_ac import LgAcFixedCommand
 
 
-class LgAcButton(IntEnum):
+class LgACCode(IntEnum):
     """LG AC fixed-code button; value is the 16-bit frame body."""
 
     SWING_V_TOGGLE = 0x1000
     """only flips between auto-swing and off; prefer SWING_V_SWING and SWING_V_OFF"""
-    JET = 0x100D
-    """Turbo mode; may be called VIRAAT or Power Cool on some remotes."""
-    DIET = 0x101F
-    """Reduces the unit's power draw"""
+    JET = 0x1008
+    """Jet mode, the fast cool/heat boost."""
+    VIRAAT = 0x100D
+    """Viraat mode, an additional separate boost offered on LG India units.
+    Distinct from JET."""
+    ECO = 0x101F
+    """Reduces the unit's power draw; may be called DIET on some remotes."""
 
     SWING_V_LOWEST = 0x1304
     SWING_V_LOW = 0x1305
@@ -61,4 +61,4 @@ class LgAcButton(IntEnum):
 
     def to_command(self) -> Command:
         """Build an LG AC fixed-code command for this button."""
-        return LgAcFixedCommand(command=self.value)
+        return LgAcFixedCommand(code=self.value)
