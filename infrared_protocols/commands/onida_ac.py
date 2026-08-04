@@ -18,7 +18,7 @@ Block A (35 bits):
   bits 0-2:   mode
   bit 3:      power
   bits 4-5:   fan speed
-  bit 6:      swing (set when either vertical or horizontal swing is on)
+  bit 6:      swing (set while either axis is actually swinging)
   bits 8-11:  temperature (temp_c - 16)
   bit 20:     turbo
   bit 21:     display light
@@ -31,7 +31,10 @@ Block B (32 bits):
   bit 13:     fixed signature
   bits 28-31: checksum
 
-Block A's bit 6 only records that some swing is on; block B's bits 0 and 4 say which.
+Block A's bit 6 records whether anything is swinging; block B's bits 0 and 4 say which
+axis. Block B's bits latch: they keep the last selected axis after swing is switched
+off, so they only describe live movement while block A's bit 6 is set. The checksum is
+computed over block B's latched horizontal bit rather than the effective state.
 """
 
 from enum import IntEnum
@@ -265,8 +268,17 @@ class OnidaAcCommand(Command):
         if abs(timings[2 + 2 * _FRAME_A_BITS] - _BIT_MARK) > _BIT_TOLERANCE:
             return None
 
-        frame_b = _decode_bits(timings, frame_a_len + 1, _FRAME_B_BITS)
+        # The mid-frame gap is a space, so it must be negative as well as long.
+        if timings[frame_a_len] >= 0 or not _is_close(
+            abs(timings[frame_a_len]), _FRAME_GAP, _TOLERANCE
+        ):
+            return None
+
+        frame_b_start = frame_a_len + 1
+        frame_b = _decode_bits(timings, frame_b_start, _FRAME_B_BITS)
         if frame_b is None:
+            return None
+        if abs(timings[frame_b_start + 2 * _FRAME_B_BITS] - _BIT_MARK) > _BIT_TOLERANCE:
             return None
 
         for index in _A_TRAILER:
@@ -286,9 +298,18 @@ class OnidaAcCommand(Command):
             return None
 
         power = bool(frame_a[_A_POWER])
-        swing_h = bool(frame_b[_B_SWING_H])
+        # Block B's two bits latch the axis last selected and keep that value after
+        # swing is switched off, so block A's bit is what says whether anything is
+        # actually swinging. Turning one axis off while both ran sends block A's bit
+        # clear with the other axis still set in block B.
+        latched_swing_h = bool(frame_b[_B_SWING_H])
+        swinging = bool(frame_a[_A_SWING])
+        swing_v = swinging and bool(frame_b[_B_SWING_V])
+        swing_h = swinging and latched_swing_h
+
+        # The checksum is computed over block B's latched bit, not the effective state.
         if _get_field(frame_b, *_B_CHECKSUM) != _checksum(
-            mode=mode.value, power=power, temp=temperature, swing_h=swing_h
+            mode=mode.value, power=power, temp=temperature, swing_h=latched_swing_h
         ):
             return None
 
@@ -297,7 +318,7 @@ class OnidaAcCommand(Command):
             mode=mode,
             temperature=temperature,
             fan=fan,
-            swing_v=bool(frame_b[_B_SWING_V]),
+            swing_v=swing_v,
             swing_h=swing_h,
             turbo=bool(frame_a[_A_TURBO]),
             display=bool(frame_a[_A_DISPLAY]),

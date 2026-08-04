@@ -12,13 +12,22 @@ from infrared_protocols.commands.onida_ac import (
 # so the tests are independent
 _FRAME_A_BITS = 35
 _FRAME_B_BITS = 32
+_LEADER_MARK = 9000
+_LEADER_SPACE = 4500
+_BIT_MARK = 562
 _BIT_ONE_SPACE = 1687
 _BIT_ZERO_SPACE = 562
+_FRAME_GAP = 20100
 
 _ONE_THRESHOLD = (_BIT_ONE_SPACE + _BIT_ZERO_SPACE) // 2
 
-# Each entry is the (block A, block B) bitstrings, MSB index 0 = first
-# transmitted bit, exactly as the remote sends them.
+# Leader (2) + block A bit pairs + block A end mark.
+_MID_GAP_INDEX = 2 + 2 * _FRAME_A_BITS + 1
+_FRAME_B_START = _MID_GAP_INDEX + 1
+_FRAME_B_END_MARK_INDEX = _FRAME_B_START + 2 * _FRAME_B_BITS
+
+# Each entry is the (block A, block B) bitstrings in transmission order:
+# index 0 is the first bit on the wire, exactly as the remote sends them.
 _CAPTURED = {
     "cool_24_baseline": (
         "10010000000100000000010000001010010",
@@ -56,6 +65,18 @@ _CAPTURED = {
         "10010010100100000000010000001010010",
         "10000000000001000000000000000111",
     ),
+    "cool_24_fan_low": (
+        "10011000000100000000010000001010010",
+        "00000000000001000000000000001011",
+    ),
+    "cool_24_fan_medium_swing_both": (
+        "10010110000100000000010000001010010",
+        "10001000000001000000000000000111",
+    ),
+    "cool_24_fan_high_swing_both": (
+        "10011110000100000000010000001010010",
+        "10001000000001000000000000000111",
+    ),
 }
 
 
@@ -69,12 +90,23 @@ def _extract_frames(timings: list[int]) -> tuple[str, str]:
         "1" if abs(timings[3 + 2 * i]) > _ONE_THRESHOLD else "0"
         for i in range(_FRAME_A_BITS)
     )
-    frame_b_start = 2 + 2 * _FRAME_A_BITS + 1 + 1
     frame_b = "".join(
-        "1" if abs(timings[frame_b_start + 1 + 2 * i]) > _ONE_THRESHOLD else "0"
+        "1" if abs(timings[_FRAME_B_START + 1 + 2 * i]) > _ONE_THRESHOLD else "0"
         for i in range(_FRAME_B_BITS)
     )
     return frame_a, frame_b
+
+
+def _build_timings(frame_a: str, frame_b: str) -> list[int]:
+    """Build raw timings from two bitstrings without going through the encoder."""
+    timings = [_LEADER_MARK, -_LEADER_SPACE]
+    for bit in frame_a:
+        timings += [_BIT_MARK, -(_BIT_ONE_SPACE if bit == "1" else _BIT_ZERO_SPACE)]
+    timings += [_BIT_MARK, -_FRAME_GAP]
+    for bit in frame_b:
+        timings += [_BIT_MARK, -(_BIT_ONE_SPACE if bit == "1" else _BIT_ZERO_SPACE)]
+    timings += [_BIT_MARK, -_FRAME_GAP]
+    return timings
 
 
 def _frame_a_space(index: int) -> int:
@@ -84,8 +116,7 @@ def _frame_a_space(index: int) -> int:
 
 def _frame_b_space(index: int) -> int:
     """Return the timing index of the space for block B data bit ``index``."""
-    frame_b_start = 2 + 2 * _FRAME_A_BITS + 1 + 1
-    return frame_b_start + 1 + 2 * index
+    return _FRAME_B_START + 1 + 2 * index
 
 
 def _command_for(label: str) -> OnidaAcCommand:
@@ -362,9 +393,58 @@ def test_decode_returns_none_for_bad_data_bit() -> None:
     assert OnidaAcCommand.from_raw_timings(timings) is None
 
 
-def test_decode_returns_none_for_bad_frame_a_end_mark() -> None:
-    """A block A whose terminating mark is out of tolerance is rejected."""
+@pytest.mark.parametrize(
+    "index",
+    [
+        pytest.param(2 + 2 * _FRAME_A_BITS, id="block_a"),
+        pytest.param(_FRAME_B_END_MARK_INDEX, id="block_b"),
+    ],
+)
+def test_decode_returns_none_for_bad_end_mark(index: int) -> None:
+    """A block whose terminating mark is out of tolerance is rejected."""
     timings = OnidaAcCommand(mode=OnidaAcMode.COOL, temperature=24).get_raw_timings()
-    timings[2 + 2 * _FRAME_A_BITS] = 3000
+    timings[index] = 3000
 
     assert OnidaAcCommand.from_raw_timings(timings) is None
+
+
+@pytest.mark.parametrize(
+    "gap",
+    [
+        pytest.param(-_BIT_ONE_SPACE, id="too_short"),
+        pytest.param(-60000, id="too_long"),
+        pytest.param(20100, id="mark_not_space"),
+    ],
+)
+def test_decode_returns_none_for_bad_mid_frame_gap(gap: int) -> None:
+    """A frame whose mid-frame gap is not the expected long space is rejected."""
+    timings = OnidaAcCommand(mode=OnidaAcMode.COOL, temperature=24).get_raw_timings()
+    timings[_MID_GAP_INDEX] = gap
+
+    assert OnidaAcCommand.from_raw_timings(timings) is None
+
+
+# Captured by switching one axis off while both were swinging. Block A's swing bit is
+# clear while block B still carries the other axis, so these cannot be produced by the
+# encoder and are decode-only.
+_CAPTURED_LATCHED_SWING = {
+    "v_off_from_both": (
+        "10010000000100000000010000001010010",
+        "00001000000001000000000000000111",
+    ),
+    "h_off_from_both": (
+        "10010000000100000000010000001010010",
+        "10000000000001000000000000001011",
+    ),
+}
+
+
+@pytest.mark.parametrize("label", list(_CAPTURED_LATCHED_SWING))
+def test_decode_latched_swing_bits_read_as_off(label: str) -> None:
+    """Block B's swing bits only count while block A says something is swinging."""
+    frame_a, frame_b = _CAPTURED_LATCHED_SWING[label]
+    result = OnidaAcCommand.from_raw_timings(_build_timings(frame_a, frame_b))
+
+    assert result is not None
+    assert result.swing_v is False
+    assert result.swing_h is False
