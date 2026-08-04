@@ -1,4 +1,4 @@
-"""Samsung32 IR command."""
+"""Samsung IR commands."""
 
 from typing import override
 
