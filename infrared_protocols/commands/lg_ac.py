@@ -121,6 +121,39 @@ def _encode_frame(frame: int) -> list[int]:
     return timings
 
 
+def _decode_frame(timings: list[int]) -> int | None:
+    """Decode raw IR timings into a validated 28-bit LG frame."""
+    # Header pair (2) + 28 bit pairs (56) + the trailing mark (1)
+    if len(timings) < 2 + 2 * _BITS + 1:
+        return None
+
+    hdr_mark = timings[0]
+    hdr_space = abs(timings[1])
+    if not (
+        _matches_header(hdr_mark, hdr_space, _HDR_MARK, _HDR_SPACE)
+        or _matches_header(hdr_mark, hdr_space, _ALT_HDR_MARK, _ALT_HDR_SPACE)
+    ):
+        return None
+
+    frame = 0
+    for i in range(2, 2 + 2 * _BITS, 2):
+        bit = _decode_bit(timings[i], abs(timings[i + 1]))
+        if bit is None:
+            return None
+        frame = (frame << 1) | bit
+
+    if abs(timings[2 + 2 * _BITS] - _BIT_MARK) > _BIT_TOLERANCE:
+        return None
+
+    if frame >> 20 != _SIGNATURE:
+        return None
+
+    if _checksum(frame) != frame & 0xF:
+        return None
+
+    return frame
+
+
 class LgAcCommand(Command):
     """LG air-conditioner IR command.
 
@@ -187,32 +220,8 @@ class LgAcCommand(Command):
 
         Returns an LgAcCommand if the timings match, or None otherwise.
         """
-        # Header pair (2) + 28 bit pairs (56) + the trailing mark (1)
-        if len(timings) < 2 + 2 * _BITS + 1:
-            return None
-
-        hdr_mark = timings[0]
-        hdr_space = abs(timings[1])
-        if not (
-            _matches_header(hdr_mark, hdr_space, _HDR_MARK, _HDR_SPACE)
-            or _matches_header(hdr_mark, hdr_space, _ALT_HDR_MARK, _ALT_HDR_SPACE)
-        ):
-            return None
-
-        frame = 0
-        for i in range(2, 2 + 2 * _BITS, 2):
-            bit = _decode_bit(timings[i], abs(timings[i + 1]))
-            if bit is None:
-                return None
-            frame = (frame << 1) | bit
-
-        if abs(timings[2 + 2 * _BITS] - _BIT_MARK) > _BIT_TOLERANCE:
-            return None
-
-        if frame >> 20 != _SIGNATURE:
-            return None
-
-        if _checksum(frame) != frame & 0xF:
+        frame = _decode_frame(timings)
+        if frame is None:
             return None
 
         if frame == _OFF_FRAME:
@@ -237,3 +246,44 @@ class LgAcCommand(Command):
                 return None
 
         return cls(mode=mode, temperature=temperature, fan=fan)
+
+
+class LgAcFixedCommand(Command):
+    """LG air-conditioner fixed-code command.
+
+    Some remote buttons emit a whole frame verbatim rather than a state frame, so the
+    nibbles that carry temperature and fan in a state frame are part of the code itself.
+
+    ``code`` is the 16-bit body between the fixed 0x88 signature and the checksum
+    nibble; both are the same for every frame and are derived here rather than stored.
+    A full frame is ``0x88`` + the 16-bit body + a checksum nibble, e.g. the display
+    toggle ``0xC00A`` is transmitted as ``0x88C00A6``. See ``LgACCode`` for the known
+    bodies.
+    """
+
+    code: int
+
+    def __init__(self, *, code: int, modulation: int = 38000) -> None:
+        """Initialize the LG AC fixed-code command."""
+        super().__init__(modulation=modulation)
+        if not 0 <= code <= 0xFFFF:
+            raise ValueError(f"code must be a 16-bit value, got {code:#x}")
+        self.code = code
+
+    @override
+    def get_raw_timings(self) -> list[int]:
+        """Get raw timings for the fixed-code command."""
+        frame_data = _BASE | (self.code << 4)
+        return _encode_frame(frame_data | _checksum(frame_data))
+
+    @classmethod
+    def from_raw_timings(cls, timings: list[int]) -> Self | None:
+        """Decode raw IR timings into an LgAcFixedCommand.
+
+        Returns any valid LG frame as its 16-bit body. A state frame decodes here too;
+        use ``LgAcCommand`` to read one as a mode, temperature and fan instead.
+        """
+        frame = _decode_frame(timings)
+        if frame is None:
+            return None
+        return cls(code=(frame >> 4) & 0xFFFF)
