@@ -10,7 +10,7 @@ from ...commands import Command
 from ...commands.lg_ac import LgAcFixedCommand
 
 
-class LgACCode(IntEnum):
+class LGACCode(IntEnum):
     """LG AC fixed-code button; value is the 16-bit frame body."""
 
     SWING_V_TOGGLE = 0x1000

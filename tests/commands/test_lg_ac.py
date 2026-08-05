@@ -2,7 +2,7 @@
 
 import pytest
 
-from infrared_protocols.codes.lg.ac import LgACCode
+from infrared_protocols.codes.lg.ac import LGACCode
 from infrared_protocols.commands.lg_ac import (
     LgAcCommand,
     LgAcFanSpeed,
@@ -319,56 +319,56 @@ def test_decode_returns_none_for_invalid_frame(frame: int) -> None:
 # The full 28-bit frame each code transmits, from the captures and IRremoteESP8266's
 # ir_LG.h. Pins every button to its documented code and guards the 16-bit bodies against
 # a typo, since the encoder derives the signature and checksum and cannot reveal one.
-_CODE_FRAMES: dict[LgACCode, int] = {
-    LgACCode.ION_GENERATOR_ON: 0x88C000C,
-    LgACCode.ION_GENERATOR_OFF: 0x88C0084,
-    LgACCode.LIGHT_TOGGLE: 0x88C00A6,
-    LgACCode.AUTO_CLEAN_ON: 0x88C00B7,
-    LgACCode.AUTO_CLEAN_OFF: 0x88C00C8,
-    LgACCode.WIFI_TOGGLE: 0x88C0297,
-    LgACCode.AUDIO_TOGGLE: 0x88C0758,
-    LgACCode.ENERGY_LIMIT_80: 0x88C07D0,
-    LgACCode.ENERGY_LIMIT_60: 0x88C07E1,
-    LgACCode.ENERGY_LIMIT_OFF: 0x88C07F2,
-    LgACCode.ENERGY_LIMIT_40: 0x88C0804,
-    LgACCode.DIAGNOSE: 0x88C0CE6,
-    LgACCode.JET: 0x8810089,
-    LgACCode.VIRAAT: 0x88100DE,
-    LgACCode.ECO: 0x88101F1,
-    LgACCode.AI_CONVERTIBLE: 0x881408D,
-    LgACCode.SWING_V_TOGGLE: 0x8810001,
-    LgACCode.SWING_V_LOWEST: 0x8813048,
-    LgACCode.SWING_V_LOW: 0x8813059,
-    LgACCode.SWING_V_MIDDLE_LOW: 0x881306A,
-    LgACCode.SWING_V_MIDDLE_HIGH: 0x881307B,
-    LgACCode.SWING_V_HIGH: 0x881308C,
-    LgACCode.SWING_V_HIGHEST: 0x881309D,
-    LgACCode.SWING_V_SWING: 0x8813149,
-    LgACCode.SWING_V_OFF: 0x881315A,
-    LgACCode.SWING_H_LEFT: 0x88130BF,
-    LgACCode.SWING_H_MIDDLE_LEFT: 0x88130C0,
-    LgACCode.SWING_H_MIDDLE: 0x88130D1,
-    LgACCode.SWING_H_MIDDLE_RIGHT: 0x88130E2,
-    LgACCode.SWING_H_RIGHT: 0x88130F3,
-    LgACCode.SWING_H_MIDDLE_TO_LEFT: 0x8813105,
-    LgACCode.SWING_H_MIDDLE_TO_RIGHT: 0x8813116,
-    LgACCode.SWING_H_SWING: 0x881316B,
-    LgACCode.SWING_H_OFF: 0x881317C,
+_CODE_FRAMES: dict[LGACCode, int] = {
+    LGACCode.ION_GENERATOR_ON: 0x88C000C,
+    LGACCode.ION_GENERATOR_OFF: 0x88C0084,
+    LGACCode.LIGHT_TOGGLE: 0x88C00A6,
+    LGACCode.AUTO_CLEAN_ON: 0x88C00B7,
+    LGACCode.AUTO_CLEAN_OFF: 0x88C00C8,
+    LGACCode.WIFI_TOGGLE: 0x88C0297,
+    LGACCode.AUDIO_TOGGLE: 0x88C0758,
+    LGACCode.ENERGY_LIMIT_80: 0x88C07D0,
+    LGACCode.ENERGY_LIMIT_60: 0x88C07E1,
+    LGACCode.ENERGY_LIMIT_OFF: 0x88C07F2,
+    LGACCode.ENERGY_LIMIT_40: 0x88C0804,
+    LGACCode.DIAGNOSE: 0x88C0CE6,
+    LGACCode.JET: 0x8810089,
+    LGACCode.VIRAAT: 0x88100DE,
+    LGACCode.ECO: 0x88101F1,
+    LGACCode.AI_CONVERTIBLE: 0x881408D,
+    LGACCode.SWING_V_TOGGLE: 0x8810001,
+    LGACCode.SWING_V_LOWEST: 0x8813048,
+    LGACCode.SWING_V_LOW: 0x8813059,
+    LGACCode.SWING_V_MIDDLE_LOW: 0x881306A,
+    LGACCode.SWING_V_MIDDLE_HIGH: 0x881307B,
+    LGACCode.SWING_V_HIGH: 0x881308C,
+    LGACCode.SWING_V_HIGHEST: 0x881309D,
+    LGACCode.SWING_V_SWING: 0x8813149,
+    LGACCode.SWING_V_OFF: 0x881315A,
+    LGACCode.SWING_H_LEFT: 0x88130BF,
+    LGACCode.SWING_H_MIDDLE_LEFT: 0x88130C0,
+    LGACCode.SWING_H_MIDDLE: 0x88130D1,
+    LGACCode.SWING_H_MIDDLE_RIGHT: 0x88130E2,
+    LGACCode.SWING_H_RIGHT: 0x88130F3,
+    LGACCode.SWING_H_MIDDLE_TO_LEFT: 0x8813105,
+    LGACCode.SWING_H_MIDDLE_TO_RIGHT: 0x8813116,
+    LGACCode.SWING_H_SWING: 0x881316B,
+    LGACCode.SWING_H_OFF: 0x881317C,
 }
 
 
 def test_code_frame_table_covers_every_code() -> None:
     """The expected-frame table must list every code, so parametrization is total."""
-    assert set(_CODE_FRAMES) == set(LgACCode)
+    assert set(_CODE_FRAMES) == set(LGACCode)
 
 
 def test_fixed_command_encodes_signature_and_checksum() -> None:
     """A fixed-code command wraps its body in the LG2 header, signature and checksum."""
-    timings = LgAcFixedCommand(code=LgACCode.LIGHT_TOGGLE).get_raw_timings()
+    timings = LgAcFixedCommand(code=LGACCode.LIGHT_TOGGLE).get_raw_timings()
 
     assert timings[:2] == [3200, -9900]
     assert len(timings) == 2 + 2 * _BITS + 1
-    assert _extract_frame(timings) == _CODE_FRAMES[LgACCode.LIGHT_TOGGLE]
+    assert _extract_frame(timings) == _CODE_FRAMES[LGACCode.LIGHT_TOGGLE]
 
 
 @pytest.mark.parametrize(
@@ -386,19 +386,19 @@ def test_fixed_command_rejects_out_of_range_code(code: int) -> None:
 
 def test_fixed_command_default_modulation() -> None:
     """Default modulation must be 38 kHz."""
-    cmd = LgAcFixedCommand(code=LgACCode.JET)
+    cmd = LgAcFixedCommand(code=LGACCode.JET)
     assert cmd.modulation == 38000
     assert cmd.repeat_count == 0
 
 
-@pytest.mark.parametrize("code", list(LgACCode), ids=lambda c: c.name)
-def test_code_to_command_encodes_expected_frame(code: LgACCode) -> None:
+@pytest.mark.parametrize("code", list(LGACCode), ids=lambda c: c.name)
+def test_code_to_command_encodes_expected_frame(code: LGACCode) -> None:
     """Each code must encode to its documented full frame."""
     assert _extract_frame(code.to_command().get_raw_timings()) == _CODE_FRAMES[code]
 
 
-@pytest.mark.parametrize("code", list(LgACCode), ids=lambda c: c.name)
-def test_fixed_command_roundtrip(code: LgACCode) -> None:
+@pytest.mark.parametrize("code", list(LGACCode), ids=lambda c: c.name)
+def test_fixed_command_roundtrip(code: LGACCode) -> None:
     """Encoding then decoding a code must recover its body."""
     decoded = LgAcFixedCommand.from_raw_timings(code.to_command().get_raw_timings())
     assert decoded is not None
@@ -409,7 +409,7 @@ def test_fixed_command_decodes_captured_frame() -> None:
     """A captured full frame must decode to the matching code body."""
     decoded = LgAcFixedCommand.from_raw_timings(_build_timings(0x88C00A6))
     assert decoded is not None
-    assert decoded.code == LgACCode.LIGHT_TOGGLE
+    assert decoded.code == LGACCode.LIGHT_TOGGLE
 
 
 def test_fixed_command_from_raw_timings_rejects_bad_checksum() -> None:
@@ -417,8 +417,8 @@ def test_fixed_command_from_raw_timings_rejects_bad_checksum() -> None:
     assert LgAcFixedCommand.from_raw_timings(_build_timings(0x8800001)) is None
 
 
-@pytest.mark.parametrize("code", list(LgACCode), ids=lambda c: c.name)
-def test_state_decoder_rejects_every_fixed_code(code: LgACCode) -> None:
+@pytest.mark.parametrize("code", list(LGACCode), ids=lambda c: c.name)
+def test_state_decoder_rejects_every_fixed_code(code: LGACCode) -> None:
     """A fixed-code frame carries no state, so LgAcCommand must not decode one."""
     timings = code.to_command().get_raw_timings()
     assert LgAcCommand.from_raw_timings(timings) is None
