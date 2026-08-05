@@ -14,12 +14,17 @@ class LgACCode(IntEnum):
     """LG AC fixed-code button; value is the 16-bit frame body."""
 
     SWING_V_TOGGLE = 0x1000
-    """only flips between auto-swing and off; prefer SWING_V_SWING and SWING_V_OFF"""
+    """Flips between auto-swing and off only.
+
+    Prefer :attr:`SWING_V_SWING` and :attr:`SWING_V_OFF`.
+    """
     JET = 0x1008
     """Jet mode, the fast cool/heat boost."""
     VIRAAT = 0x100D
     """Viraat mode, an additional separate boost offered on LG India units.
-    Distinct from JET."""
+
+    Distinct from :attr:`JET`.
+    """
     ECO = 0x101F
     """Reduces the unit's power draw; may be called DIET on some remotes."""
 
