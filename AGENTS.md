@@ -33,7 +33,8 @@
 
 ## Protocol Semantics
 
-- Do not add generic repeat (full frame copy) support to command encoders. Only protocols with a distinct/special repeat-code frame should expose repeat handling.
+- Only expose repeat handling when the protocol itself defines how a held key is transmitted: either a distinct repeat-code frame (NEC, Kaseikyo) or retransmission of the full frame on a fixed frame period (RC-5, RC-6, Samsung32).
+- Do not add a generic "send it N times" knob to an encoder whose protocol says nothing about repetition, and do not invent a frame period the protocol does not specify.
 
 ## Error Handling
 
