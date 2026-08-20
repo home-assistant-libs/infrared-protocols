@@ -36,9 +36,12 @@ def test_philips_tv_code_matches_captured_remote(
     assert isinstance(command, RC6Command)
     assert command.address == 0x00
     assert command.command == expected_command
-    assert command.get_raw_timings() == RC6Command(
-        address=0x00, command=expected_command, toggle=1
-    ).get_raw_timings()
+    assert (
+        command.get_raw_timings()
+        == RC6Command(
+            address=0x00, command=expected_command, toggle=1
+        ).get_raw_timings()
+    )
 
 
 def test_philips_tv_code_to_command_defaults() -> None:
