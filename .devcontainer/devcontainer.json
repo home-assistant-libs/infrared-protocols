@@ -19,7 +19,8 @@
         "python.testing.unittestEnabled": false,
         "python.terminal.activateEnvironment": true,
         "editor.formatOnSave": true,
-        "editor.defaultFormatter": "charliermarsh.ruff"
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "GitHub.vscode-pull-request-github"
       }
     }
   },
