@@ -4,4 +4,4 @@
 set -e
 
 uv pip install -e "."
-uv pip install -e ".[dev]"
+uv pip install --group dev
