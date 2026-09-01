@@ -15,9 +15,17 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 requires-python = ">=3.14"
+dependencies = []
 
 [project.urls]
 "Homepage" = "https://github.com/home-assistant-libs/infrared-protocols"
+
+[dependency-groups]
+dev = [
+    "prek>=0.5.0",
+    "pytest>=9.1.1",
+    "ruff>=0.16.5",
+]
 
 [tool.setuptools]
 include-package-data = false
@@ -54,5 +62,11 @@ max-complexity = 25
 [tool.pyright]
 typeCheckingMode = "standard"
 
-[project.optional-dependencies]
-dev = ["pytest", "prek"]
+[tool.pytest]
+addopts = [
+    "-v",
+    "--tb=short",
+]
+minversion = "9.0"
+pythonpath = ["."]
+testpaths = ["tests"]
