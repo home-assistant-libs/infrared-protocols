@@ -1,48 +1,44 @@
 """Commands for Dyson infrared protocol."""
 
-from typing import override
+from typing import ClassVar, override
 
 from . import Command
 
-# 7-bit preamble fixed by the protocol; occupies the upper bits of the
-# 15-bit payload (bits 14-8), with the 8-bit command code in bits 7-0.
-_PREAMBLE = 0b1001000
 
-
-class DysonCoolCommand(Command):
-    """Dyson Cool infrared command.
+class _DysonFanCommand(Command):
+    """Dyson fan infrared command.
 
     Protocol specification:
       - Header: 2440us mark, 870us space
       - Bit mark: 850us (constant)
       - Bit space: 850us = "0", 1660us = "1"
-      - 15-bit payload, MSB-first: 1001000 (7-bit preamble) + 8-bit command
+      - 15-bit payload, MSB-first: 7-bit preamble (bits 14-8) + 8-bit command
+        code (bits 7-0)
       - Footer: 850us mark
     """
 
-    payload: int
+    _PREAMBLE: ClassVar[int]
+
+    code: int
 
     def __init__(
         self,
         *,
-        payload: int,
+        code: int,
         modulation: int = 38000,
     ) -> None:
-        """Initialize a Dyson Cool command.
+        """Initialize a Dyson fan command.
 
         Args:
-            payload: 15-bit payload value. The upper 7 bits must match the
-                fixed Dyson preamble (0b1001000); the lower 8 bits carry the
-                command code.
+            code: 8-bit command code. The fixed preamble for the device is
+                prepended by the command class.
             modulation: Carrier frequency in Hz.
 
         """
         super().__init__(modulation=modulation)
-        if payload < 0 or payload > 0x7FFF:
-            raise ValueError("Dyson payload must be a valid 15-bit integer")
-        if (payload >> 8) != _PREAMBLE:
-            raise ValueError("Dyson payload must start with the 0b1001000 preamble")
-        self.payload = payload
+        if code < 0 or code > 0xFF:
+            raise ValueError("Dyson command code must be a valid 8-bit integer")
+        self.code = code
 
     @override
     def get_raw_timings(self) -> list[int]:
@@ -53,14 +49,28 @@ class DysonCoolCommand(Command):
         one_space = 1660
         footer_mark = 850
 
+        payload = (self._PREAMBLE << 8) | self.code
+
         timings: list[int] = [header_mark, -header_space]
 
         # 15 bits, MSB-first
         for i in range(14, -1, -1):
-            bit = (self.payload >> i) & 1
+            bit = (payload >> i) & 1
             timings.append(bit_mark)
             timings.append(-(one_space if bit else zero_space))
 
         timings.append(footer_mark)
 
         return timings
+
+
+class DysonCoolCommand(_DysonFanCommand):
+    """Dyson Cool infrared command."""
+
+    _PREAMBLE = 0b1001000
+
+
+class DysonAm09Command(_DysonFanCommand):
+    """Dyson AM09 (Hot+Cool) infrared command."""
+
+    _PREAMBLE = 0b0011000
