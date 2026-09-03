@@ -1,8 +1,4 @@
-"""Dyson AM09 (Hot+Cool) command codes.
-
-Codes are the 8-bit command byte; :class:`DysonAm09Command` prepends the
-7-bit preamble.
-"""
+"""Dyson AM09 (Hot+Cool) command codes."""
 
 from enum import IntEnum
 
