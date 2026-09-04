@@ -167,8 +167,8 @@ def test_decode_stops_at_the_first_timing_that_is_not_a_bit() -> None:
     [
         pytest.param(_BIT_MARK, _ZERO_SPACE, b"\x00", id="nominal_zero"),
         pytest.param(_BIT_MARK, _ONE_SPACE, b"\xff", id="nominal_one"),
-        pytest.param(65, _ZERO_SPACE, b"\x00", id="mark_at_lower_edge"),
-        pytest.param(785, _ZERO_SPACE, b"\x00", id="mark_at_upper_edge"),
+        pytest.param(75, _ZERO_SPACE, b"\x00", id="mark_at_lower_edge"),
+        pytest.param(775, _ZERO_SPACE, b"\x00", id="mark_at_upper_edge"),
         pytest.param(_BIT_MARK, 775, b"\x00", id="zero_space_at_upper_edge"),
         pytest.param(_BIT_MARK, 925, b"\xff", id="one_space_at_lower_edge"),
     ],

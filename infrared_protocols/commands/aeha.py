@@ -46,7 +46,7 @@ class AehaTiming:
     trailer_space: int = 8000
     leader_mark_tolerance: float = 0.7
     leader_space_tolerance: float = 0.25
-    bit_mark_tolerance: int = 360
+    bit_mark_tolerance: int = 350
     bit_space_tolerance: int = 350
 
 
