@@ -16,7 +16,7 @@ constants derived from T.
 """
 
 from dataclasses import dataclass
-from typing import override
+from typing import ClassVar, override
 
 from . import Command
 
@@ -36,6 +36,11 @@ class AehaTiming:
     leader parts differ by a factor of two and a single window cannot fit both. A
     receiver skews a bit by roughly a fixed number of microseconds rather than a fixed
     proportion, so the bit tolerances are absolute microseconds instead.
+
+    The trailer gap is whatever the sender leaves before the next burst, so it is not
+    matched against an expected duration: any space of at least min_trailer_space ends
+    the frame. That floor only has to sit far above a one's space for no distorted bit
+    to be mistaken for the end of the payload.
     """
 
     leader_mark: int = 8 * _NOMINAL_BASE_UNIT
@@ -44,6 +49,7 @@ class AehaTiming:
     zero_space: int = _NOMINAL_BASE_UNIT
     one_space: int = 3 * _NOMINAL_BASE_UNIT
     trailer_space: int = 8000
+    min_trailer_space: int = 4000
     leader_mark_tolerance: float = 0.7
     leader_space_tolerance: float = 0.25
     bit_mark_tolerance: int = 350
@@ -62,7 +68,7 @@ def _is_close(actual: int, expected: int, tolerance: float) -> bool:
 class AehaCommand(Command):
     """AEHA format IR command."""
 
-    TIMING: AehaTiming = AEHA_NOMINAL
+    TIMING: ClassVar[AehaTiming] = AEHA_NOMINAL
     """Physical-layer timings for this AEHA variant."""
 
     data: bytes
@@ -106,10 +112,16 @@ class AehaCommand(Command):
     def _decode_data(cls, timings: list[int]) -> bytes | None:
         """Decode raw IR timings into the payload bytes they carry.
 
-        Returns the payload if the timings open with this variant's leader and hold a
-        whole number of bytes, or None otherwise. Trailing timings that do not complete
-        a byte make the whole burst invalid, since a message truncated mid-byte cannot
-        be trusted.
+        Returns the payload if the timings open with this variant's leader, carry a
+        whole number of bytes and close with the trailer, or None otherwise. Anything
+        else is rejected rather than cut short: a pair that decodes as neither a bit nor
+        the trailer is corruption, and stopping there would hand back a prefix of the
+        payload that looks just like a shorter message. A message truncated mid-byte
+        cannot be trusted either.
+
+        A capture that drops the final gap is still accepted, since some receivers stop
+        recording at the last mark, and timings after the trailer are ignored, since a
+        capture often runs on into the repeat that follows.
         """
         timing = cls.TIMING
         if len(timings) < 2:
@@ -122,11 +134,22 @@ class AehaCommand(Command):
             return None
 
         bits: list[int] = []
-        for i in range(2, len(timings) - 1, 2):
-            bit = cls._decode_bit(timings[i], abs(timings[i + 1]))
-            if bit is None:
+        index = 2
+        while index < len(timings):
+            mark = timings[index]
+            has_space = index + 1 < len(timings)
+            space = abs(timings[index + 1]) if has_space else None
+            if space is None or space >= timing.min_trailer_space:
+                if abs(mark - timing.bit_mark) > timing.bit_mark_tolerance:
+                    return None
                 break
+            bit = cls._decode_bit(mark, space)
+            if bit is None:
+                return None
             bits.append(bit)
+            index += 2
+        else:
+            return None
 
         if not bits or len(bits) % 8:
             return None

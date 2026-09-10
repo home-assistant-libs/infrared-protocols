@@ -151,13 +151,45 @@ def test_decode_stops_at_the_trailer() -> None:
     assert len(timings) == 2 + 2 * 16 + 2
 
 
-def test_decode_stops_at_the_first_timing_that_is_not_a_bit() -> None:
-    """Whatever follows a whole payload ends it, the trailer being one such thing.
+def test_decode_rejects_corruption_at_a_byte_boundary() -> None:
+    """A damaged bit must reject the burst, not end the payload early.
 
-    The trailer is not special-cased, so a burst that runs into another signal, or into
-    noise, still yields the bytes it did carry as long as they are whole.
+    Corruption that lands on a byte boundary would otherwise leave a whole number of
+    bytes behind, and a prefix of the payload is indistinguishable from a shorter
+    message once it is returned.
     """
+    timings = _timings_for(b"\x14\x63")
+    # Damage the first bit of the second byte, leaving one whole byte before it.
+    timings[2 + 2 * 8 + 1] = -900
+
+    assert AehaCommand._decode_data(timings) is None
+
+
+def test_decode_rejects_a_burst_that_runs_into_noise() -> None:
+    """Bits that never reach a trailer must not decode."""
     timings = _timings_for(b"\x14\x63")[:-2] + [_BIT_MARK, -900, _BIT_MARK, -900]
+
+    assert AehaCommand._decode_data(timings) is None
+
+
+def test_decode_rejects_a_trailer_whose_mark_is_not_a_bit_mark() -> None:
+    """The trailer's mark is one bit mark, so any other ending is not AEHA."""
+    timings = _timings_for(b"\x14\x63")
+    timings[-2] = 3000
+
+    assert AehaCommand._decode_data(timings) is None
+
+
+def test_decode_tolerates_a_missing_trailer_space() -> None:
+    """Some receivers stop recording at the last mark, so the final gap is optional."""
+    timings = _timings_for(b"\x14\x63")[:-1]
+
+    assert AehaCommand._decode_data(timings) == b"\x14\x63"
+
+
+def test_decode_ignores_timings_after_the_trailer() -> None:
+    """A capture that runs on into the repeat that follows must still decode."""
+    timings = _timings_for(b"\x14\x63") + _timings_for(b"\x14\x63")
 
     assert AehaCommand._decode_data(timings) == b"\x14\x63"
 
