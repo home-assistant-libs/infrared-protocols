@@ -3,6 +3,7 @@
 import pytest
 
 from infrared_protocols.commands.gree_ac import (
+    GreeAcAir,
     GreeAcCommand,
     GreeAcFanSpeed,
     GreeAcMode,
@@ -18,6 +19,7 @@ _BIT_MARK = 562
 _BIT_ONE_SPACE = 1687
 _BIT_ZERO_SPACE = 562
 _FRAME_GAP = 20100
+_CHECKSUM_BASE = 10
 
 _ONE_THRESHOLD = (_BIT_ONE_SPACE + _BIT_ZERO_SPACE) // 2
 
@@ -473,3 +475,192 @@ def test_decode_latched_swing_bits_read_as_off(label: str) -> None:
     assert result is not None
     assert result.swing_v is False
     assert result.swing_h is False
+
+
+def _checksum(frame_a: str, frame_b: str) -> int:
+    """Recompute the checksum nibble here rather than importing the module's."""
+    total = _CHECKSUM_BASE
+    total += sum(_bits_to_int_lsb(frame_a, 8 * i, 4) for i in range(4))
+    total += sum(_bits_to_int_lsb(frame_b, 8 * i + 4, 4) for i in range(3))
+    return total & 0xF
+
+
+def _set_bits(frame: str, start: int, width: int, value: int) -> str:
+    """Return the bitstring with a LSB-first field overwritten."""
+    bits = list(frame)
+    for i in range(width):
+        bits[start + i] = "1" if (value >> i) & 1 else "0"
+    return "".join(bits)
+
+
+def _timings_with_block_a_field(start: int, width: int, value: int) -> list[int]:
+    """Build a cool/24 frame with one block A field overwritten and a valid checksum.
+
+    Fixing the checksum keeps these frames rejected for the field under test rather
+    than for the checksum that overwriting it would otherwise break.
+    """
+    frame_a, frame_b = _extract_frames(
+        GreeAcCommand(mode=GreeAcMode.COOL, temperature=24).get_raw_timings()
+    )
+    frame_a = _set_bits(frame_a, start, width, value)
+    frame_b = _set_bits(frame_b, 28, 4, _checksum(frame_a, frame_b))
+    return _build_timings(frame_a, frame_b)
+
+
+@pytest.mark.parametrize(
+    ("sleep", "timer_hours", "anion", "air"),
+    [
+        pytest.param(False, None, False, GreeAcAir.OFF, id="all_off"),
+        pytest.param(True, 0.5, True, GreeAcAir.LEVEL_1, id="half_hour_all_on"),
+        pytest.param(False, 0, True, GreeAcAir.LEVEL_2, id="zero_hour_timer"),
+        pytest.param(True, 10.5, False, GreeAcAir.OFF, id="two_digit_timer"),
+        pytest.param(False, 24, True, GreeAcAir.LEVEL_1, id="max_timer"),
+    ],
+)
+def test_roundtrip_sleep_timer_anion_and_air(
+    sleep: bool, timer_hours: float | None, anion: bool, air: GreeAcAir
+) -> None:
+    """The fields the Onida captures leave at zero round-trip on their own bits."""
+    cmd = GreeAcCommand(
+        mode=GreeAcMode.COOL,
+        temperature=24,
+        sleep=sleep,
+        timer_hours=timer_hours,
+        anion=anion,
+        air=air,
+    )
+    result = GreeAcCommand.from_raw_timings(cmd.get_raw_timings())
+
+    assert result is not None
+    assert result.sleep is sleep
+    assert result.timer_hours == timer_hours
+    assert result.anion is anion
+    assert result.air is air
+
+
+def test_timer_splits_the_hour_into_decimal_digits() -> None:
+    """The hour is two decimal digits in separate fields, not a binary hour count."""
+    frame_a, _ = _extract_frames(
+        GreeAcCommand(
+            mode=GreeAcMode.COOL, temperature=24, timer_hours=10.5
+        ).get_raw_timings()
+    )
+
+    assert frame_a[12] == "1"
+    assert _bits_to_int_lsb(frame_a, 13, 2) == 1
+    assert frame_a[15] == "1"
+    assert _bits_to_int_lsb(frame_a, 16, 4) == 0
+
+
+def test_timer_off_zeroes_the_whole_field() -> None:
+    """An off timer leaves bits 12-19 clear, as the remote sends them."""
+    frame_a, _ = _extract_frames(
+        GreeAcCommand(mode=GreeAcMode.COOL, temperature=24).get_raw_timings()
+    )
+
+    assert frame_a[12:20] == "0" * 8
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        pytest.param(
+            GreeAcCommand(mode=GreeAcMode.COOL, temperature=24, timer_hours=3),
+            id="timer_hour_units",
+        ),
+        pytest.param(
+            GreeAcCommand(mode=GreeAcMode.COOL, temperature=24, air=GreeAcAir.LEVEL_1),
+            id="air",
+        ),
+    ],
+)
+def test_fields_inside_the_checksum_nibbles_change_it(command: GreeAcCommand) -> None:
+    """The timer hour units and air sit in nibbles the checksum sums."""
+    base = _extract_frames(
+        GreeAcCommand(mode=GreeAcMode.COOL, temperature=24).get_raw_timings()
+    )[1]
+
+    assert _extract_frames(command.get_raw_timings())[1][28:] != base[28:]
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        pytest.param(
+            GreeAcCommand(mode=GreeAcMode.COOL, temperature=24, sleep=True),
+            id="sleep",
+        ),
+        pytest.param(
+            GreeAcCommand(mode=GreeAcMode.COOL, temperature=24, anion=True),
+            id="anion",
+        ),
+        pytest.param(
+            GreeAcCommand(mode=GreeAcMode.COOL, temperature=24, timer_hours=10),
+            id="timer_half_tens_and_enabled",
+        ),
+    ],
+)
+def test_fields_outside_the_checksum_nibbles_leave_it_alone(
+    command: GreeAcCommand,
+) -> None:
+    """Sleep, anion and the timer bits above the hour units stay out of the sum."""
+    base = _extract_frames(
+        GreeAcCommand(mode=GreeAcMode.COOL, temperature=24).get_raw_timings()
+    )[1]
+
+    assert _extract_frames(command.get_raw_timings())[1][28:] == base[28:]
+
+
+@pytest.mark.parametrize(
+    ("start", "width", "value", "air", "timer_hours"),
+    [
+        pytest.param(24, 2, 0b10, GreeAcAir.LEVEL_2, None, id="air_level_2"),
+        pytest.param(12, 8, 0b0010_1_00_1, GreeAcAir.OFF, 2.5, id="timer_2_5_hours"),
+    ],
+)
+def test_overwritten_block_a_field_decodes_when_the_value_is_defined(
+    start: int, width: int, value: int, air: GreeAcAir, timer_hours: float | None
+) -> None:
+    """Pin that the rejection cases below fail on the field, not on the checksum."""
+    result = GreeAcCommand.from_raw_timings(
+        _timings_with_block_a_field(start, width, value)
+    )
+
+    assert result is not None
+    assert result.air is air
+    assert result.timer_hours == timer_hours
+
+
+@pytest.mark.parametrize(
+    ("start", "width", "value"),
+    [
+        pytest.param(24, 2, 0b11, id="air_undefined_value"),
+        pytest.param(12, 8, 0b0000_0_00_1, id="timer_half_set_while_off"),
+        pytest.param(12, 8, 0b0001_0_00_0, id="timer_units_set_while_off"),
+        pytest.param(12, 8, 0b0000_0_01_0, id="timer_tens_set_while_off"),
+        pytest.param(12, 8, 0b1010_1_00_0, id="timer_units_digit_above_nine"),
+        pytest.param(12, 8, 0b0000_1_11_0, id="timer_hours_above_max"),
+    ],
+)
+def test_decode_returns_none_for_undefined_field_value(
+    start: int, width: int, value: int
+) -> None:
+    """A field carrying a value no remote produces is rejected, checksum aside."""
+    assert (
+        GreeAcCommand.from_raw_timings(_timings_with_block_a_field(start, width, value))
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    ("timer_hours", "match"),
+    [
+        pytest.param(-0.5, "out of range", id="negative"),
+        pytest.param(24.5, "out of range", id="above_max"),
+        pytest.param(1.25, "not a multiple", id="quarter_hour"),
+    ],
+)
+def test_timer_hours_out_of_range(timer_hours: float, match: str) -> None:
+    """A timer the remote cannot set is rejected at construction."""
+    with pytest.raises(ValueError, match=match):
+        GreeAcCommand(mode=GreeAcMode.COOL, temperature=24, timer_hours=timer_hours)
