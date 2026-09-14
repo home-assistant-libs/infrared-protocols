@@ -1,20 +1,8 @@
 """Gree air-conditioner IR protocol.
 
-Measured from a physical remote: a 9000/4500 leader, 562 marks, 562 and 1687
-spaces, and a ~20100 us gap between blocks.
-
-The same protocol is implemented as GREE in IRremoteESP8266's `ir_Gree.cpp`, which
-was reverse-engineered independently from different hardware. The two agree on
-structure - block lengths, and that file's 0b010 block footer is block A's fixed
-trailer here - which is what identifies them as one protocol. They differ slightly
-on timings (it has 620 marks, 540/1600 spaces, a 19980 gap), and neither set is a
-vendor specification: both are measurements of what one remote emitted. The unit
-these captures came from accepts either, so the bit window below is sized to decode
-both rather than treating one as correct.
-
-Gree hardware is widely rebranded - these captures came from an Onida unit - so a
-remote from another brand may decode here unchanged; one that does not is a variant
-worth confirming rather than proof of a separate protocol.
+A 9000/4500 leader, 562 marks, and 562 and 1687 spaces. Remotes vary around these
+values, so the decoder matches bits with a window wide enough to also take a 620
+mark and 540/1600 spaces.
 
 A command is a single frame built from two bit blocks separated by a long space:
 
@@ -22,8 +10,6 @@ A command is a single frame built from two bit blocks separated by a long space:
          + block B (32 data bits) + end pulse
 
 Block A carries the full state; block B carries the swing detail and the checksum.
-(An earlier capture with a too-short receiver idle split this into two frames; it is
-one frame with a long mid-space.)
 
 Bits are sent least-significant first within each field; index 0 below is the first
 transmitted bit.
@@ -76,8 +62,8 @@ _FRAME_B_BITS = 32
 _TOLERANCE = 0.35
 # Marks are stretched by receiver AGC far more than spaces, so bit timing is matched
 # with an absolute window that keeps a zero and a one space apart (562 vs 1687). The
-# window is also wide enough to decode remotes emitting the ir_Gree.cpp timings
-# (620 mark, 540/1600 spaces).
+# window is also wide enough to decode remotes emitting a 620 mark and 540/1600
+# spaces.
 _BIT_TOLERANCE = 350
 
 # Block A field positions (bit index, width), LSB-first within the field.

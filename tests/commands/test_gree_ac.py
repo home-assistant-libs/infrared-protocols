@@ -147,8 +147,8 @@ def test_encode_timing_values() -> None:
     assert spaces == {4500, 1687, 562, 20100}
 
 
-def _retime_to_irremote(timings: list[int]) -> list[int]:
-    """Re-render these timings as the ones IRremoteESP8266's ir_Gree.cpp uses."""
+def _retime_to_variant(timings: list[int]) -> list[int]:
+    """Re-render these timings at the other pulse lengths Gree remotes emit."""
     marks = {562: 620}
     spaces = {1687: 1600, 562: 540, 20100: 19980}
     return [
@@ -158,14 +158,10 @@ def _retime_to_irremote(timings: list[int]) -> list[int]:
 
 
 @pytest.mark.parametrize("label", list(_CAPTURED))
-def test_decode_accepts_irremote_timings(label: str) -> None:
-    """Decode frames sent at the timings ir_Gree.cpp measured from its hardware.
-
-    Neither timing set is a vendor specification, and remotes emit both, so the bit
-    window is deliberately wide enough to take either without a second decoder.
-    """
+def test_decode_accepts_variant_pulse_lengths(label: str) -> None:
+    """Decode a frame whose pulses sit at the far end of the bit window."""
     expected = _command_for(label)
-    timings = _retime_to_irremote(expected.get_raw_timings())
+    timings = _retime_to_variant(expected.get_raw_timings())
 
     result = GreeAcCommand.from_raw_timings(timings)
 
