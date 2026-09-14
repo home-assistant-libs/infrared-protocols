@@ -1,15 +1,15 @@
-"""Onida air-conditioner IR protocol.
+"""Gree air-conditioner IR protocol.
 
-NEC-family timing (9000/4500 leader, 562 mark, 562/1687 spaces), reverse-engineered
-from a physical Onida remote. A command is a single frame built from two bit blocks
-separated by a long space:
+A 9000/4500 leader, 562 marks, and 562 and 1687 spaces. Remotes vary around these
+values, so the decoder matches bits with a window wide enough to also take a 620
+mark and 540/1600 spaces.
+
+A command is a single frame built from two bit blocks separated by a long space:
 
   leader + block A (35 data bits) + end pulse + ~20100 us space
          + block B (32 data bits) + end pulse
 
 Block A carries the full state; block B carries the swing detail and the checksum.
-(An earlier capture with a too-short receiver idle split this into two frames; it is
-one frame with a long mid-space.)
 
 Bits are sent least-significant first within each field; index 0 below is the first
 transmitted bit.
@@ -61,7 +61,9 @@ _FRAME_B_BITS = 32
 
 _TOLERANCE = 0.35
 # Marks are stretched by receiver AGC far more than spaces, so bit timing is matched
-# with an absolute window that keeps a zero and a one space apart (562 vs 1687).
+# with an absolute window that keeps a zero and a one space apart (562 vs 1687). The
+# window is also wide enough to decode remotes emitting a 620 mark and 540/1600
+# spaces.
 _BIT_TOLERANCE = 350
 
 # Block A field positions (bit index, width), LSB-first within the field.
@@ -85,7 +87,7 @@ _B_CHECKSUM = (28, 4)
 _CHECKSUM_CONST = 12
 
 
-class OnidaAcMode(IntEnum):
+class GreeAcMode(IntEnum):
     """AC operating mode; value is the mode field at block A bits 0-2."""
 
     AUTO = 0
@@ -95,7 +97,7 @@ class OnidaAcMode(IntEnum):
     HEAT = 4
 
 
-class OnidaAcFanSpeed(IntEnum):
+class GreeAcFanSpeed(IntEnum):
     """Fan speed; value is the fan field at block A bits 4-5."""
 
     AUTO = 0
@@ -163,16 +165,16 @@ def _decode_bits(timings: list[int], offset: int, count: int) -> list[int] | Non
     return bits
 
 
-class OnidaAcCommand(Command):
-    """Onida air-conditioner IR command.
+class GreeAcCommand(Command):
+    """Gree air-conditioner IR command.
 
     ``temperature`` is in whole degrees celsius, 16 to 30.
     """
 
     power: bool
-    mode: OnidaAcMode
+    mode: GreeAcMode
     temperature: int
-    fan: OnidaAcFanSpeed
+    fan: GreeAcFanSpeed
     swing_v: bool
     swing_h: bool
     turbo: bool
@@ -183,9 +185,9 @@ class OnidaAcCommand(Command):
         self,
         *,
         power: bool = True,
-        mode: OnidaAcMode,
+        mode: GreeAcMode,
         temperature: int,
-        fan: OnidaAcFanSpeed = OnidaAcFanSpeed.AUTO,
+        fan: GreeAcFanSpeed = GreeAcFanSpeed.AUTO,
         swing_v: bool = False,
         swing_h: bool = False,
         turbo: bool = False,
@@ -193,7 +195,7 @@ class OnidaAcCommand(Command):
         blow: bool = False,
         modulation: int = 38000,
     ) -> None:
-        """Initialize the Onida AC IR command."""
+        """Initialize the Gree AC IR command."""
         super().__init__(modulation=modulation)
 
         if not MIN_TEMP <= temperature <= MAX_TEMP:
@@ -213,7 +215,7 @@ class OnidaAcCommand(Command):
 
     @override
     def get_raw_timings(self) -> list[int]:
-        """Get raw timings for the Onida AC command."""
+        """Get raw timings for the Gree AC command."""
         frame_a = [0] * _FRAME_A_BITS
         _set_field(frame_a, *_A_MODE, self.mode.value)
         frame_a[_A_POWER] = int(self.power)
@@ -246,10 +248,10 @@ class OnidaAcCommand(Command):
 
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
-        """Decode raw IR timings into an OnidaAcCommand.
+        """Decode raw IR timings into a GreeAcCommand.
 
         Expects block A followed by block B, as ``get_raw_timings`` emits them.
-        Returns an OnidaAcCommand if the timings match, or None otherwise.
+        Returns a GreeAcCommand if the timings match, or None otherwise.
         """
         # Block A: leader (2) + 35 bit pairs (70) + end mark (1).
         frame_a_len = 2 + 2 * _FRAME_A_BITS + 1
@@ -288,8 +290,8 @@ class OnidaAcCommand(Command):
             return None
 
         try:
-            mode = OnidaAcMode(_get_field(frame_a, *_A_MODE))
-            fan = OnidaAcFanSpeed(_get_field(frame_a, *_A_FAN))
+            mode = GreeAcMode(_get_field(frame_a, *_A_MODE))
+            fan = GreeAcFanSpeed(_get_field(frame_a, *_A_FAN))
         except ValueError:
             return None
 

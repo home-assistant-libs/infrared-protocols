@@ -1,11 +1,11 @@
-"""Tests for the Onida air-conditioner IR command."""
+"""Tests for the Gree air-conditioner IR command."""
 
 import pytest
 
-from infrared_protocols.commands.onida_ac import (
-    OnidaAcCommand,
-    OnidaAcFanSpeed,
-    OnidaAcMode,
+from infrared_protocols.commands.gree_ac import (
+    GreeAcCommand,
+    GreeAcFanSpeed,
+    GreeAcMode,
 )
 
 # Physical-layer constants are duplicated here rather than imported
@@ -119,14 +119,14 @@ def _frame_b_space(index: int) -> int:
     return _FRAME_B_START + 1 + 2 * index
 
 
-def _command_for(label: str) -> OnidaAcCommand:
+def _command_for(label: str) -> GreeAcCommand:
     """Build the command whose state matches a captured frame."""
     a, b = _CAPTURED[label]
-    return OnidaAcCommand(
+    return GreeAcCommand(
         power=a[3] == "1",
-        mode=OnidaAcMode(_bits_to_int_lsb(a, 0, 3)),
+        mode=GreeAcMode(_bits_to_int_lsb(a, 0, 3)),
         temperature=_bits_to_int_lsb(a, 8, 4) + 16,
-        fan=OnidaAcFanSpeed(_bits_to_int_lsb(a, 4, 2)),
+        fan=GreeAcFanSpeed(_bits_to_int_lsb(a, 4, 2)),
         swing_v=b[0] == "1",
         swing_h=b[4] == "1",
         turbo=a[20] == "1",
@@ -137,7 +137,7 @@ def _command_for(label: str) -> OnidaAcCommand:
 
 def test_encode_timing_values() -> None:
     """Pin the physical layer: leader, bit mark, and the two bit spaces."""
-    timings = OnidaAcCommand(mode=OnidaAcMode.COOL, temperature=24).get_raw_timings()
+    timings = GreeAcCommand(mode=GreeAcMode.COOL, temperature=24).get_raw_timings()
 
     assert timings[:2] == [9000, -4500]
     assert timings[2::2].count(562) > 0
@@ -145,6 +145,31 @@ def test_encode_timing_values() -> None:
     assert set(marks) == {9000, 562}
     spaces = {abs(t) for t in timings if t < 0}
     assert spaces == {4500, 1687, 562, 20100}
+
+
+def _retime_to_variant(timings: list[int]) -> list[int]:
+    """Re-render these timings at the other pulse lengths Gree remotes emit."""
+    marks = {562: 620}
+    spaces = {1687: 1600, 562: 540, 20100: 19980}
+    return [
+        marks.get(value, value) if value > 0 else -spaces.get(-value, -value)
+        for value in timings
+    ]
+
+
+@pytest.mark.parametrize("label", list(_CAPTURED))
+def test_decode_accepts_variant_pulse_lengths(label: str) -> None:
+    """Decode a frame whose pulses sit at the far end of the bit window."""
+    expected = _command_for(label)
+    timings = _retime_to_variant(expected.get_raw_timings())
+
+    result = GreeAcCommand.from_raw_timings(timings)
+
+    assert result is not None
+    assert result.mode == expected.mode
+    assert result.temperature == expected.temperature
+    assert result.power == expected.power
+    assert result.fan == expected.fan
 
 
 @pytest.mark.parametrize("label", list(_CAPTURED))
@@ -159,7 +184,7 @@ def test_encode_matches_captured_frames(label: str) -> None:
 def test_decode_captured_frames(label: str) -> None:
     """A captured frame decodes back to the state it was sent with."""
     expected = _command_for(label)
-    result = OnidaAcCommand.from_raw_timings(expected.get_raw_timings())
+    result = GreeAcCommand.from_raw_timings(expected.get_raw_timings())
 
     assert result is not None
     assert result.power is expected.power
@@ -176,13 +201,13 @@ def test_decode_captured_frames(label: str) -> None:
 def test_swing_v_and_h_share_frame_a_bit() -> None:
     """Block A carries a single swing bit; block B distinguishes v from h."""
     v_only = _extract_frames(
-        OnidaAcCommand(
-            mode=OnidaAcMode.COOL, temperature=24, swing_v=True
+        GreeAcCommand(
+            mode=GreeAcMode.COOL, temperature=24, swing_v=True
         ).get_raw_timings()
     )
     h_only = _extract_frames(
-        OnidaAcCommand(
-            mode=OnidaAcMode.COOL, temperature=24, swing_h=True
+        GreeAcCommand(
+            mode=GreeAcMode.COOL, temperature=24, swing_h=True
         ).get_raw_timings()
     )
 
@@ -193,16 +218,16 @@ def test_swing_v_and_h_share_frame_a_bit() -> None:
 def test_horizontal_swing_changes_checksum_vertical_does_not() -> None:
     """Only horizontal swing enters the checksum."""
     base = _extract_frames(
-        OnidaAcCommand(mode=OnidaAcMode.COOL, temperature=24).get_raw_timings()
+        GreeAcCommand(mode=GreeAcMode.COOL, temperature=24).get_raw_timings()
     )[1]
     v = _extract_frames(
-        OnidaAcCommand(
-            mode=OnidaAcMode.COOL, temperature=24, swing_v=True
+        GreeAcCommand(
+            mode=GreeAcMode.COOL, temperature=24, swing_v=True
         ).get_raw_timings()
     )[1]
     h = _extract_frames(
-        OnidaAcCommand(
-            mode=OnidaAcMode.COOL, temperature=24, swing_h=True
+        GreeAcCommand(
+            mode=GreeAcMode.COOL, temperature=24, swing_h=True
         ).get_raw_timings()
     )[1]
 
@@ -215,9 +240,9 @@ def test_horizontal_swing_changes_checksum_vertical_does_not() -> None:
     [
         pytest.param(
             True,
-            OnidaAcMode.COOL,
+            GreeAcMode.COOL,
             16,
-            OnidaAcFanSpeed.AUTO,
+            GreeAcFanSpeed.AUTO,
             False,
             False,
             False,
@@ -226,9 +251,9 @@ def test_horizontal_swing_changes_checksum_vertical_does_not() -> None:
         ),
         pytest.param(
             True,
-            OnidaAcMode.DRY,
+            GreeAcMode.DRY,
             30,
-            OnidaAcFanSpeed.HIGH,
+            GreeAcFanSpeed.HIGH,
             True,
             True,
             True,
@@ -237,9 +262,9 @@ def test_horizontal_swing_changes_checksum_vertical_does_not() -> None:
         ),
         pytest.param(
             False,
-            OnidaAcMode.FAN_ONLY,
+            GreeAcMode.FAN_ONLY,
             23,
-            OnidaAcFanSpeed.MEDIUM,
+            GreeAcFanSpeed.MEDIUM,
             True,
             False,
             False,
@@ -248,9 +273,9 @@ def test_horizontal_swing_changes_checksum_vertical_does_not() -> None:
         ),
         pytest.param(
             True,
-            OnidaAcMode.COOL,
+            GreeAcMode.COOL,
             21,
-            OnidaAcFanSpeed.LOW,
+            GreeAcFanSpeed.LOW,
             False,
             True,
             True,
@@ -261,16 +286,16 @@ def test_horizontal_swing_changes_checksum_vertical_does_not() -> None:
 )
 def test_roundtrip(
     power: bool,
-    mode: OnidaAcMode,
+    mode: GreeAcMode,
     temperature: int,
-    fan: OnidaAcFanSpeed,
+    fan: GreeAcFanSpeed,
     swing_v: bool,
     swing_h: bool,
     turbo: bool,
     blow: bool,
 ) -> None:
     """Every encodable state decodes back to the settings it was built from."""
-    cmd = OnidaAcCommand(
+    cmd = GreeAcCommand(
         power=power,
         mode=mode,
         temperature=temperature,
@@ -280,7 +305,7 @@ def test_roundtrip(
         turbo=turbo,
         blow=blow,
     )
-    result = OnidaAcCommand.from_raw_timings(cmd.get_raw_timings())
+    result = GreeAcCommand.from_raw_timings(cmd.get_raw_timings())
 
     assert result is not None
     assert result.power is power
@@ -295,7 +320,7 @@ def test_roundtrip(
 
 def test_default_modulation() -> None:
     """The command defaults to 38 kHz and sends a single command."""
-    cmd = OnidaAcCommand(mode=OnidaAcMode.COOL, temperature=24)
+    cmd = GreeAcCommand(mode=GreeAcMode.COOL, temperature=24)
 
     assert cmd.modulation == 38000
     assert cmd.repeat_count == 0
@@ -312,14 +337,14 @@ def test_default_modulation() -> None:
 def test_temperature_out_of_range(temperature: int) -> None:
     """A temperature outside 16..30 is rejected."""
     with pytest.raises(ValueError, match="out of range"):
-        OnidaAcCommand(mode=OnidaAcMode.COOL, temperature=temperature)
+        GreeAcCommand(mode=GreeAcMode.COOL, temperature=temperature)
 
 
 def test_decode_returns_none_for_short_timings() -> None:
     """A truncated frame is rejected."""
-    timings = OnidaAcCommand(mode=OnidaAcMode.COOL, temperature=24).get_raw_timings()
+    timings = GreeAcCommand(mode=GreeAcMode.COOL, temperature=24).get_raw_timings()
 
-    assert OnidaAcCommand.from_raw_timings(timings[:100]) is None
+    assert GreeAcCommand.from_raw_timings(timings[:100]) is None
 
 
 @pytest.mark.parametrize(
@@ -331,19 +356,19 @@ def test_decode_returns_none_for_short_timings() -> None:
 )
 def test_decode_returns_none_for_invalid_leader(index: int, value: int) -> None:
     """A frame with a leader outside tolerance is rejected."""
-    timings = OnidaAcCommand(mode=OnidaAcMode.COOL, temperature=24).get_raw_timings()
+    timings = GreeAcCommand(mode=GreeAcMode.COOL, temperature=24).get_raw_timings()
     timings[index] = value
 
-    assert OnidaAcCommand.from_raw_timings(timings) is None
+    assert GreeAcCommand.from_raw_timings(timings) is None
 
 
 def test_decode_returns_none_for_bad_checksum() -> None:
     """A frame whose checksum does not match its state is rejected."""
-    timings = OnidaAcCommand(mode=OnidaAcMode.COOL, temperature=24).get_raw_timings()
+    timings = GreeAcCommand(mode=GreeAcMode.COOL, temperature=24).get_raw_timings()
     # Bit 28 of block B is a one here; forcing it to a zero corrupts the checksum.
     timings[_frame_b_space(28)] = -_BIT_ZERO_SPACE
 
-    assert OnidaAcCommand.from_raw_timings(timings) is None
+    assert GreeAcCommand.from_raw_timings(timings) is None
 
 
 def test_decode_returns_none_for_nec_signal() -> None:
@@ -353,7 +378,7 @@ def test_decode_returns_none_for_nec_signal() -> None:
         timings += [562, -1687]
     timings.append(562)
 
-    assert OnidaAcCommand.from_raw_timings(timings) is None
+    assert GreeAcCommand.from_raw_timings(timings) is None
 
 
 @pytest.mark.parametrize(
@@ -370,27 +395,27 @@ def test_decode_returns_none_for_corrupted_bit(
     space_index: int, space_value: int
 ) -> None:
     """A cleared marker bit or an out-of-range mode field is rejected."""
-    timings = OnidaAcCommand(mode=OnidaAcMode.COOL, temperature=24).get_raw_timings()
+    timings = GreeAcCommand(mode=GreeAcMode.COOL, temperature=24).get_raw_timings()
     timings[space_index] = space_value
 
-    assert OnidaAcCommand.from_raw_timings(timings) is None
+    assert GreeAcCommand.from_raw_timings(timings) is None
 
 
 def test_decode_returns_none_for_decoded_temperature_out_of_range() -> None:
     """A temperature field that decodes above the max is rejected."""
-    timings = OnidaAcCommand(mode=OnidaAcMode.COOL, temperature=30).get_raw_timings()
+    timings = GreeAcCommand(mode=GreeAcMode.COOL, temperature=30).get_raw_timings()
     # 30 °C encodes temp field 14 (bits 8-11); setting bit 8 makes it 15 -> 31 °C.
     timings[_frame_a_space(8)] = -_BIT_ONE_SPACE
 
-    assert OnidaAcCommand.from_raw_timings(timings) is None
+    assert GreeAcCommand.from_raw_timings(timings) is None
 
 
 def test_decode_returns_none_for_bad_data_bit() -> None:
     """A data bit whose mark is out of tolerance is rejected."""
-    timings = OnidaAcCommand(mode=OnidaAcMode.COOL, temperature=24).get_raw_timings()
+    timings = GreeAcCommand(mode=GreeAcMode.COOL, temperature=24).get_raw_timings()
     timings[2] = 3000  # first block A bit mark, far from the 562 nominal
 
-    assert OnidaAcCommand.from_raw_timings(timings) is None
+    assert GreeAcCommand.from_raw_timings(timings) is None
 
 
 @pytest.mark.parametrize(
@@ -402,10 +427,10 @@ def test_decode_returns_none_for_bad_data_bit() -> None:
 )
 def test_decode_returns_none_for_bad_end_mark(index: int) -> None:
     """A block whose terminating mark is out of tolerance is rejected."""
-    timings = OnidaAcCommand(mode=OnidaAcMode.COOL, temperature=24).get_raw_timings()
+    timings = GreeAcCommand(mode=GreeAcMode.COOL, temperature=24).get_raw_timings()
     timings[index] = 3000
 
-    assert OnidaAcCommand.from_raw_timings(timings) is None
+    assert GreeAcCommand.from_raw_timings(timings) is None
 
 
 @pytest.mark.parametrize(
@@ -418,10 +443,10 @@ def test_decode_returns_none_for_bad_end_mark(index: int) -> None:
 )
 def test_decode_returns_none_for_bad_mid_frame_gap(gap: int) -> None:
     """A frame whose mid-frame gap is not the expected long space is rejected."""
-    timings = OnidaAcCommand(mode=OnidaAcMode.COOL, temperature=24).get_raw_timings()
+    timings = GreeAcCommand(mode=GreeAcMode.COOL, temperature=24).get_raw_timings()
     timings[_MID_GAP_INDEX] = gap
 
-    assert OnidaAcCommand.from_raw_timings(timings) is None
+    assert GreeAcCommand.from_raw_timings(timings) is None
 
 
 # Captured by switching one axis off while both were swinging. Block A's swing bit is
@@ -443,7 +468,7 @@ _CAPTURED_LATCHED_SWING = {
 def test_decode_latched_swing_bits_read_as_off(label: str) -> None:
     """Block B's swing bits only count while block A says something is swinging."""
     frame_a, frame_b = _CAPTURED_LATCHED_SWING[label]
-    result = OnidaAcCommand.from_raw_timings(_build_timings(frame_a, frame_b))
+    result = GreeAcCommand.from_raw_timings(_build_timings(frame_a, frame_b))
 
     assert result is not None
     assert result.swing_v is False
