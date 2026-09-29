@@ -33,18 +33,19 @@ class FujitsuACCode(IntEnum):
     # Fujitsu General's documentation gives the button sequences but never says which
     # connection method is which, so these are named after what the remote displays
     # rather than after WPS or access-point mode. L3, which initializes the adapter,
-    # has not been captured.
+    # has not been captured. Each docstring quotes the two-character segment readout
+    # the remote shows for that option.
     WLAN_ENABLE = 0x52
-    """L1 "on": enable the wireless LAN adapter."""
+    """L1, display "on": enable the wireless LAN adapter."""
 
     WLAN_DISABLE = 0x53
-    """L1 "oF": disable the wireless LAN adapter."""
+    """L1, display "oF": disable the wireless LAN adapter."""
 
     WLAN_CONNECT_METHOD_1 = 0x54
-    """L2 "1n": start a connection using the adapter's first method."""
+    """L2, display "1n": start a connection using the adapter's first method."""
 
     WLAN_CONNECT_METHOD_2 = 0x55
-    """L2 "2n": start a connection using the adapter's second method."""
+    """L2, display "2n": start a connection using the adapter's second method."""
 
     STEP_VERTICAL_LOUVRE = 0x6C
     """Move the vertical louvre to its next position.

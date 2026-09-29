@@ -21,9 +21,7 @@ bitfield:
 
 Every other message with this layout is a 7-byte util message: the common header plus
 a checksum byte holding the one's complement of the type byte. Those carry no state of
-their own; each is a button the unit itself acts on, built by
-:class:`FujitsuAcFixedCommand`. The codes are in
-:mod:`infrared_protocols.codes.fujitsu.ac`.
+their own; each is a button the unit itself acts on.
 
 The 16-byte state message is the only state layout handled here. AR-DB1 and AR-JW2
 remotes send a 15-byte one with its own type byte and its own checksum; those frames
@@ -472,12 +470,10 @@ class FujitsuAcCommand(_FujitsuAcMessage):
 class FujitsuAcFixedCommand(_FujitsuAcMessage):
     """Fujitsu General air-conditioner fixed-code command.
 
-    Some remote buttons emit a whole 7-byte util message rather than a state frame.
-    ``code`` is its message type byte, which is all such a message carries beyond the
-    common header; the signature is the same for every one and the checksum is derived
-    from the type byte rather than stored. A full message is ``14 63 00 10 10`` + the
-    type byte + its one's complement, e.g. economy ``0x09`` is transmitted as
-    ``14 63 00 10 10 09 F6``. See ``FujitsuACCode`` for the known types.
+    ``code`` is the message type byte, the only part of a util message that differs
+    between buttons: the header is common to every message and the checksum is derived
+    from the type byte rather than stored, e.g. economy ``0x09`` is transmitted as
+    ``14 63 00 10 10 09 F6``.
 
     The unit keeps the result of each of these and nothing in the message says what
     that result was, so they are one-shot actions rather than settings to read back.
