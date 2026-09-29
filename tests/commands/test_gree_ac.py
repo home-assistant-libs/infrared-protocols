@@ -1,12 +1,12 @@
 """Tests for the Gree air-conditioner IR command."""
 
 import pytest
-
 from infrared_protocols.commands.gree_ac import (
     GreeAcCommand,
     GreeAcFanSpeed,
     GreeAcFreshAir,
     GreeAcMode,
+    GreeAcModel,
 )
 
 # Physical-layer constants are duplicated here rather than imported
@@ -702,3 +702,207 @@ def test_timer_hours_out_of_range(timer_hours: float, match: str) -> None:
     """A timer the remote cannot set is rejected at construction."""
     with pytest.raises(ValueError, match=match):
         GreeAcCommand(mode=GreeAcMode.COOL, temperature=24, timer_hours=timer_hours)
+
+
+def test_yap1f_roundtrip_and_flags() -> None:
+    """Preserve the learned YAP1F bytes while using the shared flag fields."""
+    command = GreeAcCommand(
+        model=GreeAcModel.YAP1F, mode=GreeAcMode.COOL, temperature=25, display=True
+    )
+    timings = command.get_raw_timings()
+    decoded = GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F)
+    assert decoded is not None
+    assert (decoded.power, decoded.mode, decoded.temperature, decoded.fan, decoded.display) == (
+        True, GreeAcMode.COOL, 25, GreeAcFanSpeed.AUTO, True
+    )
+    assert len(timings) == 420
+    decoded_bytes = []
+    for block_start in (2, 142, 282):
+        decoded_bytes.extend(
+            sum((timings[block_start + byte_index * 16 + bit_index * 2 + 1] == -1643) << bit_index for bit_index in range(8))
+            for byte_index in range(4)
+        )
+        block_end = block_start + 4 * 16 + 8
+        decoded_bytes.extend(
+            sum((timings[block_end + byte_index * 16 + bit_index * 2 + 1] == -1643) << bit_index for bit_index in range(8))
+            for byte_index in range(4)
+        )
+    assert decoded_bytes[:4] == [0x09, 0x09, 0x20, 0x50]
+    assert decoded_bytes[4:] == [0xC2, 0x00, 0x00, 0x80, 0x80, 0x09, 0x20, 0x70, 0x00, 0x00, 0x00, 0x30, 0x30, 0x00, 0x00, 0xA0, 0x00, 0x00, 0xA0, 0x00]
+    varied = GreeAcCommand(
+        model=GreeAcModel.YAP1F,
+        mode=GreeAcMode.HEAT,
+        temperature=22,
+        fan=GreeAcFanSpeed.HIGH,
+        turbo=True,
+        display=False,
+        anion=True,
+        blow=True,
+    )
+    decoded = GreeAcCommand.from_raw_timings(
+        varied.get_raw_timings(), model=GreeAcModel.YAP1F
+    )
+    assert decoded is not None
+    assert (decoded.turbo, decoded.display, decoded.anion, decoded.blow) == (
+        True, False, True, True
+    )
+
+
+def test_yap1f_off_auto_malformed_and_generic() -> None:
+    auto = GreeAcCommand(model=GreeAcModel.YAP1F, mode=GreeAcMode.AUTO, temperature=19)
+    off = GreeAcCommand(model=GreeAcModel.YAP1F, power=False, mode=GreeAcMode.COOL, temperature=19)
+    auto_result = GreeAcCommand.from_raw_timings(auto.get_raw_timings(), model=GreeAcModel.YAP1F)
+    off_result = GreeAcCommand.from_raw_timings(off.get_raw_timings(), model=GreeAcModel.YAP1F)
+    assert auto_result is not None and auto_result.temperature == 25
+    assert off_result is not None and not off_result.power and off_result.mode is GreeAcMode.HEAT
+    assert off_result.fan is GreeAcFanSpeed.AUTO
+    dry = GreeAcCommand(
+        model=GreeAcModel.YAP1F, mode=GreeAcMode.DRY,
+        temperature=23, fan=GreeAcFanSpeed.HIGH,
+    )
+    dry_result = GreeAcCommand.from_raw_timings(
+        dry.get_raw_timings(), model=GreeAcModel.YAP1F
+    )
+    assert dry_result is not None and dry_result.fan is GreeAcFanSpeed.LOW
+    corrupt = auto.get_raw_timings()
+    corrupt[4] = -999
+    assert GreeAcCommand.from_raw_timings(corrupt, model=GreeAcModel.YAP1F) is None
+    generic = GreeAcCommand(mode=GreeAcMode.COOL, temperature=25)
+    generic_decoded = GreeAcCommand.from_raw_timings(generic.get_raw_timings())
+    assert generic_decoded is not None
+    assert (generic_decoded.power, generic_decoded.mode, generic_decoded.temperature, generic_decoded.fan) == (True, GreeAcMode.COOL, 25, GreeAcFanSpeed.AUTO)
+
+
+def _yap_space_index(block: int, byte: int, bit: int) -> int:
+    """Find a transmitted byte bit without using the production decoder."""
+    byte_start = block * 140 + 2
+    if byte <= 3:
+        byte_start += byte * 16
+    else:
+        byte_start += 4 * 16 + 8 + (byte - 5) * 16
+    return byte_start + bit * 2 + 1
+
+
+def _flip_yap_bit(timings: list[int], block: int, byte: int, bit: int) -> None:
+    index = _yap_space_index(block, byte, bit)
+    timings[index] = -1643 if timings[index] == -510 else -510
+
+
+@pytest.mark.parametrize(
+    ("display", "anion", "blow", "expected_byte"),
+    [
+        pytest.param(False, False, False, 0x00, id="all_off"),
+        pytest.param(True, False, False, 0x20, id="display_only"),
+        pytest.param(False, True, False, 0x40, id="anion_only"),
+        pytest.param(False, False, True, 0x80, id="blow_only"),
+    ],
+)
+def test_yap1f_shared_flags_preserve_each_wire_bit(
+    display: bool, anion: bool, blow: bool, expected_byte: int
+) -> None:
+    command = GreeAcCommand(
+        model=GreeAcModel.YAP1F,
+        mode=GreeAcMode.COOL,
+        temperature=25,
+        display=display,
+        anion=anion,
+        blow=blow,
+    )
+    timings = command.get_raw_timings()
+    actual_byte = sum(
+        (timings[_yap_space_index(0, 2, bit)] == -1643) << bit
+        for bit in range(8)
+    )
+    assert actual_byte == expected_byte
+    decoded = GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F)
+    assert decoded is not None
+    assert (decoded.display, decoded.anion, decoded.blow) == (display, anion, blow)
+
+
+def test_yap1f_decodes_broadlink_quantized_timings() -> None:
+    """Broadlink stores 8192/269 us ticks, including the 010 marker spaces."""
+    command = GreeAcCommand(model=GreeAcModel.YAP1F, mode=GreeAcMode.COOL, temperature=25)
+    timings = command.get_raw_timings()[:-1]
+    quantized = [
+        (1 if duration > 0 else -1) * round(abs(duration) * 269 / 8192) * 8192 // 269
+        for duration in timings
+    ]
+    decoded = GreeAcCommand.from_raw_timings(quantized, model=GreeAcModel.YAP1F)
+    assert decoded is not None
+    assert (decoded.mode, decoded.temperature, decoded.display) == (
+        GreeAcMode.COOL, 25, True
+    )
+
+
+@pytest.mark.parametrize("block", [0, 1])
+def test_yap1f_rejects_checksum_corruption_before_overlap(block: int) -> None:
+    """The next block must not overwrite a corrupted earlier checksum."""
+    timings = GreeAcCommand(
+        model=GreeAcModel.YAP1F, mode=GreeAcMode.COOL, temperature=25
+    ).get_raw_timings()
+    _flip_yap_bit(timings, block, 8, 4)
+    assert GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F) is None
+
+
+@pytest.mark.parametrize("next_block", [1, 2])
+def test_yap1f_rejects_valid_checksum_with_disagreeing_overlap(next_block: int) -> None:
+    """Changing only the high nibble of the shared byte leaves checksums valid."""
+    timings = GreeAcCommand(
+        model=GreeAcModel.YAP1F, mode=GreeAcMode.COOL, temperature=25
+    ).get_raw_timings()
+    _flip_yap_bit(timings, next_block, 0, 4)
+    assert GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F) is None
+
+
+@pytest.mark.parametrize(
+    "trailing",
+    [
+        pytest.param([], id="last_mark_only"),
+        pytest.param([0], id="encoded_zero"),
+        pytest.param([-20000], id="recorded_gap"),
+        pytest.param([-40000], id="transport_idle"),
+    ],
+)
+def test_yap1f_accepts_final_mark_with_supported_trailing_space(
+    trailing: list[int],
+) -> None:
+    timings = GreeAcCommand(
+        model=GreeAcModel.YAP1F, mode=GreeAcMode.COOL, temperature=25
+    ).get_raw_timings()
+    decoded = GreeAcCommand.from_raw_timings(
+        [*timings[:-1], *trailing], model=GreeAcModel.YAP1F
+    )
+    assert decoded is not None
+    assert (decoded.mode, decoded.temperature) == (GreeAcMode.COOL, 25)
+
+
+@pytest.mark.parametrize(
+    ("index", "value"),
+    [
+        pytest.param(0, -9000, id="wrong_header_mark_sign"),
+        pytest.param(1, 4500, id="wrong_header_space_sign"),
+        pytest.param(418, -650, id="wrong_end_mark_sign"),
+        pytest.param(69, -510, id="wrong_marker_one"),
+        pytest.param(73, 20000, id="wrong_marker_gap_sign"),
+        pytest.param(141, 20000, id="wrong_block_gap_sign"),
+        pytest.param(419, -510, id="too_short_trailing_space"),
+        pytest.param(419, 20000, id="wrong_trailing_space_sign"),
+    ],
+)
+def test_yap1f_rejects_bad_marker_or_gap(index: int, value: int) -> None:
+    timings = GreeAcCommand(
+        model=GreeAcModel.YAP1F, mode=GreeAcMode.COOL, temperature=25
+    ).get_raw_timings()
+    timings[index] = value
+    assert GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F) is None
+
+
+def test_generic_profile_keeps_shared_flags_and_default_route() -> None:
+    command = GreeAcCommand(
+        mode=GreeAcMode.COOL, temperature=25, display=False, anion=True, blow=True
+    )
+    decoded = GreeAcCommand.from_raw_timings(command.get_raw_timings())
+    assert command.model is GreeAcModel.GENERIC
+    assert decoded is not None
+    assert decoded.model is GreeAcModel.GENERIC
+    assert (decoded.display, decoded.anion, decoded.blow) == (False, True, True)

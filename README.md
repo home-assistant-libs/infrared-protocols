@@ -14,3 +14,12 @@ library. An integration may use a separate, dedicated library instead, as long
 as that library depends on this one for the underlying types. This library's
 primary role is to provide the shared, foundational types that the Home
 Assistant ecosystem can build on.
+
+The Gree AC command supports the existing generic framing (the default) and a
+three-block YAP1F profile. Pass `model=GreeAcModel.YAP1F` when constructing and
+decoding. Both profiles use `display`, `anion`, and `blow`; for a YAP1F remote
+these correspond to light, health, and X-FAN respectively. YAP1F also supports
+power, mode, temperature, fan, and turbo. Its decoder checks both checksums and
+overlapping bytes, tolerates quantized pulse timings, and accepts
+the final mark with either no trailing space or a long trailing space. Vane
+controls and self-clean are not supported without verified wire locations.

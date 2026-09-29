@@ -45,7 +45,7 @@ Only part of the state enters the checksum, so many fields do not affect it; see
 ``_checksum``.
 """
 
-from enum import IntEnum
+from enum import Enum, IntEnum
 from typing import Self, override
 
 from . import Command
@@ -69,6 +69,14 @@ _FRAME_GAP = 19980
 
 _FRAME_A_BITS = 35
 _FRAME_B_BITS = 32
+_YAP_HEADER_MARK = 9000
+_YAP_HEADER_SPACE = 4500
+_YAP_BIT_MARK = 650
+_YAP_ONE_SPACE = 1643
+_YAP_ZERO_SPACE = 510
+_YAP_FRAME_GAP = 20000
+_YAP_BLOCK_TIMINGS = 2 + 4 * 16 + 8 + 4 * 16 + 2
+_YAP_FRAME_TIMINGS = 3 * _YAP_BLOCK_TIMINGS
 
 _TOLERANCE = 0.35
 # Marks are stretched by receiver AGC far more than spaces, so bit timing is matched
@@ -113,6 +121,13 @@ class GreeAcMode(IntEnum):
     DRY = 2
     FAN_ONLY = 3
     HEAT = 4
+
+
+class GreeAcModel(str, Enum):
+    """Wire profile for Gree commands."""
+
+    GENERIC = "generic"
+    YAP1F = "yap1f"
 
 
 class GreeAcFanSpeed(IntEnum):
@@ -258,6 +273,7 @@ class GreeAcCommand(Command):
     timer_hours: float | None
     anion: bool
     fresh_air: GreeAcFreshAir
+    model: GreeAcModel
 
     def __init__(
         self,
@@ -275,6 +291,7 @@ class GreeAcCommand(Command):
         timer_hours: float | None = None,
         anion: bool = False,
         fresh_air: GreeAcFreshAir = GreeAcFreshAir.OFF,
+        model: GreeAcModel = GreeAcModel.GENERIC,
         modulation: int = 38000,
     ) -> None:
         """Initialize the Gree AC IR command."""
@@ -306,10 +323,13 @@ class GreeAcCommand(Command):
         self.timer_hours = timer_hours
         self.anion = anion
         self.fresh_air = fresh_air
+        self.model = model
 
     @override
     def get_raw_timings(self) -> list[int]:
         """Get raw timings for the Gree AC command."""
+        if self.model is GreeAcModel.YAP1F:
+            return self._get_yap1f_raw_timings()
         frame_a = [0] * _FRAME_A_BITS
         _set_field(frame_a, *_A_MODE, self.mode.value)
         frame_a[_A_POWER] = int(self.power)
@@ -338,13 +358,71 @@ class GreeAcCommand(Command):
         timings.append(-_FRAME_GAP)
         return timings
 
-    @classmethod
-    def from_raw_timings(cls, timings: list[int]) -> Self | None:
-        """Decode raw IR timings into a GreeAcCommand.
+    def _get_yap1f_raw_timings(self) -> list[int]:
+        """Encode the three YAP1F blocks."""
+        mode = self.mode.value
+        fan = self.fan.value << 4
+        if not self.power:
+            mode, fan = GreeAcMode.HEAT.value, 0
+        elif self.mode is GreeAcMode.DRY:
+            fan = GreeAcFanSpeed.LOW.value << 4
+        temperature = 25 if self.mode is GreeAcMode.AUTO else self.temperature
+        data = bytearray(25)
+        data[0] = fan | mode | (0x08 if self.power else 0)
+        data[1] = temperature - _TEMP_OFFSET
+        data[2] = (
+            (0x10 if self.turbo else 0)
+            | (0x20 if self.display else 0)
+            | (0x40 if self.anion else 0)
+            | (0x80 if self.blow else 0)
+        )
+        data[3], data[5] = 0x50, 0xC2
+        data[8:11] = data[0:3]
+        data[11], data[19], data[23] = 0x70, 0xA0, 0xA0
+        for start in (0, 8):
+            nibbles = sum(value & 0x0F for value in data[start:start + 4])
+            nibbles += sum(value >> 4 for value in data[start + 5:start + 8]) + 0x0A
+            data[start + 8] = ((nibbles & 0x0F) << 4) | (data[start + 7] & 0x0F)
+        timings: list[int] = []
+        for start in (0, 8, 16):
+            timings.extend((_YAP_HEADER_MARK, -_YAP_HEADER_SPACE))
+            for offset in range(4):
+                self._append_yap_byte(timings, data[start + offset])
+            timings.extend(
+                (
+                    _YAP_BIT_MARK,
+                    -_YAP_ZERO_SPACE,
+                    _YAP_BIT_MARK,
+                    -_YAP_ONE_SPACE,
+                    _YAP_BIT_MARK,
+                    -_YAP_ZERO_SPACE,
+                    _YAP_BIT_MARK,
+                    -_YAP_FRAME_GAP,
+                )
+            )
+            for offset in range(5, 9):
+                self._append_yap_byte(timings, data[start + offset])
+            timings.append(_YAP_BIT_MARK)
+            timings.append(-_YAP_FRAME_GAP if start < 16 else 0)
+        return timings
 
-        Expects block A followed by block B, as ``get_raw_timings`` emits them.
-        Returns a GreeAcCommand if the timings match, or None otherwise.
-        """
+    @staticmethod
+    def _append_yap_byte(timings: list[int], value: int) -> None:
+        for bit in range(8):
+            timings.extend(
+                (
+                    _YAP_BIT_MARK,
+                    -(_YAP_ONE_SPACE if value & (1 << bit) else _YAP_ZERO_SPACE),
+                )
+            )
+
+    @classmethod
+    def from_raw_timings(
+        cls, timings: list[int], *, model: GreeAcModel = GreeAcModel.GENERIC
+    ) -> Self | None:
+        """Decode raw IR timings into a GreeAcCommand."""
+        if model is GreeAcModel.YAP1F:
+            return cls._from_yap1f_raw_timings(timings)
         # Block A: leader (2) + 35 bit pairs (70) + end mark (1).
         frame_a_len = 2 + 2 * _FRAME_A_BITS + 1
         # Then the mid-frame gap (1), then block B: 32 bit pairs (64) + end mark (1).
@@ -424,3 +502,118 @@ class GreeAcCommand(Command):
             anion=bool(frame_a[_A_ANION]),
             fresh_air=fresh_air,
         )
+
+    @classmethod
+    def _from_yap1f_raw_timings(cls, timings: list[int]) -> Self | None:
+        """Decode three YAP1F blocks, validating checksums before overlap."""
+        # The last space is optional on receivers that stop at the final mark.
+        if len(timings) not in (_YAP_FRAME_TIMINGS - 1, _YAP_FRAME_TIMINGS):
+            return None
+        data = bytearray(25)
+        cursor = 0
+        for block, start in enumerate((0, 8, 16)):
+            if (
+                timings[cursor + 1] >= 0
+                or not _is_close(timings[cursor], _YAP_HEADER_MARK, _TOLERANCE)
+                or not _is_close(-timings[cursor + 1], _YAP_HEADER_SPACE, _TOLERANCE)
+            ):
+                return None
+            cursor += 2
+            for offset in range(4):
+                value = cls._read_yap_byte(timings, cursor)
+                if value is None:
+                    return None
+                if block and offset == 0 and value != data[start]:
+                    return None  # Previous block's checksum is this block's first byte.
+                data[start + offset] = value
+                cursor += 16
+            for bit_index, expected in enumerate((0, 1, 0)):
+                mark_at = cursor + 2 * bit_index
+                if cls._read_yap_bit(timings[mark_at], timings[mark_at + 1]) != expected:
+                    return None
+            if (
+                abs(timings[cursor + 6] - _YAP_BIT_MARK) > _BIT_TOLERANCE
+                or timings[cursor + 7] >= 0
+                or not _is_close(-timings[cursor + 7], _YAP_FRAME_GAP, _TOLERANCE)
+            ):
+                return None
+            cursor += 8
+            for offset in range(5, 9):
+                value = cls._read_yap_byte(timings, cursor)
+                if value is None:
+                    return None
+                data[start + offset] = value
+                cursor += 16
+            if abs(timings[cursor] - _YAP_BIT_MARK) > _BIT_TOLERANCE:
+                return None
+            cursor += 1
+            if block < 2:
+                if timings[cursor] >= 0 or not _is_close(
+                    -timings[cursor], _YAP_FRAME_GAP, _TOLERANCE
+                ):
+                    return None
+                cursor += 1
+                checksum = sum(value & 0x0F for value in data[start : start + 4])
+                checksum += sum(value >> 4 for value in data[start + 5 : start + 8]) + 0x0A
+                if data[start + 8] != (
+                    (checksum & 0x0F) << 4 | data[start + 7] & 0x0F
+                ):
+                    return None
+            elif cursor < len(timings):
+                gap = timings[cursor]
+                # The encoder uses zero; transport may retain a long idle space.
+                if gap != 0 and (
+                    gap >= 0 or -gap < _YAP_FRAME_GAP * (1 - _TOLERANCE)
+                ):
+                    return None
+        if (data[3], data[11], data[19], data[23], data[24]) != (
+            0x50, 0x70, 0xA0, 0xA0, 0
+        ):
+            return None
+        if data[1:3] != data[9:11]:
+            return None
+        try:
+            mode = GreeAcMode(data[0] & 0x07)
+            fan = GreeAcFanSpeed((data[0] >> 4) & 0x03)
+        except ValueError:
+            return None
+        power = bool(data[0] & 0x08)
+        if not power and (mode is not GreeAcMode.HEAT or fan is not GreeAcFanSpeed.AUTO):
+            return None
+        temperature = data[1] + _TEMP_OFFSET
+        if not MIN_TEMP <= temperature <= MAX_TEMP:
+            return None
+        flags = data[2]
+        return cls(
+            power=power,
+            mode=mode,
+            temperature=temperature,
+            fan=fan,
+            turbo=bool(flags & 0x10),
+            display=bool(flags & 0x20),
+            anion=bool(flags & 0x40),
+            blow=bool(flags & 0x80),
+            model=GreeAcModel.YAP1F,
+        )
+
+    @staticmethod
+    def _read_yap_bit(mark: int, space: int) -> int | None:
+        if abs(mark - _YAP_BIT_MARK) > _BIT_TOLERANCE or space >= 0:
+            return None
+        if _is_close(-space, _YAP_ONE_SPACE, _TOLERANCE):
+            return 1
+        if _is_close(-space, _YAP_ZERO_SPACE, _TOLERANCE):
+            return 0
+        return None
+
+    @staticmethod
+    def _read_yap_byte(timings: list[int], cursor: int) -> int | None:
+        value = 0
+        for bit in range(8):
+            decoded = GreeAcCommand._read_yap_bit(
+                timings[cursor + 2 * bit], timings[cursor + 2 * bit + 1]
+            )
+            if decoded is None:
+                return None
+            value |= decoded << bit
+        return value
