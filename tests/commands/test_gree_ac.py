@@ -3,9 +3,9 @@
 import pytest
 
 from infrared_protocols.commands.gree_ac import (
-    GreeAcAir,
     GreeAcCommand,
     GreeAcFanSpeed,
+    GreeAcFreshAir,
     GreeAcMode,
 )
 
@@ -508,17 +508,17 @@ def _timings_with_block_a_field(start: int, width: int, value: int) -> list[int]
 
 
 @pytest.mark.parametrize(
-    ("sleep", "timer_hours", "anion", "air"),
+    ("sleep", "timer_hours", "anion", "fresh_air"),
     [
-        pytest.param(False, None, False, GreeAcAir.OFF, id="all_off"),
-        pytest.param(True, 0.5, True, GreeAcAir.LEVEL_1, id="half_hour_all_on"),
-        pytest.param(False, 0, True, GreeAcAir.LEVEL_2, id="zero_hour_timer"),
-        pytest.param(True, 10.5, False, GreeAcAir.OFF, id="two_digit_timer"),
-        pytest.param(False, 24, True, GreeAcAir.LEVEL_1, id="max_timer"),
+        pytest.param(False, None, False, GreeAcFreshAir.OFF, id="all_off"),
+        pytest.param(True, 0.5, True, GreeAcFreshAir.LEVEL_1, id="half_hour_all_on"),
+        pytest.param(False, 3, True, GreeAcFreshAir.LEVEL_2, id="whole_hour_timer"),
+        pytest.param(True, 10.5, False, GreeAcFreshAir.OFF, id="two_digit_timer"),
+        pytest.param(False, 24, True, GreeAcFreshAir.LEVEL_1, id="max_timer"),
     ],
 )
-def test_roundtrip_sleep_timer_anion_and_air(
-    sleep: bool, timer_hours: float | None, anion: bool, air: GreeAcAir
+def test_roundtrip_sleep_timer_anion_and_fresh_air(
+    sleep: bool, timer_hours: float | None, anion: bool, fresh_air: GreeAcFreshAir
 ) -> None:
     """The fields the Onida captures leave at zero round-trip on their own bits."""
     cmd = GreeAcCommand(
@@ -527,7 +527,7 @@ def test_roundtrip_sleep_timer_anion_and_air(
         sleep=sleep,
         timer_hours=timer_hours,
         anion=anion,
-        air=air,
+        fresh_air=fresh_air,
     )
     result = GreeAcCommand.from_raw_timings(cmd.get_raw_timings())
 
@@ -535,7 +535,7 @@ def test_roundtrip_sleep_timer_anion_and_air(
     assert result.sleep is sleep
     assert result.timer_hours == timer_hours
     assert result.anion is anion
-    assert result.air is air
+    assert result.fresh_air is fresh_air
 
 
 def test_timer_splits_the_hour_into_decimal_digits() -> None:
@@ -569,13 +569,15 @@ def test_timer_off_zeroes_the_whole_field() -> None:
             id="timer_hour_units",
         ),
         pytest.param(
-            GreeAcCommand(mode=GreeAcMode.COOL, temperature=24, air=GreeAcAir.LEVEL_1),
-            id="air",
+            GreeAcCommand(
+                mode=GreeAcMode.COOL, temperature=24, fresh_air=GreeAcFreshAir.LEVEL_1
+            ),
+            id="fresh_air",
         ),
     ],
 )
 def test_fields_inside_the_checksum_nibbles_change_it(command: GreeAcCommand) -> None:
-    """The timer hour units and air sit in nibbles the checksum sums."""
+    """The timer hour units and fresh air sit in nibbles the checksum sums."""
     base = _extract_frames(
         GreeAcCommand(mode=GreeAcMode.COOL, temperature=24).get_raw_timings()
     )[1]
@@ -612,14 +614,20 @@ def test_fields_outside_the_checksum_nibbles_leave_it_alone(
 
 
 @pytest.mark.parametrize(
-    ("start", "width", "value", "air", "timer_hours"),
+    ("start", "width", "value", "fresh_air", "timer_hours"),
     [
-        pytest.param(24, 2, 0b10, GreeAcAir.LEVEL_2, None, id="air_level_2"),
-        pytest.param(12, 8, 0b0010_1_00_1, GreeAcAir.OFF, 2.5, id="timer_2_5_hours"),
+        pytest.param(24, 2, 0b10, GreeAcFreshAir.LEVEL_2, None, id="fresh_air_level_2"),
+        pytest.param(
+            12, 8, 0b0010_1_00_1, GreeAcFreshAir.OFF, 2.5, id="timer_2_5_hours"
+        ),
     ],
 )
 def test_overwritten_block_a_field_decodes_when_the_value_is_defined(
-    start: int, width: int, value: int, air: GreeAcAir, timer_hours: float | None
+    start: int,
+    width: int,
+    value: int,
+    fresh_air: GreeAcFreshAir,
+    timer_hours: float | None,
 ) -> None:
     """Pin that the rejection cases below fail on the field, not on the checksum."""
     result = GreeAcCommand.from_raw_timings(
@@ -627,19 +635,20 @@ def test_overwritten_block_a_field_decodes_when_the_value_is_defined(
     )
 
     assert result is not None
-    assert result.air is air
+    assert result.fresh_air is fresh_air
     assert result.timer_hours == timer_hours
 
 
 @pytest.mark.parametrize(
     ("start", "width", "value"),
     [
-        pytest.param(24, 2, 0b11, id="air_undefined_value"),
+        pytest.param(24, 2, 0b11, id="fresh_air_undefined_value"),
         pytest.param(12, 8, 0b0000_0_00_1, id="timer_half_set_while_off"),
         pytest.param(12, 8, 0b0001_0_00_0, id="timer_units_set_while_off"),
         pytest.param(12, 8, 0b0000_0_01_0, id="timer_tens_set_while_off"),
         pytest.param(12, 8, 0b1010_1_00_0, id="timer_units_digit_above_nine"),
         pytest.param(12, 8, 0b0000_1_11_0, id="timer_hours_above_max"),
+        pytest.param(12, 8, 0b0000_1_00_0, id="timer_zero_hours_while_on"),
     ],
 )
 def test_decode_returns_none_for_undefined_field_value(
@@ -656,6 +665,7 @@ def test_decode_returns_none_for_undefined_field_value(
     ("timer_hours", "match"),
     [
         pytest.param(-0.5, "out of range", id="negative"),
+        pytest.param(0, "out of range", id="zero"),
         pytest.param(24.5, "out of range", id="above_max"),
         pytest.param(1.25, "not a multiple", id="quarter_hour"),
     ],

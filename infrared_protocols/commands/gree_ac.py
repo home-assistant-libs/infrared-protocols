@@ -27,7 +27,7 @@ Block A (35 bits):
   bit 21:     display light
   bit 22:     anion
   bit 23:     blow
-  bits 24-25: air (fresh-air intake; the fourth value is undefined)
+  bits 24-25: fresh-air intake (the fourth value is undefined)
   bits 28,30,33: fixed trailer
 
 Block B (32 bits):
@@ -53,9 +53,10 @@ from . import Command
 MIN_TEMP = 16
 MAX_TEMP = 30
 
-_TEMP_OFFSET = 16
+MIN_TIMER_HOURS = 0.5
+MAX_TIMER_HOURS = 24
 
-_MAX_TIMER_HOURS = 24
+_TEMP_OFFSET = 16
 
 _LEADER_MARK = 9000
 _LEADER_SPACE = 4500
@@ -91,7 +92,7 @@ _A_TURBO = 20
 _A_DISPLAY = 21
 _A_ANION = 22
 _A_BLOW = 23
-_A_AIR = (24, 2)
+_A_FRESH_AIR = (24, 2)
 _A_TRAILER = (28, 30, 33)
 
 # Block B field positions.
@@ -123,8 +124,8 @@ class GreeAcFanSpeed(IntEnum):
     HIGH = 3
 
 
-class GreeAcAir(IntEnum):
-    """Fresh-air intake; value is the air field at block A bits 24-25.
+class GreeAcFreshAir(IntEnum):
+    """Fresh-air intake; value is the field at block A bits 24-25.
 
     The field's fourth value is not produced by the remote and has no known
     meaning, so it is rejected when decoding.
@@ -175,8 +176,10 @@ def _unpack_timer(bits: list[int]) -> float | None:
         return None
 
     hours = tens * 10 + units + 0.5 * half
-    if units > 9 or hours > _MAX_TIMER_HOURS:
-        raise ValueError(f"timer {hours} out of range 0..{_MAX_TIMER_HOURS}")
+    if units > 9 or not MIN_TIMER_HOURS <= hours <= MAX_TIMER_HOURS:
+        raise ValueError(
+            f"timer {hours} out of range {MIN_TIMER_HOURS}..{MAX_TIMER_HOURS}"
+        )
     return hours
 
 
@@ -186,8 +189,8 @@ def _checksum(frame_a: list[int], frame_b: list[int]) -> int:
     The state is eight bytes, block A's 32 data bits followed by block B's. The sum
     takes the low nibble of the first four and the high nibble of the next three, so
     half of the state stays outside it: mode, power, temperature, the timer hour
-    units, air and horizontal swing enter, while sleep, the rest of the timer, turbo,
-    display, anion, blow and vertical swing do not.
+    units, fresh air and horizontal swing enter, while sleep, the rest of the timer,
+    turbo, display, anion, blow and vertical swing do not.
     """
     total = _CHECKSUM_BASE
     total += sum(_get_field(frame_a, 8 * i, 4) for i in range(4))
@@ -238,7 +241,7 @@ class GreeAcCommand(Command):
 
     ``temperature`` is in whole degrees celsius, 16 to 30.
 
-    ``timer_hours`` is the countdown the remote is set to, 0 to 24 in half-hour
+    ``timer_hours`` is the countdown the remote is set to, 0.5 to 24 in half-hour
     steps, or None when the timer is off.
     """
 
@@ -254,7 +257,7 @@ class GreeAcCommand(Command):
     sleep: bool
     timer_hours: float | None
     anion: bool
-    air: GreeAcAir
+    fresh_air: GreeAcFreshAir
 
     def __init__(
         self,
@@ -271,7 +274,7 @@ class GreeAcCommand(Command):
         sleep: bool = False,
         timer_hours: float | None = None,
         anion: bool = False,
-        air: GreeAcAir = GreeAcAir.OFF,
+        fresh_air: GreeAcFreshAir = GreeAcFreshAir.OFF,
         modulation: int = 38000,
     ) -> None:
         """Initialize the Gree AC IR command."""
@@ -282,9 +285,10 @@ class GreeAcCommand(Command):
                 f"temperature {temperature} out of range {MIN_TEMP}..{MAX_TEMP}"
             )
         if timer_hours is not None:
-            if not 0 <= timer_hours <= _MAX_TIMER_HOURS:
+            if not MIN_TIMER_HOURS <= timer_hours <= MAX_TIMER_HOURS:
                 raise ValueError(
-                    f"timer_hours {timer_hours} out of range 0..{_MAX_TIMER_HOURS}"
+                    f"timer_hours {timer_hours} out of range "
+                    f"{MIN_TIMER_HOURS}..{MAX_TIMER_HOURS}"
                 )
             if (timer_hours * 2) % 1:
                 raise ValueError(f"timer_hours {timer_hours} is not a multiple of 0.5")
@@ -301,7 +305,7 @@ class GreeAcCommand(Command):
         self.sleep = sleep
         self.timer_hours = timer_hours
         self.anion = anion
-        self.air = air
+        self.fresh_air = fresh_air
 
     @override
     def get_raw_timings(self) -> list[int]:
@@ -318,7 +322,7 @@ class GreeAcCommand(Command):
         frame_a[_A_DISPLAY] = int(self.display)
         frame_a[_A_ANION] = int(self.anion)
         frame_a[_A_BLOW] = int(self.blow)
-        _set_field(frame_a, *_A_AIR, self.air.value)
+        _set_field(frame_a, *_A_FRESH_AIR, self.fresh_air.value)
         for index in _A_TRAILER:
             frame_a[index] = 1
 
@@ -382,12 +386,12 @@ class GreeAcCommand(Command):
         if _get_field(frame_b, *_B_CHECKSUM) != _checksum(frame_a, frame_b):
             return None
 
-        # The mode, fan, air and timer fields are wider than the values the protocol
-        # defines.
+        # The mode, fan, fresh-air and timer fields are wider than the values the
+        # protocol defines.
         try:
             mode = GreeAcMode(_get_field(frame_a, *_A_MODE))
             fan = GreeAcFanSpeed(_get_field(frame_a, *_A_FAN))
-            air = GreeAcAir(_get_field(frame_a, *_A_AIR))
+            fresh_air = GreeAcFreshAir(_get_field(frame_a, *_A_FRESH_AIR))
             timer_hours = _unpack_timer(frame_a)
         except ValueError:
             return None
@@ -418,5 +422,5 @@ class GreeAcCommand(Command):
             sleep=bool(frame_a[_A_SLEEP]),
             timer_hours=timer_hours,
             anion=bool(frame_a[_A_ANION]),
-            air=air,
+            fresh_air=fresh_air,
         )
