@@ -403,7 +403,8 @@ class GreeAcCommand(Command):
             for offset in range(5, 9):
                 self._append_yap_byte(timings, data[start + offset])
             timings.append(_YAP_BIT_MARK)
-            timings.append(-_YAP_FRAME_GAP if start < 16 else 0)
+            if start < 16:
+                timings.append(-_YAP_FRAME_GAP)
         return timings
 
     @staticmethod
@@ -561,7 +562,7 @@ class GreeAcCommand(Command):
                     return None
             elif cursor < len(timings):
                 gap = timings[cursor]
-                # The encoder uses zero; transport may retain a long idle space.
+                # Legacy encoders may use zero; transport may retain a long idle space.
                 if gap != 0 and (
                     gap >= 0 or -gap < _YAP_FRAME_GAP * (1 - _TOLERANCE)
                 ):

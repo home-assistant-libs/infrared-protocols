@@ -20,6 +20,7 @@ three-block YAP1F profile. Pass `model=GreeAcModel.YAP1F` when constructing and
 decoding. Both profiles use `display`, `anion`, and `blow`; for a YAP1F remote
 these correspond to light, health, and X-FAN respectively. YAP1F also supports
 power, mode, temperature, fan, and turbo. Its decoder checks both checksums and
-overlapping bytes, tolerates quantized pulse timings, and accepts
-the final mark with either no trailing space or a long trailing space. Vane
-controls and self-clean are not supported without verified wire locations.
+overlapping bytes, tolerates quantized pulse timings, and emits valid nonzero raw
+encoder output ending in the final mark. Its decoder accepts the final mark with
+either no trailing space or a long trailing space. Vane controls and self-clean
+are not supported without verified wire locations.
