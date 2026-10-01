@@ -67,14 +67,18 @@ _BIT_ZERO_SPACE = 540
 # Long mid-frame space after block A, and the trailing space after block B.
 _FRAME_GAP = 19980
 
+# Generic Gree framing stays unchanged; YAP1F uses its capture class means.
+_YAP1F_LEADER_MARK = 8796
+_YAP1F_LEADER_SPACE = 4365
+_YAP1F_BIT_MARK = 673
+_YAP1F_BIT_ONE_SPACE = 1580
+_YAP1F_BIT_ZERO_SPACE = 516
+_YAP1F_GAPS = (19500, 39000, 19500)
+
 _FRAME_A_BITS = 35
 _FRAME_B_BITS = 32
-# Timings in one standard frame: leader (2) + block A pairs (70) + end mark (1)
-# + mid-frame gap (1) + block B pairs (64) + end mark (1).
+# Timings in one generic frame: leader + block A + mid-gap + block B.
 _FRAME_TIMINGS = 2 + 2 * _FRAME_A_BITS + 1 + 1 + 2 * _FRAME_B_BITS + 1
-
-# YAP1F captures use a 384-cycle (~10.1 ms) gap between every block.
-_YAP1F_BLOCK_GAP = 10100
 # YAP1F remotes transmit at 38029 Hz; generic stays at 38000.
 _YAP1F_MODULATION = 38029
 _YAP1F_SWING_POSITIONS = (0, 1, 2, 3, 4, 5, 6, 7, 9, 11)
@@ -240,13 +244,22 @@ def _decode_bit(mark: int, space: int) -> int | None:
     return None
 
 
-def _encode_frame(bits: list[int], *, leader: bool) -> list[int]:
+def _encode_frame(
+    bits: list[int],
+    *,
+    leader: bool,
+    leader_mark: int = _LEADER_MARK,
+    leader_space: int = _LEADER_SPACE,
+    bit_mark: int = _BIT_MARK,
+    bit_one_space: int = _BIT_ONE_SPACE,
+    bit_zero_space: int = _BIT_ZERO_SPACE,
+) -> list[int]:
     """Encode a bit list into raw timings, with or without the leader."""
-    timings: list[int] = [_LEADER_MARK, -_LEADER_SPACE] if leader else []
+    timings = [leader_mark, -leader_space] if leader else []
     for bit in bits:
-        timings.append(_BIT_MARK)
-        timings.append(-(_BIT_ONE_SPACE if bit else _BIT_ZERO_SPACE))
-    timings.append(_BIT_MARK)
+        timings.append(bit_mark)
+        timings.append(-(bit_one_space if bit else bit_zero_space))
+    timings.append(bit_mark)
     return timings
 
 
@@ -402,7 +415,7 @@ class GreeAcCommand(Command):
         return timings
 
     def _get_yap1f_raw_timings(self) -> list[int]:
-        """Encode the state frame followed by the captured fixed frame."""
+        """Encode YAP1F's two leader-bearing bursts with capture class means."""
         frame_a, frame_b = self._build_frames()
         fixed_a = [0] * _FRAME_A_BITS
         fixed_a[29] = 1
@@ -410,8 +423,23 @@ class GreeAcCommand(Command):
         fixed_a[33] = 1
         fixed_b = [0] * _FRAME_B_BITS
         _set_field(fixed_b, *_B_CHECKSUM, _checksum(fixed_a, fixed_b))
-        timings = self._encode_signal(frame_a, frame_b, gap=_YAP1F_BLOCK_GAP)
-        timings.extend(self._encode_signal(fixed_a, fixed_b, gap=_YAP1F_BLOCK_GAP))
+
+        frames = (frame_a, frame_b, fixed_a, fixed_b)
+        timings: list[int] = []
+        for index, bits in enumerate(frames):
+            timings.extend(
+                _encode_frame(
+                    bits,
+                    leader=index in (0, 2),
+                    leader_mark=_YAP1F_LEADER_MARK,
+                    leader_space=_YAP1F_LEADER_SPACE,
+                    bit_mark=_YAP1F_BIT_MARK,
+                    bit_one_space=_YAP1F_BIT_ONE_SPACE,
+                    bit_zero_space=_YAP1F_BIT_ZERO_SPACE,
+                )
+            )
+            if index < len(_YAP1F_GAPS):
+                timings.append(-_YAP1F_GAPS[index])
         return timings
 
     @classmethod
@@ -503,39 +531,43 @@ class GreeAcCommand(Command):
 
     @classmethod
     def _from_yap1f_raw_timings(cls, timings: list[int]) -> Self | None:
-        if len(timings) != 2 * (_FRAME_TIMINGS + 1):
+        a_length = 2 + 2 * _FRAME_A_BITS + 1
+        b_length = 2 * _FRAME_B_BITS + 1
+        if len(timings) != 2 * (a_length + b_length) + len(_YAP1F_GAPS):
             return None
 
-        frames: list[tuple[list[int], list[int]]] = []
-        for offset in (0, _FRAME_TIMINGS + 1):
-            frame = timings[offset : offset + _FRAME_TIMINGS + 1]
-            if not _is_close(frame[0], _LEADER_MARK, _TOLERANCE) or not _is_close(
-                abs(frame[1]), _LEADER_SPACE, _TOLERANCE
+        offsets = (0, a_length + 1, a_length + b_length + 2, 2 * a_length + b_length + 3)
+        lengths = (a_length, b_length, a_length, b_length)
+        for burst in range(4):
+            offset = offsets[burst]
+            frame = timings[offset : offset + lengths[burst]]
+            if burst in (0, 2) and (
+                not _is_close(frame[0], _YAP1F_LEADER_MARK, _TOLERANCE)
+                or not _is_close(abs(frame[1]), _YAP1F_LEADER_SPACE, _TOLERANCE)
             ):
                 return None
-            frame_a = _decode_bits(frame, 2, _FRAME_A_BITS)
-            a_end = 2 + 2 * _FRAME_A_BITS
-            if (
-                frame_a is None
-                or abs(frame[a_end] - _BIT_MARK) > _BIT_TOLERANCE
-                or frame[a_end + 1] >= 0
-                or not _is_close(abs(frame[a_end + 1]), _YAP1F_BLOCK_GAP, _TOLERANCE)
-            ):
+            bit_offset = 2 if burst in (0, 2) else 0
+            bit_count = _FRAME_A_BITS if burst in (0, 2) else _FRAME_B_BITS
+            bits = _decode_bits(frame, bit_offset, bit_count)
+            end_mark = bit_offset + 2 * bit_count
+            if bits is None or abs(frame[end_mark] - _YAP1F_BIT_MARK) > _BIT_TOLERANCE:
                 return None
-            b_start = a_end + 2
-            frame_b = _decode_bits(frame, b_start, _FRAME_B_BITS)
-            b_end = b_start + 2 * _FRAME_B_BITS
-            if (
-                frame_b is None
-                or abs(frame[b_end] - _BIT_MARK) > _BIT_TOLERANCE
-                or frame[b_end + 1] >= 0
-                or not _is_close(abs(frame[b_end + 1]), _YAP1F_BLOCK_GAP, _TOLERANCE)
-            ):
-                return None
-            frames.append((frame_a, frame_b))
+            if burst < 3:
+                gap_index = offset + lengths[burst]
+                gap = timings[gap_index]
+                if gap >= 0 or not _is_close(
+                    abs(gap), _YAP1F_GAPS[burst], _TOLERANCE
+                ):
+                    return None
+            if burst in (0, 2):
+                frame_a = bits
+            else:
+                frame_b = bits
+            if burst == 1:
+                state_a, state_b = frame_a, frame_b
+            if burst == 3:
+                fixed_a, fixed_b = frame_a, frame_b
 
-        frame_a, frame_b = frames[0]
-        fixed_a, fixed_b = frames[1]
         expected_fixed_a = [0] * _FRAME_A_BITS
         expected_fixed_a[29] = 1
         expected_fixed_a[31] = 1
@@ -548,24 +580,24 @@ class GreeAcCommand(Command):
         )
         if (fixed_a, fixed_b) != (expected_fixed_a, expected_fixed_b):
             return None
-        if any(frame_a[index] != 1 for index in _A_TRAILER):
+        if any(state_a[index] != 1 for index in _A_TRAILER):
             return None
         if (
-            _get_field(frame_b, 8, 8)
+            _get_field(state_b, 8, 8)
             not in (_YAP1F_B1_DEFAULT, _YAP1F_B1_DEFAULT | 0x04)
-            or _get_field(frame_b, 16, 8) != 0
-            or _get_field(frame_b, 24, 4) != 0
-            or _get_field(frame_b, *_B_CHECKSUM) != _checksum(frame_a, frame_b)
+            or _get_field(state_b, 16, 8) != 0
+            or _get_field(state_b, 24, 4) != 0
+            or _get_field(state_b, *_B_CHECKSUM) != _checksum(state_a, state_b)
         ):
             return None
-        swing_v_position = _get_field(frame_b, 0, 4)
+        swing_v_position = _get_field(state_b, 0, 4)
         if swing_v_position not in _YAP1F_SWING_POSITIONS:
             return None
 
-        generic_b = list(frame_b)
+        generic_b = list(state_b)
         generic_b[_B_SIGNATURE] = 1
-        _set_field(generic_b, *_B_CHECKSUM, _checksum(frame_a, generic_b))
-        first = cls.from_raw_timings(cls._encode_signal(frame_a, generic_b))
+        _set_field(generic_b, *_B_CHECKSUM, _checksum(state_a, generic_b))
+        first = cls.from_raw_timings(cls._encode_signal(state_a, generic_b))
         if first is None:
             return None
         return cls(
@@ -583,6 +615,6 @@ class GreeAcCommand(Command):
             timer_hours=first.timer_hours,
             anion=first.anion,
             fresh_air=first.fresh_air,
-            ifeel=bool(frame_b[_B1_IFEEL]),
+            ifeel=bool(state_b[_B1_IFEEL]),
             model=GreeAcModel.YAP1F,
         )

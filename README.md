@@ -15,9 +15,12 @@ as that library depends on this one for the underlying types. This library's
 primary role is to provide the shared, foundational types that the Home
 Assistant ecosystem can build on.
 
-The Gree AC command supports the existing generic framing (the default) and a
-YAP1F/YAP1FB profile. Pass `model=GreeAcModel.YAP1F` when constructing and
-decoding. YAP1F sends the standard frame plus a 0x70 continuation frame that
+The generic Gree profile keeps its original framing and timings. YAP1F/YAP1FB
+uses captured pulse means (8796/4365 µs leader, 673 µs marks, 516/1580 µs
+zero/one spaces) and three inter-burst spaces of 19500, 39000, and 19500 µs.
+Its four bursts are block A, block B, the fixed continuation's block A and block
+B; each gap follows a burst, and the final timing is the last mark.
+Pass `model=GreeAcModel.YAP1F` when constructing and decoding. The continuation
 repeats bytes 0-2, echoes the fan in byte 6, and carries its own checksum.
 Both profiles use `display`, `anion`, and `blow`; for a YAP1F remote
 these correspond to light, health, and X-FAN respectively. YAP1F carries the
