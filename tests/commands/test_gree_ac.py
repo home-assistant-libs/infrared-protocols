@@ -705,260 +705,538 @@ def test_timer_hours_out_of_range(timer_hours: float, match: str) -> None:
         GreeAcCommand(mode=GreeAcMode.COOL, temperature=24, timer_hours=timer_hours)
 
 
-# Golden vectors: 4 HAIR captures from a real YAP1F remote, all at 38029 Hz.
-# F1 is the standard 0x50 frame; F2 is the 0x70 continuation frame, whose
-# byte 6 echoes the fan and whose checksum covers its own bytes.
-_YAP1F_GOLDEN = [
+# ESPHome Pronto captures from the YAP1F remote: labels and first-frame bytes.
+_YAP1F_CAPTURED = [
     pytest.param(
-        dict(
-            power=True,
-            mode=GreeAcMode.COOL,
-            temperature=16,
-            fan=GreeAcFanSpeed.HIGH,
-            display=True,
-        ),
-        [0x39, 0x00, 0x20, 0x50, 0x00, 0x20, 0x00, 0x50],
-        [0x39, 0x00, 0x20, 0x70, 0x00, 0x00, 0x30, 0x60],
-        id="cool_high_16",
+        {"Mode": "OFF", "Temp": "N/A", "Sleep": "OFF"},
+        "430C005001C20050",
+        id="press_00",
     ),
     pytest.param(
-        dict(
-            power=True,
-            mode=GreeAcMode.COOL,
-            temperature=16,
-            fan=GreeAcFanSpeed.LOW,
-            display=False,
-        ),
-        [0x19, 0x00, 0x00, 0x50, 0x00, 0x20, 0x00, 0x50],
-        [0x19, 0x00, 0x00, 0x70, 0x00, 0x00, 0x10, 0x40],
-        id="cool_low_16",
+        {
+            "Mode": "AUTO",
+            "Temp": "N/A",
+            "Fan": "AUTO",
+            "SwingV": "-",
+            "Xfan": "-",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "OFF",
+            "Sleep": "OFF",
+        },
+        "0809405000C20070",
+        id="press_01",
     ),
     pytest.param(
-        dict(
-            power=False,
-            mode=GreeAcMode.HEAT,
-            temperature=30,
-            fan=GreeAcFanSpeed.AUTO,
-            display=True,
-        ),
-        [0x04, 0x0E, 0x20, 0x50, 0x00, 0x20, 0x00, 0xE0],
-        [0x04, 0x0E, 0x20, 0x70, 0x00, 0x00, 0x00, 0xC0],
-        id="off",
+        {
+            "Mode": "AUTO",
+            "Temp": "N/A",
+            "Fan": "AUTO",
+            "SwingV": "-",
+            "Xfan": "-",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "OFF",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0809005100C20080",
+        id="press_02",
     ),
     pytest.param(
-        dict(
-            power=True,
-            mode=GreeAcMode.FAN_ONLY,
-            temperature=23,
-            fan=GreeAcFanSpeed.LOW,
-            display=True,
-        ),
-        [0x1B, 0x07, 0x20, 0x50, 0x00, 0x20, 0x00, 0xE0],
-        [0x1B, 0x07, 0x20, 0x70, 0x00, 0x00, 0x10, 0xD0],
-        id="fan_only_low_23",
+        {
+            "Mode": "AUTO",
+            "Temp": "N/A",
+            "Fan": "AUTO",
+            "SwingV": "-",
+            "Xfan": "-",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0809405100C20080",
+        id="press_03",
+    ),
+    pytest.param(
+        {
+            "Mode": "AUTO",
+            "Temp": "N/A",
+            "Fan": "AUTO",
+            "SwingV": "-",
+            "Xfan": "-",
+            "Ifeel": "OFF",
+            "Light": "ON",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0809605100C20080",
+        id="press_04",
+    ),
+    pytest.param(
+        {
+            "Mode": "AUTO",
+            "Temp": "N/A",
+            "Fan": "AUTO",
+            "SwingV": "-",
+            "Xfan": "-",
+            "Ifeel": "ON",
+            "Light": "ON",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0809605100C60080",
+        id="press_05",
+    ),
+    pytest.param(
+        {
+            "Mode": "COOL",
+            "Temp": "25",
+            "Fan": "AUTO",
+            "SwingV": "11111",
+            "Xfan": "ON",
+            "Ifeel": "OFF",
+            "Light": "ON",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "4909E05101C20090",
+        id="press_06",
+    ),
+    pytest.param(
+        {
+            "Mode": "COOL",
+            "Temp": "25",
+            "Fan": "AUTO",
+            "SwingV": "11111",
+            "Xfan": "ON",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "4909C05101C20090",
+        id="press_07",
+    ),
+    pytest.param(
+        {
+            "Mode": "DRY",
+            "Temp": "25",
+            "Fan": "1",
+            "SwingV": "-",
+            "Xfan": "ON",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "1A09C05100C200A0",
+        id="press_08",
+    ),
+    pytest.param(
+        {
+            "Mode": "FAN",
+            "Temp": "28",
+            "Fan": "AUTO",
+            "SwingV": "11111",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "4B0C405101C200E0",
+        id="press_09",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "25",
+            "Fan": "AUTO",
+            "SwingV": "-",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0C09405100C200C0",
+        id="press_10",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "26",
+            "Fan": "AUTO",
+            "SwingV": "-",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0C0A405100C200D0",
+        id="press_11",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "27",
+            "Fan": "AUTO",
+            "SwingV": "-",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0C0B405100C200E0",
+        id="press_12",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "28",
+            "Fan": "AUTO",
+            "SwingV": "-",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0C0C405100C200F0",
+        id="press_13",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "30",
+            "Fan": "AUTO",
+            "SwingV": "-",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0C0E405100C20010",
+        id="press_14",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "AUTO",
+            "SwingV": "-",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0C00405100C20030",
+        id="press_15",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "AUTO",
+            "SwingV": "11111",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "4C00405101C20030",
+        id="press_16",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "AUTO",
+            "SwingV": "10000",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0C00405102C20030",
+        id="press_17",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "AUTO",
+            "SwingV": "01000",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0C00405103C20030",
+        id="press_18",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "AUTO",
+            "SwingV": "00100",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0C00405104C20030",
+        id="press_19",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "AUTO",
+            "SwingV": "00010",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0C00405105C20030",
+        id="press_20",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "AUTO",
+            "SwingV": "00001",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0C00405106C20030",
+        id="press_21",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "AUTO",
+            "SwingV": "00111",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "4C00405107C20030",
+        id="press_22",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "AUTO",
+            "SwingV": "01110",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "4C00405109C20030",
+        id="press_23",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "AUTO",
+            "SwingV": "11100",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "4C0040510BC20030",
+        id="press_24",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "1",
+            "SwingV": "-",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "1C00405100C20030",
+        id="press_25",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "2",
+            "SwingV": "-",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "2C00405100C20030",
+        id="press_26",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "3",
+            "SwingV": "-",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "3C00405100C20030",
+        id="press_27",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "AUTO",
+            "SwingV": "-",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "ON",
+        },
+        "8C00405100C20030",
+        id="press_28",
     ),
 ]
 
-# Timings per standard frame; a YAP1F signal is frame + gap + frame.
 _YAP_FRAME_TIMINGS = 2 + 2 * _FRAME_A_BITS + 1 + 1 + 2 * _FRAME_B_BITS + 1
-_YAP_INTER_FRAME_GAP = 39000
+
+
+def _command_from_yap1f_labels(labels: dict[str, str], frame: bytes) -> GreeAcCommand:
+    """Build captured state from remote labels, retaining unlabeled state fields."""
+    a0, a1, a2, a3, b0, _, _, _ = frame
+    mode = {
+        "AUTO": GreeAcMode.AUTO,
+        "COOL": GreeAcMode.COOL,
+        "DRY": GreeAcMode.DRY,
+        "FAN": GreeAcMode.FAN_ONLY,
+        "HEAT": GreeAcMode.HEAT,
+    }.get(labels.get("Mode"), GreeAcMode(a0 & 0x07))
+    fan = {
+        "AUTO": GreeAcFanSpeed.AUTO,
+        "1": GreeAcFanSpeed.LOW,
+        "2": GreeAcFanSpeed.MEDIUM,
+        "3": GreeAcFanSpeed.HIGH,
+    }.get(labels.get("Fan"), GreeAcFanSpeed((a0 >> 4) & 0x03))
+    swing_v_position = {
+        "11111": 1,
+        "10000": 2,
+        "01000": 3,
+        "00100": 4,
+        "00010": 5,
+        "00001": 6,
+        "00111": 7,
+        "01110": 9,
+        "11100": 11,
+    }.get(labels.get("SwingV"), b0 & 0x0F)
+    return GreeAcCommand(
+        power=labels.get("Mode") != "OFF",
+        mode=mode,
+        temperature=(
+            int(labels["Temp"])
+            if labels.get("Temp") not in (None, "N/A", "-", "")
+            else (a1 & 0x0F) + 16
+        ),
+        fan=fan,
+        swing_v=bool(a0 & 0x40),
+        swing_v_position=swing_v_position,
+        turbo=False,
+        display=(labels.get("Light") == "ON" if "Light" in labels else bool(a2 & 0x20)),
+        blow=(labels.get("Xfan") == "ON" if "Xfan" in labels else bool(a2 & 0x80)),
+        sleep=labels.get("Sleep") == "ON",
+        anion=(labels.get("Tree") == "ON" if "Tree" in labels else bool(a2 & 0x40)),
+        fresh_air=(
+            GreeAcFreshAir.LEVEL_1
+            if labels.get("Home") == "ON"
+            else GreeAcFreshAir.OFF
+            if labels.get("Home") == "OFF"
+            else GreeAcFreshAir(a3 & 0x03)
+        ),
+        ifeel=labels.get("Ifeel") == "ON",
+        model=GreeAcModel.YAP1F,
+    )
 
 
 def _bytes_of(bits: str) -> list[int]:
-    """Pack the first 32 bits of a bitstring into 4 bytes, LSB first."""
+    """Pack the first 32 bits of a bitstring into bytes, least-significant first."""
     values = [1 if bit == "1" else 0 for bit in bits]
     return [sum(values[i + j] << j for j in range(8)) for i in range(0, 32, 8)]
 
 
-def _yap_frames(timings: list[int]) -> tuple[list[int], list[int]]:
-    """Split YAP1F timings into the F1 and F2 byte lists."""
-    frame_a, frame_b = _extract_frames(timings[:_YAP_FRAME_TIMINGS])
-    follow_a, follow_b = _extract_frames(timings[_YAP_FRAME_TIMINGS + 1 :])
-    return _bytes_of(frame_a) + _bytes_of(frame_b), _bytes_of(
-        follow_a
-    ) + _bytes_of(follow_b)
-
-
-def _checksum_of(frame: list[int]) -> int:
-    """Recompute a frame checksum here rather than importing the module's."""
-    total = _CHECKSUM_BASE
-    total += sum(byte & 0x0F for byte in frame[:4])
-    total += sum(byte >> 4 for byte in frame[4:7])
-    return total & 0xF
-
-
-@pytest.mark.parametrize(("kwargs", "frame_a", "frame_b"), _YAP1F_GOLDEN)
-def test_yap1f_matches_golden_vectors(
-    kwargs: dict, frame_a: list[int], frame_b: list[int]
+@pytest.mark.parametrize(("labels", "frame1"), _YAP1F_CAPTURED)
+def test_yap1f_matches_captured_first_frame(
+    labels: dict[str, str], frame1: str
 ) -> None:
-    """The YAP1F encoder reproduces the captured frames byte for byte."""
-    command = GreeAcCommand(model=GreeAcModel.YAP1F, **kwargs)
+    """The YAP1F encoder reproduces all 29 remote state frames byte for byte."""
+    command = _command_from_yap1f_labels(labels, bytes.fromhex(frame1))
     timings = command.get_raw_timings()
-    assert command.modulation == 38029
-    assert len(timings) == 2 * _YAP_FRAME_TIMINGS + 2
-    assert timings[_YAP_FRAME_TIMINGS] == -_YAP_INTER_FRAME_GAP
-    first, second = _yap_frames(timings)
-    assert first == frame_a
-    assert second == frame_b
-    assert second[3] == 0x70
-    assert second[6] == kwargs.get("fan", GreeAcFanSpeed.AUTO).value << 4
-    assert second[7] >> 4 == _checksum_of(second)
-    decoded = GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F)
-    assert decoded is not None
-    assert decoded.model is GreeAcModel.YAP1F
-    assert (decoded.power, decoded.mode, decoded.temperature, decoded.fan) == (
-        kwargs["power"],
-        kwargs["mode"],
-        kwargs["temperature"],
-        kwargs["fan"],
-    )
-    assert decoded.display is kwargs["display"]
-
-
-@pytest.mark.parametrize(("kwargs", "frame_a", "frame_b"), _YAP1F_GOLDEN)
-def test_yap1f_first_frame_matches_generic(
-    kwargs: dict, frame_a: list[int], frame_b: list[int]
-) -> None:
-    """YAP1F F1 is the generic frame bytes for the same state."""
-    generic_a, generic_b = _extract_frames(GreeAcCommand(**kwargs).get_raw_timings())
-    yap1f = GreeAcCommand(model=GreeAcModel.YAP1F, **kwargs).get_raw_timings()
-    assert _yap_frames(yap1f)[0] == _bytes_of(generic_a) + _bytes_of(generic_b)
-    assert _yap_frames(yap1f)[0] == frame_a
-
-
-def test_yap1f_off_capture_differs_by_one_unchecksummed_nibble() -> None:
-    """Pin the one byte where the Off capture differs from the generic frame."""
-    captured_f1 = [0x04, 0x0E, 0x20, 0x50, 0x00, 0x20, 0x00, 0xE8]
-    kwargs = dict(
-        power=False,
-        mode=GreeAcMode.HEAT,
-        temperature=30,
-        fan=GreeAcFanSpeed.AUTO,
-        display=True,
-    )
-    encoded = GreeAcCommand(model=GreeAcModel.YAP1F, **kwargs).get_raw_timings()
-    first, _ = _yap_frames(encoded)
-    assert first == [0x04, 0x0E, 0x20, 0x50, 0x00, 0x20, 0x00, 0xE0]
-    assert captured_f1 != first
-    assert captured_f1[:7] == first[:7]
-    assert captured_f1[7] ^ first[7] == 0x08
-    # The differing low nibble of byte 7 sits outside the checksum, so both
-    # frames carry the same checksum over otherwise identical bytes.
-    assert _checksum_of(captured_f1) == _checksum_of(first) == captured_f1[7] >> 4
-
-
-def test_yap1f_roundtrips_full_generic_state() -> None:
-    """YAP1F keeps every field the generic encoder sets: it is the same frame."""
-    command = GreeAcCommand(
-        model=GreeAcModel.YAP1F,
-        mode=GreeAcMode.COOL,
-        temperature=25,
-        fan=GreeAcFanSpeed.MEDIUM,
-        swing_v=True,
-        swing_h=True,
-        turbo=True,
-        display=False,
-        blow=True,
-        sleep=True,
-        timer_hours=1.5,
-        anion=True,
-        fresh_air=GreeAcFreshAir.LEVEL_1,
-    )
-    decoded = GreeAcCommand.from_raw_timings(
-        command.get_raw_timings(), model=GreeAcModel.YAP1F
-    )
-    assert decoded is not None
-    assert (decoded.swing_v, decoded.swing_h) == (True, True)
-    assert (decoded.turbo, decoded.display, decoded.blow) == (True, False, True)
-    assert (decoded.sleep, decoded.timer_hours, decoded.anion) == (True, 1.5, True)
-    assert decoded.fresh_air is GreeAcFreshAir.LEVEL_1
-    assert decoded.temperature == 25 and decoded.fan is GreeAcFanSpeed.MEDIUM
-
-def _flip_space(timings: list[int], index: int) -> None:
-    """Swap a bit space between its zero and one lengths in place."""
-    timings[index] = (
-        -_BIT_ONE_SPACE if timings[index] == -_BIT_ZERO_SPACE else -_BIT_ZERO_SPACE
-    )
-
-
-def _yap1f_cool_high() -> list[int]:
-    """Return YAP1F timings for the cool/high/16 golden state."""
-    return GreeAcCommand(
-        model=GreeAcModel.YAP1F,
-        mode=GreeAcMode.COOL,
-        temperature=16,
-        fan=GreeAcFanSpeed.HIGH,
-        display=True,
-    ).get_raw_timings()
-
-
-def test_yap1f_uses_remote_modulation() -> None:
-    """YAP1F defaults to the captures' 38029 Hz; generic stays at 38000."""
-    yap1f = GreeAcCommand(model=GreeAcModel.YAP1F, mode=GreeAcMode.COOL, temperature=16)
-    generic = GreeAcCommand(mode=GreeAcMode.COOL, temperature=16)
-    assert (yap1f.modulation, generic.modulation) == (38029, 38000)
-    explicit = GreeAcCommand(
-        model=GreeAcModel.YAP1F,
-        mode=GreeAcMode.COOL,
-        temperature=16,
-        modulation=38000,
-    )
-    assert explicit.modulation == 38000
-
-
-@pytest.mark.parametrize(
-    ("index", "value"),
-    [
-        pytest.param(0, -9000, id="wrong_header_mark_sign"),
-        pytest.param(_YAP_FRAME_TIMINGS, -20100, id="generic_gap_is_no_follow"),
-        pytest.param(_YAP_FRAME_TIMINGS, 39000, id="wrong_gap_sign"),
-        pytest.param(_YAP_FRAME_TIMINGS + 1, 5000, id="wrong_follow_leader"),
-    ],
-)
-def test_yap1f_rejects_bad_leader_or_gap(index: int, value: int) -> None:
-    """A mis-signed leader or a generic-length inter-frame gap fails the decode."""
-    timings = _yap1f_cool_high()
-    timings[index] = value
-    assert GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F) is None
-
-
-def test_yap1f_rejects_single_frame() -> None:
-    """One standard frame is not a YAP1F signal, even with the right bytes."""
-    timings = _yap1f_cool_high()
-    assert (
-        GreeAcCommand.from_raw_timings(
-            timings[:_YAP_FRAME_TIMINGS], model=GreeAcModel.YAP1F
-        )
-        is None
-    )
-
-
-def test_yap1f_rejects_corrupt_follow_checksum() -> None:
-    """Flipping a continuation checksum bit fails the decode."""
-    timings = _yap1f_cool_high()
-    _flip_space(timings, _YAP_FRAME_TIMINGS + 1 + _FRAME_B_START + 1 + 2 * 28)
-    assert GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F) is None
-
-
-def test_yap1f_rejects_wrong_fan_echo() -> None:
-    """The continuation fan echo must match the first frame's fan."""
-    timings = _yap1f_cool_high()
-    _flip_space(timings, _YAP_FRAME_TIMINGS + 1 + _FRAME_B_START + 1 + 2 * 20)
-    assert GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F) is None
-
-
-def test_yap1f_rejects_cleared_follow_bit() -> None:
-    """Without the follow bit the second frame is just a repeat, not YAP1F."""
-    timings = _yap1f_cool_high()
-    _flip_space(timings, _YAP_FRAME_TIMINGS + 1 + 3 + 2 * 29)
-    assert GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F) is None
-
-
-def test_yap1f_rejects_corrupt_first_frame() -> None:
-    """A first frame that generic rejects is not a YAP1F signal either."""
-    timings = _yap1f_cool_high()
-    _flip_space(timings, _FRAME_B_START + 1 + 2 * 28)
-    assert GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F) is None
+    frame_a, frame_b = _extract_frames(timings[:_YAP_FRAME_TIMINGS])
+    encoded = bytes(_bytes_of(frame_a) + _bytes_of(frame_b))
+    assert encoded == bytes.fromhex(frame1)
+    assert [int(bit) for bit in frame_a[32:35]] == [0, 1, 0]
 
 
 def test_generic_profile_keeps_shared_flags_and_default_route() -> None:
