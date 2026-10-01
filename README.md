@@ -16,11 +16,12 @@ primary role is to provide the shared, foundational types that the Home
 Assistant ecosystem can build on.
 
 The Gree AC command supports the existing generic framing (the default) and a
-three-block YAP1F profile. Pass `model=GreeAcModel.YAP1F` when constructing and
-decoding. Both profiles use `display`, `anion`, and `blow`; for a YAP1F remote
-these correspond to light, health, and X-FAN respectively. YAP1F also supports
-power, mode, temperature, fan, and turbo. Its decoder checks both checksums and
-overlapping bytes, tolerates quantized pulse timings, and emits valid nonzero raw
-encoder output ending in the final mark. Its decoder accepts the final mark with
-either no trailing space or a long trailing space. Vane controls and self-clean
+YAP1F/YAP1FB profile. Pass `model=GreeAcModel.YAP1F` when constructing and
+decoding. YAP1F sends the standard frame plus a 0x70 continuation frame that
+repeats bytes 0-2, echoes the fan in byte 6, and carries its own checksum.
+Both profiles use `display`, `anion`, and `blow`; for a YAP1F remote
+these correspond to light, health, and X-FAN respectively. YAP1F carries the
+full generic state (power, mode, temperature, fan, swing, turbo, sleep, timer,
+and fresh air). Clock, wall-clock timers, and weekly schedule have no known
+wire mapping and are not encoded. Vane positions and self-clean
 are not supported without verified wire locations.
