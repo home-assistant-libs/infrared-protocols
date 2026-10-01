@@ -45,7 +45,7 @@ Only part of the state enters the checksum, so many fields do not affect it; see
 ``_checksum``.
 """
 
-from enum import Enum, IntEnum
+from enum import IntEnum, StrEnum
 from typing import Self, override
 
 from . import Command
@@ -123,7 +123,7 @@ class GreeAcMode(IntEnum):
     HEAT = 4
 
 
-class GreeAcModel(str, Enum):
+class GreeAcModel(StrEnum):
     """Wire profile for Gree commands."""
 
     GENERIC = "generic"
@@ -380,8 +380,8 @@ class GreeAcCommand(Command):
         data[8:11] = data[0:3]
         data[11], data[19], data[23] = 0x70, 0xA0, 0xA0
         for start in (0, 8):
-            nibbles = sum(value & 0x0F for value in data[start:start + 4])
-            nibbles += sum(value >> 4 for value in data[start + 5:start + 8]) + 0x0A
+            nibbles = sum(value & 0x0F for value in data[start : start + 4])
+            nibbles += sum(value >> 4 for value in data[start + 5 : start + 8]) + 0x0A
             data[start + 8] = ((nibbles & 0x0F) << 4) | (data[start + 7] & 0x0F)
         timings: list[int] = []
         for start in (0, 8, 16):
@@ -530,7 +530,10 @@ class GreeAcCommand(Command):
                 cursor += 16
             for bit_index, expected in enumerate((0, 1, 0)):
                 mark_at = cursor + 2 * bit_index
-                if cls._read_yap_bit(timings[mark_at], timings[mark_at + 1]) != expected:
+                if (
+                    cls._read_yap_bit(timings[mark_at], timings[mark_at + 1])
+                    != expected
+                ):
                     return None
             if (
                 abs(timings[cursor + 6] - _YAP_BIT_MARK) > _BIT_TOLERANCE
@@ -555,20 +558,22 @@ class GreeAcCommand(Command):
                     return None
                 cursor += 1
                 checksum = sum(value & 0x0F for value in data[start : start + 4])
-                checksum += sum(value >> 4 for value in data[start + 5 : start + 8]) + 0x0A
-                if data[start + 8] != (
-                    (checksum & 0x0F) << 4 | data[start + 7] & 0x0F
-                ):
+                checksum += (
+                    sum(value >> 4 for value in data[start + 5 : start + 8]) + 0x0A
+                )
+                if data[start + 8] != ((checksum & 0x0F) << 4 | data[start + 7] & 0x0F):
                     return None
             elif cursor < len(timings):
                 gap = timings[cursor]
                 # Legacy encoders may use zero; transport may retain a long idle space.
-                if gap != 0 and (
-                    gap >= 0 or -gap < _YAP_FRAME_GAP * (1 - _TOLERANCE)
-                ):
+                if gap != 0 and (gap >= 0 or -gap < _YAP_FRAME_GAP * (1 - _TOLERANCE)):
                     return None
         if (data[3], data[11], data[19], data[23], data[24]) != (
-            0x50, 0x70, 0xA0, 0xA0, 0
+            0x50,
+            0x70,
+            0xA0,
+            0xA0,
+            0,
         ):
             return None
         if data[1:3] != data[9:11]:
@@ -579,7 +584,9 @@ class GreeAcCommand(Command):
         except ValueError:
             return None
         power = bool(data[0] & 0x08)
-        if not power and (mode is not GreeAcMode.HEAT or fan is not GreeAcFanSpeed.AUTO):
+        if not power and (
+            mode is not GreeAcMode.HEAT or fan is not GreeAcFanSpeed.AUTO
+        ):
             return None
         temperature = data[1] + _TEMP_OFFSET
         if not MIN_TEMP <= temperature <= MAX_TEMP:

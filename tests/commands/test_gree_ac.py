@@ -1,6 +1,7 @@
 """Tests for the Gree air-conditioner IR command."""
 
 import pytest
+
 from infrared_protocols.commands.gree_ac import (
     GreeAcCommand,
     GreeAcFanSpeed,
@@ -712,9 +713,13 @@ def test_yap1f_roundtrip_and_flags() -> None:
     timings = command.get_raw_timings()
     decoded = GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F)
     assert decoded is not None
-    assert (decoded.power, decoded.mode, decoded.temperature, decoded.fan, decoded.display) == (
-        True, GreeAcMode.COOL, 25, GreeAcFanSpeed.AUTO, True
-    )
+    assert (
+        decoded.power,
+        decoded.mode,
+        decoded.temperature,
+        decoded.fan,
+        decoded.display,
+    ) == (True, GreeAcMode.COOL, 25, GreeAcFanSpeed.AUTO, True)
     assert all(duration != 0 for duration in timings)
     assert all(duration > 0 for duration in timings[::2])
     assert all(duration < 0 for duration in timings[1::2])
@@ -722,16 +727,45 @@ def test_yap1f_roundtrip_and_flags() -> None:
     decoded_bytes = []
     for block_start in (2, 142, 282):
         decoded_bytes.extend(
-            sum((timings[block_start + byte_index * 16 + bit_index * 2 + 1] == -1643) << bit_index for bit_index in range(8))
+            sum(
+                (timings[block_start + byte_index * 16 + bit_index * 2 + 1] == -1643)
+                << bit_index
+                for bit_index in range(8)
+            )
             for byte_index in range(4)
         )
         block_end = block_start + 4 * 16 + 8
         decoded_bytes.extend(
-            sum((timings[block_end + byte_index * 16 + bit_index * 2 + 1] == -1643) << bit_index for bit_index in range(8))
+            sum(
+                (timings[block_end + byte_index * 16 + bit_index * 2 + 1] == -1643)
+                << bit_index
+                for bit_index in range(8)
+            )
             for byte_index in range(4)
         )
     assert decoded_bytes[:4] == [0x09, 0x09, 0x20, 0x50]
-    assert decoded_bytes[4:] == [0xC2, 0x00, 0x00, 0x80, 0x80, 0x09, 0x20, 0x70, 0x00, 0x00, 0x00, 0x30, 0x30, 0x00, 0x00, 0xA0, 0x00, 0x00, 0xA0, 0x00]
+    assert decoded_bytes[4:] == [
+        0xC2,
+        0x00,
+        0x00,
+        0x80,
+        0x80,
+        0x09,
+        0x20,
+        0x70,
+        0x00,
+        0x00,
+        0x00,
+        0x30,
+        0x30,
+        0x00,
+        0x00,
+        0xA0,
+        0x00,
+        0x00,
+        0xA0,
+        0x00,
+    ]
     varied = GreeAcCommand(
         model=GreeAcModel.YAP1F,
         mode=GreeAcMode.HEAT,
@@ -747,21 +781,37 @@ def test_yap1f_roundtrip_and_flags() -> None:
     )
     assert decoded is not None
     assert (decoded.turbo, decoded.display, decoded.anion, decoded.blow) == (
-        True, False, True, True
+        True,
+        False,
+        True,
+        True,
     )
 
 
 def test_yap1f_off_auto_malformed_and_generic() -> None:
+    """The auto, off and dry states round-trip; a corrupted frame decodes to None."""
     auto = GreeAcCommand(model=GreeAcModel.YAP1F, mode=GreeAcMode.AUTO, temperature=19)
-    off = GreeAcCommand(model=GreeAcModel.YAP1F, power=False, mode=GreeAcMode.COOL, temperature=19)
-    auto_result = GreeAcCommand.from_raw_timings(auto.get_raw_timings(), model=GreeAcModel.YAP1F)
-    off_result = GreeAcCommand.from_raw_timings(off.get_raw_timings(), model=GreeAcModel.YAP1F)
+    off = GreeAcCommand(
+        model=GreeAcModel.YAP1F, power=False, mode=GreeAcMode.COOL, temperature=19
+    )
+    auto_result = GreeAcCommand.from_raw_timings(
+        auto.get_raw_timings(), model=GreeAcModel.YAP1F
+    )
+    off_result = GreeAcCommand.from_raw_timings(
+        off.get_raw_timings(), model=GreeAcModel.YAP1F
+    )
     assert auto_result is not None and auto_result.temperature == 25
-    assert off_result is not None and not off_result.power and off_result.mode is GreeAcMode.HEAT
+    assert (
+        off_result is not None
+        and not off_result.power
+        and off_result.mode is GreeAcMode.HEAT
+    )
     assert off_result.fan is GreeAcFanSpeed.AUTO
     dry = GreeAcCommand(
-        model=GreeAcModel.YAP1F, mode=GreeAcMode.DRY,
-        temperature=23, fan=GreeAcFanSpeed.HIGH,
+        model=GreeAcModel.YAP1F,
+        mode=GreeAcMode.DRY,
+        temperature=23,
+        fan=GreeAcFanSpeed.HIGH,
     )
     dry_result = GreeAcCommand.from_raw_timings(
         dry.get_raw_timings(), model=GreeAcModel.YAP1F
@@ -773,7 +823,12 @@ def test_yap1f_off_auto_malformed_and_generic() -> None:
     generic = GreeAcCommand(mode=GreeAcMode.COOL, temperature=25)
     generic_decoded = GreeAcCommand.from_raw_timings(generic.get_raw_timings())
     assert generic_decoded is not None
-    assert (generic_decoded.power, generic_decoded.mode, generic_decoded.temperature, generic_decoded.fan) == (True, GreeAcMode.COOL, 25, GreeAcFanSpeed.AUTO)
+    assert (
+        generic_decoded.power,
+        generic_decoded.mode,
+        generic_decoded.temperature,
+        generic_decoded.fan,
+    ) == (True, GreeAcMode.COOL, 25, GreeAcFanSpeed.AUTO)
 
 
 def _yap_space_index(block: int, byte: int, bit: int) -> int:
@@ -803,6 +858,7 @@ def _flip_yap_bit(timings: list[int], block: int, byte: int, bit: int) -> None:
 def test_yap1f_shared_flags_preserve_each_wire_bit(
     display: bool, anion: bool, blow: bool, expected_byte: int
 ) -> None:
+    """Each shared flag keeps its own bit when the other two are off."""
     command = GreeAcCommand(
         model=GreeAcModel.YAP1F,
         mode=GreeAcMode.COOL,
@@ -813,8 +869,7 @@ def test_yap1f_shared_flags_preserve_each_wire_bit(
     )
     timings = command.get_raw_timings()
     actual_byte = sum(
-        (timings[_yap_space_index(0, 2, bit)] == -1643) << bit
-        for bit in range(8)
+        (timings[_yap_space_index(0, 2, bit)] == -1643) << bit for bit in range(8)
     )
     assert actual_byte == expected_byte
     decoded = GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F)
@@ -824,7 +879,9 @@ def test_yap1f_shared_flags_preserve_each_wire_bit(
 
 def test_yap1f_decodes_broadlink_quantized_timings() -> None:
     """Broadlink stores 8192/269 us ticks, including the 010 marker spaces."""
-    command = GreeAcCommand(model=GreeAcModel.YAP1F, mode=GreeAcMode.COOL, temperature=25)
+    command = GreeAcCommand(
+        model=GreeAcModel.YAP1F, mode=GreeAcMode.COOL, temperature=25
+    )
     timings = command.get_raw_timings()
     quantized = [
         (1 if duration > 0 else -1) * round(abs(duration) * 269 / 8192) * 8192 // 269
@@ -833,7 +890,9 @@ def test_yap1f_decodes_broadlink_quantized_timings() -> None:
     decoded = GreeAcCommand.from_raw_timings(quantized, model=GreeAcModel.YAP1F)
     assert decoded is not None
     assert (decoded.mode, decoded.temperature, decoded.display) == (
-        GreeAcMode.COOL, 25, True
+        GreeAcMode.COOL,
+        25,
+        True,
     )
 
 
@@ -869,6 +928,7 @@ def test_yap1f_rejects_valid_checksum_with_disagreeing_overlap(next_block: int) 
 def test_yap1f_accepts_final_mark_with_supported_trailing_space(
     trailing: list[int],
 ) -> None:
+    """The final mark is accepted with no trailing space or a long idle space."""
     timings = GreeAcCommand(
         model=GreeAcModel.YAP1F, mode=GreeAcMode.COOL, temperature=25
     ).get_raw_timings()
@@ -893,6 +953,7 @@ def test_yap1f_accepts_final_mark_with_supported_trailing_space(
     ],
 )
 def test_yap1f_rejects_bad_marker_or_gap(index: int, value: int) -> None:
+    """A mis-signed header, marker, gap, or trailing space fails the decode."""
     timings = GreeAcCommand(
         model=GreeAcModel.YAP1F, mode=GreeAcMode.COOL, temperature=25
     ).get_raw_timings()
@@ -903,6 +964,7 @@ def test_yap1f_rejects_bad_marker_or_gap(index: int, value: int) -> None:
 
 
 def test_generic_profile_keeps_shared_flags_and_default_route() -> None:
+    """The generic profile keeps shared flags without selecting YAP1F."""
     command = GreeAcCommand(
         mode=GreeAcMode.COOL, temperature=25, display=False, anion=True, blow=True
     )
