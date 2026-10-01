@@ -443,7 +443,10 @@ class GreeAcCommand(Command):
             if swing_v_position is None:
                 swing_v_position = int(self.swing_v)
             _set_field(frame_b, 0, 4, swing_v_position)
-            frame_a[_A_SWING] = int(swing_v_position in _YAP1F_ACTIVE_SWING_POSITIONS)
+            frame_a[_A_SWING] = int(
+                swing_v_position in _YAP1F_ACTIVE_SWING_POSITIONS
+                or self.swing_h_position != 0
+            )
             frame_b[_B_SIGNATURE] = 0
             _set_field(frame_b, 8, 8, _YAP1F_B1_DEFAULT)
             frame_b[_B1_IFEEL] = int(self.ifeel)
@@ -651,8 +654,10 @@ class GreeAcCommand(Command):
             return None
         if any(state_a[index] != 1 for index in _A_TRAILER):
             return None
+        # Byte 8's low bits carry the display-source field and the I-Feel flag,
+        # so both are excluded from the constant check.
         if (
-            _get_field(state_b, 8, 8) & ~0x03 != _YAP1F_B1_DEFAULT & ~0x03
+            _get_field(state_b, 8, 8) & ~0x07 != _YAP1F_B1_DEFAULT & ~0x07
             or _get_field(state_b, 16, 8) != 0
             or _get_field(state_b, 24, 2) != 0
             or _get_field(state_b, 27, 1) != 0
