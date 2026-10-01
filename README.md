@@ -36,5 +36,9 @@ These added mappings are reference-derived and are **not yet confirmed by a YAP1
 capture**. Horizontal position and display-temperature source are `swing_h_position`
 (0–6) and `display_temp` (0 off, 1 setpoint, 2 indoor, 3 outdoor); set
 `fahrenheit=True` for a 61–86 °F setpoint. `econo` represents the energy-saving bit;
-the Gree manual describes this function for cool mode. The reference does not define
-an absence, 8 °C heat, or child-lock bit, so these are not encoded.
+the Gree manual describes this function for cool mode. The YAP1F CLOCK+TEMP
+combination also drives this bit: in heat it is the absence (8 °C frost
+protection) function, captured 2026-10-02, and encoded as `absence=True`. The
+wire bit is shared, so either flag sets it and decoding a YAP1F frame with the
+bit set reports both. The reference does not define a child-lock bit, so it is
+not encoded.

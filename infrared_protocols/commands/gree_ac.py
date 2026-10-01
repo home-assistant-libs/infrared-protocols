@@ -126,6 +126,8 @@ _B1_IFEEL = 10
 _B1_UNKNOWN2 = (11, 3)
 _B1_WIFI = 14
 _B1_BIT7 = 15
+# The YAP1F CLOCK+TEMP absence flag shares this energy-saving bit (byte 7,
+# 0x04); the 2026-10-02 capture shows both functions excluded from the checksum.
 _B_ECONO = 26
 _B_CHECKSUM = (28, 4)
 
@@ -287,6 +289,10 @@ class GreeAcCommand(Command):
 
     ``timer_hours`` is the countdown the remote is set to, 0.5 to 24 in half-hour
     steps, or None when the timer is off.
+
+    ``absence`` (YAP1F only) is the CLOCK+TEMP 8 °C frost-protection flag from
+    the 2026-10-02 capture; it shares the energy-saving bit with ``econo``, so
+    the wire cannot distinguish the two functions and either one sets the bit.
     """
 
     power: bool
@@ -298,6 +304,7 @@ class GreeAcCommand(Command):
     swing_h_position: int
     fahrenheit: bool
     econo: bool
+    absence: bool
     display_temp: int
     turbo: bool
     display: bool
@@ -322,6 +329,7 @@ class GreeAcCommand(Command):
         swing_h_position: int | None = None,
         fahrenheit: bool = False,
         econo: bool = False,
+        absence: bool = False,
         display_temp: int | None = None,
         turbo: bool = False,
         display: bool = True,
@@ -378,6 +386,7 @@ class GreeAcCommand(Command):
         self.swing_h = swing_h_position != 0
         self.fahrenheit = fahrenheit
         self.econo = econo
+        self.absence = absence
         self.display_temp = display_temp
         self.turbo = turbo
         self.display = display
@@ -439,7 +448,8 @@ class GreeAcCommand(Command):
             _set_field(frame_b, 8, 8, _YAP1F_B1_DEFAULT)
             frame_b[_B1_IFEEL] = int(self.ifeel)
         _set_field(frame_b, *_B1_DISPLAY_TEMP, self.display_temp)
-        frame_b[_B_ECONO] = int(self.econo)
+        # Absence shares the energy-saving bit, so either flag sets it.
+        frame_b[_B_ECONO] = int(self.econo or self.absence)
         _set_field(frame_b, *_B_CHECKSUM, _checksum(frame_a, frame_b))
         return frame_a, frame_b
 
@@ -669,6 +679,9 @@ class GreeAcCommand(Command):
             swing_h_position=first.swing_h_position,
             swing_v_position=swing_v_position,
             econo=first.econo,
+            # The shared bit cannot be told apart on the wire; a YAP1F frame
+            # with it set reads as both functions.
+            absence=first.econo,
             display_temp=first.display_temp,
             turbo=first.turbo,
             display=first.display,

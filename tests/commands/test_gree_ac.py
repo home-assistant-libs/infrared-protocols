@@ -662,6 +662,10 @@ def test_fields_inside_the_checksum_nibbles_change_it(command: GreeAcCommand) ->
             GreeAcCommand(mode=GreeAcMode.COOL, temperature=24, timer_hours=10),
             id="timer_half_tens_and_enabled",
         ),
+        pytest.param(
+            GreeAcCommand(mode=GreeAcMode.COOL, temperature=24, absence=True),
+            id="absence",
+        ),
     ],
 )
 def test_fields_outside_the_checksum_nibbles_leave_it_alone(
@@ -1346,3 +1350,59 @@ def test_horizontal_swing_position_uses_all_three_checksum_bits() -> None:
 
     assert _bits_to_int_lsb(right_b, 4, 3) == 6
     assert right_b[28:] != base_b[28:]
+
+
+# YAP1F CLOCK+TEMP absence captures (Guest zone blaster, 2026-10-02): heat 28
+# with a 9.5 h off timer, display and anion on, display source clock. Block-B
+# bytes are the captured state-frame bytes 4..7, each byte printed LSB-first;
+# absence is the only difference (0x04 in byte 7) and the checksum nibble
+# stays 0x7 in both captures.
+_YAP1F_ABSENCE_BLOCK_B = {
+    False: "00000000 00000011 00000000 00001110",
+    True: "00000000 00000011 00000000 00101110",
+}
+
+
+def _yap1f_absence_command(absence: bool) -> GreeAcCommand:
+    """Build the heat state the remote held for both CLOCK+TEMP presses."""
+    return GreeAcCommand(
+        mode=GreeAcMode.HEAT,
+        temperature=28,
+        timer_hours=9.5,
+        display=True,
+        anion=True,
+        display_temp=0,
+        absence=absence,
+        model=GreeAcModel.YAP1F,
+    )
+
+
+@pytest.mark.parametrize("absence", [False, True])
+def test_yap1f_absence_matches_captured_block_b(absence: bool) -> None:
+    """Encoding absence on/off reproduces the two captured block-B byte strings."""
+    command = _yap1f_absence_command(absence)
+    _, frame_b = _extract_frames(command.get_raw_timings()[:_YAP_FRAME_TIMINGS])
+
+    assert bytes(_bytes_of(frame_b)) == bytes(
+        _bytes_of("".join(_YAP1F_ABSENCE_BLOCK_B[absence].split()))
+    )
+    # The stored checksum nibble is 0x7 in both captures and ignores absence.
+    assert frame_b[28:] == "1110"
+
+
+@pytest.mark.parametrize("absence", [False, True])
+def test_yap1f_absence_roundtrips(absence: bool) -> None:
+    """The captured absence states decode back to the same command fields."""
+    command = _yap1f_absence_command(absence)
+    decoded = GreeAcCommand.from_raw_timings(
+        command.get_raw_timings(), model=GreeAcModel.YAP1F
+    )
+
+    assert decoded is not None
+    assert decoded.model is GreeAcModel.YAP1F
+    assert decoded.absence is absence
+    # The shared bit reads as both functions; the wire cannot distinguish them.
+    assert decoded.econo is absence
+    assert decoded.mode is GreeAcMode.HEAT
+    assert decoded.temperature == 28
+    assert decoded.timer_hours == 9.5
