@@ -1233,10 +1233,17 @@ def test_yap1f_matches_captured_first_frame(
     """The YAP1F encoder reproduces all 29 remote state frames byte for byte."""
     command = _command_from_yap1f_labels(labels, bytes.fromhex(frame1))
     timings = command.get_raw_timings()
+    assert len(timings) == 2 * (_YAP_FRAME_TIMINGS + 1)
     frame_a, frame_b = _extract_frames(timings[:_YAP_FRAME_TIMINGS])
     encoded = bytes(_bytes_of(frame_a) + _bytes_of(frame_b))
     assert encoded == bytes.fromhex(frame1)
     assert [int(bit) for bit in frame_a[32:35]] == [0, 1, 0]
+    fixed_a, fixed_b = _extract_frames(
+        timings[_YAP_FRAME_TIMINGS + 1 : 2 * (_YAP_FRAME_TIMINGS + 1)]
+    )
+    assert bytes(_bytes_of(fixed_a) + _bytes_of(fixed_b)) == bytes.fromhex(
+        "000000A0000000A0"
+    )
 
 
 def test_generic_profile_keeps_shared_flags_and_default_route() -> None:

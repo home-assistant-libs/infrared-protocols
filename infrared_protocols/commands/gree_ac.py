@@ -73,15 +73,15 @@ _FRAME_B_BITS = 32
 # + mid-frame gap (1) + block B pairs (64) + end mark (1).
 _FRAME_TIMINGS = 2 + 2 * _FRAME_A_BITS + 1 + 1 + 2 * _FRAME_B_BITS + 1
 
-# Gap between the 0x50 frame and the 0x70 continuation frame of a YAP1F
-# signal, from 4 HAIR captures (38944..39102 us at 38029 Hz).
-_INTER_FRAME_GAP = 39000
-# YAP1F remotes transmit at 38029 Hz in the captures; generic stays at 38000.
+# YAP1F captures use a 384-cycle (~10.1 ms) gap between every block.
+_YAP1F_BLOCK_GAP = 10100
+# YAP1F remotes transmit at 38029 Hz; generic stays at 38000.
 _YAP1F_MODULATION = 38029
-# Block A bit set in the continuation frame (byte 3 is 0x70, not 0x50).
-_FOLLOW_BIT = 29
-# Block B field echoing the fan value in the continuation frame.
-_FAN_ECHO = (20, 2)
+_YAP1F_SWING_POSITIONS = (0, 1, 2, 3, 4, 5, 6, 7, 9, 11)
+_YAP1F_ACTIVE_SWING_POSITIONS = (1, 7, 9, 11)
+# Block-B byte1 default from all 29 captures: DisplayTemp 0b10, unknown2=0,
+# WiFi and bit7 set, IFeel clear (IFeel is ORed in from state, giving 0xC6).
+_YAP1F_B1_DEFAULT = 0xC2
 
 _TOLERANCE = 0.35
 # Marks are stretched by receiver AGC far more than spaces, so bit timing is matched
@@ -112,6 +112,11 @@ _A_TRAILER = (28, 30, 33)
 _B_SWING_V = 0
 _B_SWING_H = 4
 _B_SIGNATURE = 13
+_B1_DISPLAY_TEMP = (8, 2)
+_B1_IFEEL = 10
+_B1_UNKNOWN2 = (11, 3)
+_B1_WIFI = 14
+_B1_BIT7 = 15
 _B_CHECKSUM = (28, 4)
 
 # The checksum starts from a fixed base rather than zero.
@@ -278,6 +283,8 @@ class GreeAcCommand(Command):
     timer_hours: float | None
     anion: bool
     fresh_air: GreeAcFreshAir
+    ifeel: bool
+    swing_v_position: int | None
     model: GreeAcModel
 
     def __init__(
@@ -296,6 +303,8 @@ class GreeAcCommand(Command):
         timer_hours: float | None = None,
         anion: bool = False,
         fresh_air: GreeAcFreshAir = GreeAcFreshAir.OFF,
+        ifeel: bool = False,
+        swing_v_position: int | None = None,
         model: GreeAcModel = GreeAcModel.GENERIC,
         modulation: int | None = None,
     ) -> None:
@@ -316,6 +325,11 @@ class GreeAcCommand(Command):
                 )
             if (timer_hours * 2) % 1:
                 raise ValueError(f"timer_hours {timer_hours} is not a multiple of 0.5")
+        if swing_v_position is not None and (
+            model is not GreeAcModel.YAP1F
+            or swing_v_position not in _YAP1F_SWING_POSITIONS
+        ):
+            raise ValueError(f"unsupported swing_v_position {swing_v_position}")
 
         self.power = power
         self.mode = mode
@@ -330,6 +344,8 @@ class GreeAcCommand(Command):
         self.timer_hours = timer_hours
         self.anion = anion
         self.fresh_air = fresh_air
+        self.ifeel = ifeel
+        self.swing_v_position = swing_v_position
         self.model = model
 
     @override
@@ -362,32 +378,40 @@ class GreeAcCommand(Command):
         frame_b[_B_SWING_V] = int(self.swing_v)
         frame_b[_B_SWING_H] = int(self.swing_h)
         frame_b[_B_SIGNATURE] = 1
+        if self.model is GreeAcModel.YAP1F:
+            swing_v_position = self.swing_v_position
+            if swing_v_position is None:
+                swing_v_position = int(self.swing_v)
+            _set_field(frame_b, 0, 4, swing_v_position)
+            frame_a[_A_SWING] = int(swing_v_position in _YAP1F_ACTIVE_SWING_POSITIONS)
+            frame_b[_B_SIGNATURE] = 0
+            _set_field(frame_b, 8, 8, _YAP1F_B1_DEFAULT)
+            frame_b[_B1_IFEEL] = int(self.ifeel)
         _set_field(frame_b, *_B_CHECKSUM, _checksum(frame_a, frame_b))
         return frame_a, frame_b
 
     @staticmethod
-    def _encode_signal(frame_a: list[int], frame_b: list[int]) -> list[int]:
+    def _encode_signal(
+        frame_a: list[int], frame_b: list[int], *, gap: int = _FRAME_GAP
+    ) -> list[int]:
         """Encode one standard frame into raw timings with a trailing gap."""
         timings = _encode_frame(frame_a, leader=True)
-        timings.append(-_FRAME_GAP)
+        timings.append(-gap)
         timings.extend(_encode_frame(frame_b, leader=False))
-        timings.append(-_FRAME_GAP)
+        timings.append(-gap)
         return timings
 
     def _get_yap1f_raw_timings(self) -> list[int]:
-        """Encode the 0x50 frame plus the 0x70 continuation frame."""
+        """Encode the state frame followed by the captured fixed frame."""
         frame_a, frame_b = self._build_frames()
-        # The continuation repeats bytes 0-2, sets byte 3 to 0x70, clears the
-        # signature, echoes the fan in byte 6, and carries its own checksum.
-        follow_a = list(frame_a)
-        follow_a[_FOLLOW_BIT] = 1
-        follow_b = list(frame_b)
-        follow_b[_B_SIGNATURE] = 0
-        _set_field(follow_b, *_FAN_ECHO, self.fan.value)
-        _set_field(follow_b, *_B_CHECKSUM, _checksum(follow_a, follow_b))
-        timings = self._encode_signal(frame_a, frame_b)
-        timings[-1] = -_INTER_FRAME_GAP
-        timings.extend(self._encode_signal(follow_a, follow_b))
+        fixed_a = [0] * _FRAME_A_BITS
+        fixed_a[29] = 1
+        fixed_a[31] = 1
+        fixed_a[33] = 1
+        fixed_b = [0] * _FRAME_B_BITS
+        _set_field(fixed_b, *_B_CHECKSUM, _checksum(fixed_a, fixed_b))
+        timings = self._encode_signal(frame_a, frame_b, gap=_YAP1F_BLOCK_GAP)
+        timings.extend(self._encode_signal(fixed_a, fixed_b, gap=_YAP1F_BLOCK_GAP))
         return timings
 
     @classmethod
@@ -479,76 +503,70 @@ class GreeAcCommand(Command):
 
     @classmethod
     def _from_yap1f_raw_timings(cls, timings: list[int]) -> Self | None:
-        """Decode the 0x50 frame plus the 0x70 continuation frame."""
-        # Two standard frames with the long inter-frame gap between them. The
-        # last space is optional on receivers that stop at the final mark.
-        if len(timings) not in (2 * _FRAME_TIMINGS + 1, 2 * _FRAME_TIMINGS + 2):
+        if len(timings) != 2 * (_FRAME_TIMINGS + 1):
             return None
-        first = cls.from_raw_timings(timings[:_FRAME_TIMINGS])
-        if first is None:
+
+        frames: list[tuple[list[int], list[int]]] = []
+        for offset in (0, _FRAME_TIMINGS + 1):
+            frame = timings[offset : offset + _FRAME_TIMINGS + 1]
+            if not _is_close(frame[0], _LEADER_MARK, _TOLERANCE) or not _is_close(
+                abs(frame[1]), _LEADER_SPACE, _TOLERANCE
+            ):
+                return None
+            frame_a = _decode_bits(frame, 2, _FRAME_A_BITS)
+            a_end = 2 + 2 * _FRAME_A_BITS
+            if (
+                frame_a is None
+                or abs(frame[a_end] - _BIT_MARK) > _BIT_TOLERANCE
+                or frame[a_end + 1] >= 0
+                or not _is_close(abs(frame[a_end + 1]), _YAP1F_BLOCK_GAP, _TOLERANCE)
+            ):
+                return None
+            b_start = a_end + 2
+            frame_b = _decode_bits(frame, b_start, _FRAME_B_BITS)
+            b_end = b_start + 2 * _FRAME_B_BITS
+            if (
+                frame_b is None
+                or abs(frame[b_end] - _BIT_MARK) > _BIT_TOLERANCE
+                or frame[b_end + 1] >= 0
+                or not _is_close(abs(frame[b_end + 1]), _YAP1F_BLOCK_GAP, _TOLERANCE)
+            ):
+                return None
+            frames.append((frame_a, frame_b))
+
+        frame_a, frame_b = frames[0]
+        fixed_a, fixed_b = frames[1]
+        expected_fixed_a = [0] * _FRAME_A_BITS
+        expected_fixed_a[29] = 1
+        expected_fixed_a[31] = 1
+        expected_fixed_a[33] = 1
+        expected_fixed_b = [0] * _FRAME_B_BITS
+        _set_field(
+            expected_fixed_b,
+            *_B_CHECKSUM,
+            _checksum(expected_fixed_a, expected_fixed_b),
+        )
+        if (fixed_a, fixed_b) != (expected_fixed_a, expected_fixed_b):
             return None
-        if timings[_FRAME_TIMINGS] >= 0 or not _is_close(
-            -timings[_FRAME_TIMINGS], _INTER_FRAME_GAP, _TOLERANCE
-        ):
+        if any(frame_a[index] != 1 for index in _A_TRAILER):
             return None
-        second = timings[_FRAME_TIMINGS + 1 :]
-        if len(second) not in (_FRAME_TIMINGS, _FRAME_TIMINGS + 1):
-            return None
-        if not _is_close(second[0], _LEADER_MARK, _TOLERANCE) or not _is_close(
-            abs(second[1]), _LEADER_SPACE, _TOLERANCE
-        ):
-            return None
-        frame_b_start = 2 + 2 * _FRAME_A_BITS + 1 + 1
-        frame_a = _decode_bits(timings, 2, _FRAME_A_BITS)
-        frame_b = _decode_bits(timings, frame_b_start, _FRAME_B_BITS)
-        follow_a = _decode_bits(second, 2, _FRAME_A_BITS)
-        follow_b = _decode_bits(second, frame_b_start, _FRAME_B_BITS)
         if (
-            frame_a is None
-            or frame_b is None
-            or follow_a is None
-            or follow_b is None
-            or abs(second[frame_b_start + 2 * _FRAME_B_BITS] - _BIT_MARK)
-            > _BIT_TOLERANCE
+            _get_field(frame_b, 8, 8)
+            not in (_YAP1F_B1_DEFAULT, _YAP1F_B1_DEFAULT | 0x04)
+            or _get_field(frame_b, 16, 8) != 0
+            or _get_field(frame_b, 24, 4) != 0
+            or _get_field(frame_b, *_B_CHECKSUM) != _checksum(frame_a, frame_b)
         ):
             return None
-        # The continuation repeats the first frame except for the follow bit.
-        if frame_a[_FOLLOW_BIT] != 0 or follow_a[_FOLLOW_BIT] != 1:
+        swing_v_position = _get_field(frame_b, 0, 4)
+        if swing_v_position not in _YAP1F_SWING_POSITIONS:
             return None
-        if any(
-            follow_a[index] != frame_a[index]
-            for index in range(_FRAME_A_BITS)
-            if index != _FOLLOW_BIT
-        ):
-            return None
-        # ...while block B clears the signature, echoes the fan, and carries
-        # its own checksum.
-        if follow_b[_B_SIGNATURE] != 0:
-            return None
-        if _get_field(follow_b, *_FAN_ECHO) != first.fan.value:
-            return None
-        # Block B's low nibble of byte 7 sits outside the checksum and carries
-        # no known field: the Off capture sends 1 there in F1 and 0 in F2.
-        if any(
-            follow_b[index] != frame_b[index]
-            for index in range(_FRAME_B_BITS)
-            if index
-            not in (
-                _B_SIGNATURE,
-                _FAN_ECHO[0],
-                _FAN_ECHO[0] + 1,
-                _B_CHECKSUM[0] - 4,
-                _B_CHECKSUM[0] - 3,
-                _B_CHECKSUM[0] - 2,
-                _B_CHECKSUM[0] - 1,
-                _B_CHECKSUM[0],
-                _B_CHECKSUM[0] + 1,
-                _B_CHECKSUM[0] + 2,
-                _B_CHECKSUM[0] + 3,
-            )
-        ):
-            return None
-        if _get_field(follow_b, *_B_CHECKSUM) != _checksum(follow_a, follow_b):
+
+        generic_b = list(frame_b)
+        generic_b[_B_SIGNATURE] = 1
+        _set_field(generic_b, *_B_CHECKSUM, _checksum(frame_a, generic_b))
+        first = cls.from_raw_timings(cls._encode_signal(frame_a, generic_b))
+        if first is None:
             return None
         return cls(
             power=first.power,
@@ -557,6 +575,7 @@ class GreeAcCommand(Command):
             fan=first.fan,
             swing_v=first.swing_v,
             swing_h=first.swing_h,
+            swing_v_position=swing_v_position,
             turbo=first.turbo,
             display=first.display,
             blow=first.blow,
@@ -564,5 +583,6 @@ class GreeAcCommand(Command):
             timer_hours=first.timer_hours,
             anion=first.anion,
             fresh_air=first.fresh_air,
+            ifeel=bool(frame_b[_B1_IFEEL]),
             model=GreeAcModel.YAP1F,
         )
