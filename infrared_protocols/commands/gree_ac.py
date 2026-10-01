@@ -52,6 +52,8 @@ from . import Command
 
 MIN_TEMP = 16
 MAX_TEMP = 30
+MIN_TEMP_F = 61
+MAX_TEMP_F = 86
 
 MIN_TIMER_HOURS = 0.5
 MAX_TIMER_HOURS = 24
@@ -110,17 +112,21 @@ _A_DISPLAY = 21
 _A_ANION = 22
 _A_BLOW = 23
 _A_FRESH_AIR = (24, 2)
+_A_TEMP_EXTRA_F = 26
+_A_USE_FAHRENHEIT = 27
 _A_TRAILER = (28, 30, 33)
 
 # Block B field positions.
 _B_SWING_V = 0
 _B_SWING_H = 4
+_B_SWING_H_FIELD = (4, 3)
 _B_SIGNATURE = 13
 _B1_DISPLAY_TEMP = (8, 2)
 _B1_IFEEL = 10
 _B1_UNKNOWN2 = (11, 3)
 _B1_WIFI = 14
 _B1_BIT7 = 15
+_B_ECONO = 26
 _B_CHECKSUM = (28, 4)
 
 # The checksum starts from a fixed base rather than zero.
@@ -215,11 +221,10 @@ def _unpack_timer(bits: list[int]) -> float | None:
 def _checksum(frame_a: list[int], frame_b: list[int]) -> int:
     """Return the block B checksum nibble for the two blocks as sent.
 
-    The state is eight bytes, block A's 32 data bits followed by block B's. The sum
-    takes the low nibble of the first four and the high nibble of the next three, so
-    half of the state stays outside it: mode, power, temperature, the timer hour
-    units, fresh air and horizontal swing enter, while sleep, the rest of the timer,
-    turbo, display, anion, blow and vertical swing do not.
+    The sum takes the low nibble of the first four and high nibble of the next
+    three bytes. All horizontal swing position bits 4-6 therefore contribute to
+    the checksum. Temperature, fresh air, and timer units also enter; vertical
+    swing and the remaining fields do not.
     """
     total = _CHECKSUM_BASE
     total += sum(_get_field(frame_a, 8 * i, 4) for i in range(4))
@@ -277,7 +282,8 @@ def _decode_bits(timings: list[int], offset: int, count: int) -> list[int] | Non
 class GreeAcCommand(Command):
     """Gree air-conditioner IR command.
 
-    ``temperature`` is in whole degrees celsius, 16 to 30.
+    ``temperature`` is in whole degrees Celsius (16 to 30), or Fahrenheit (61 to
+    86) when ``fahrenheit`` is true.
 
     ``timer_hours`` is the countdown the remote is set to, 0.5 to 24 in half-hour
     steps, or None when the timer is off.
@@ -289,6 +295,10 @@ class GreeAcCommand(Command):
     fan: GreeAcFanSpeed
     swing_v: bool
     swing_h: bool
+    swing_h_position: int
+    fahrenheit: bool
+    econo: bool
+    display_temp: int
     turbo: bool
     display: bool
     blow: bool
@@ -309,6 +319,10 @@ class GreeAcCommand(Command):
         fan: GreeAcFanSpeed = GreeAcFanSpeed.AUTO,
         swing_v: bool = False,
         swing_h: bool = False,
+        swing_h_position: int | None = None,
+        fahrenheit: bool = False,
+        econo: bool = False,
+        display_temp: int | None = None,
         turbo: bool = False,
         display: bool = True,
         blow: bool = False,
@@ -326,9 +340,12 @@ class GreeAcCommand(Command):
             modulation = _YAP1F_MODULATION if model is GreeAcModel.YAP1F else 38000
         super().__init__(modulation=modulation)
 
-        if not MIN_TEMP <= temperature <= MAX_TEMP:
+        min_temp, max_temp = (
+            (MIN_TEMP_F, MAX_TEMP_F) if fahrenheit else (MIN_TEMP, MAX_TEMP)
+        )
+        if not min_temp <= temperature <= max_temp:
             raise ValueError(
-                f"temperature {temperature} out of range {MIN_TEMP}..{MAX_TEMP}"
+                f"temperature {temperature} out of range {min_temp}..{max_temp}"
             )
         if timer_hours is not None:
             if not MIN_TIMER_HOURS <= timer_hours <= MAX_TIMER_HOURS:
@@ -343,13 +360,25 @@ class GreeAcCommand(Command):
             or swing_v_position not in _YAP1F_SWING_POSITIONS
         ):
             raise ValueError(f"unsupported swing_v_position {swing_v_position}")
+        if swing_h_position is None:
+            swing_h_position = int(swing_h)
+        if swing_h_position not in range(7):
+            raise ValueError(f"unsupported swing_h_position {swing_h_position}")
+        if display_temp is None:
+            display_temp = 2 if model is GreeAcModel.YAP1F else 0
+        if display_temp not in range(4):
+            raise ValueError(f"unsupported display_temp {display_temp}")
 
         self.power = power
         self.mode = mode
         self.temperature = temperature
         self.fan = fan
         self.swing_v = swing_v
-        self.swing_h = swing_h
+        self.swing_h_position = swing_h_position
+        self.swing_h = swing_h_position != 0
+        self.fahrenheit = fahrenheit
+        self.econo = econo
+        self.display_temp = display_temp
         self.turbo = turbo
         self.display = display
         self.blow = blow
@@ -375,9 +404,18 @@ class GreeAcCommand(Command):
         _set_field(frame_a, *_A_MODE, self.mode.value)
         frame_a[_A_POWER] = int(self.power)
         _set_field(frame_a, *_A_FAN, self.fan.value)
-        frame_a[_A_SWING] = int(self.swing_v or self.swing_h)
+        frame_a[_A_SWING] = int(self.swing_v or self.swing_h_position != 0)
         frame_a[_A_SLEEP] = int(self.sleep)
-        _set_field(frame_a, *_A_TEMP, self.temperature - _TEMP_OFFSET)
+        if self.fahrenheit:
+            celsius = min(
+                MAX_TEMP,
+                max(MIN_TEMP, (self.temperature + 0.6 - 32) * 5 / 9),
+            )
+            _set_field(frame_a, *_A_TEMP, int(celsius) - _TEMP_OFFSET)
+            frame_a[_A_TEMP_EXTRA_F] = int(celsius * 2) & 1
+            frame_a[_A_USE_FAHRENHEIT] = 1
+        else:
+            _set_field(frame_a, *_A_TEMP, self.temperature - _TEMP_OFFSET)
         _pack_timer(frame_a, self.timer_hours)
         frame_a[_A_TURBO] = int(self.turbo)
         frame_a[_A_DISPLAY] = int(self.display)
@@ -389,7 +427,7 @@ class GreeAcCommand(Command):
 
         frame_b = [0] * _FRAME_B_BITS
         frame_b[_B_SWING_V] = int(self.swing_v)
-        frame_b[_B_SWING_H] = int(self.swing_h)
+        _set_field(frame_b, *_B_SWING_H_FIELD, self.swing_h_position)
         frame_b[_B_SIGNATURE] = 1
         if self.model is GreeAcModel.YAP1F:
             swing_v_position = self.swing_v_position
@@ -400,6 +438,8 @@ class GreeAcCommand(Command):
             frame_b[_B_SIGNATURE] = 0
             _set_field(frame_b, 8, 8, _YAP1F_B1_DEFAULT)
             frame_b[_B1_IFEEL] = int(self.ifeel)
+        _set_field(frame_b, *_B1_DISPLAY_TEMP, self.display_temp)
+        frame_b[_B_ECONO] = int(self.econo)
         _set_field(frame_b, *_B_CHECKSUM, _checksum(frame_a, frame_b))
         return frame_a, frame_b
 
@@ -485,8 +525,8 @@ class GreeAcCommand(Command):
         if frame_b[_B_SIGNATURE] != 1:
             return None
 
-        # The checksum is computed over the frames as sent, so over block B's latched
-        # horizontal bit rather than the effective swing state.
+        # The checksum sums block B's high nibbles, including the full horizontal
+        # swing field, whether or not block A marks that axis active.
         if _get_field(frame_b, *_B_CHECKSUM) != _checksum(frame_a, frame_b):
             return None
 
@@ -500,26 +540,42 @@ class GreeAcCommand(Command):
         except ValueError:
             return None
 
-        temperature = _get_field(frame_a, *_A_TEMP) + _TEMP_OFFSET
-        if not MIN_TEMP <= temperature <= MAX_TEMP:
+        temperature_c = _get_field(frame_a, *_A_TEMP) + _TEMP_OFFSET
+        fahrenheit = bool(frame_a[_A_USE_FAHRENHEIT])
+        temperature = temperature_c
+        if fahrenheit:
+            temperature = max(
+                MIN_TEMP_F,
+                min(
+                    MAX_TEMP_F,
+                    int(temperature_c * 9 / 5 + 32)
+                    + int(bool(frame_a[_A_TEMP_EXTRA_F])),
+                ),
+            )
+        if fahrenheit and not MIN_TEMP_F <= temperature <= MAX_TEMP_F:
+            return None
+        if not fahrenheit and not MIN_TEMP <= temperature <= MAX_TEMP:
             return None
 
+        display_temp = _get_field(frame_b, *_B1_DISPLAY_TEMP)
+        swing_h_position = _get_field(frame_b, *_B_SWING_H_FIELD)
         power = bool(frame_a[_A_POWER])
-        # Block B's two bits latch the axis last selected and keep that value after
-        # swing is switched off, so block A's bit is what says whether anything is
-        # actually swinging. Turning one axis off while both ran sends block A's bit
-        # clear with the other axis still set in block B.
+        # Block B's fields latch their last values after the corresponding swing is
+        # stopped; block A says whether either axis is currently active.
         swinging = bool(frame_a[_A_SWING])
         swing_v = swinging and bool(frame_b[_B_SWING_V])
-        swing_h = swinging and bool(frame_b[_B_SWING_H])
+        swing_h_position = swing_h_position if swinging else 0
 
         return cls(
             power=power,
             mode=mode,
             temperature=temperature,
+            fahrenheit=fahrenheit,
             fan=fan,
             swing_v=swing_v,
-            swing_h=swing_h,
+            swing_h_position=swing_h_position,
+            econo=bool(frame_b[_B_ECONO]),
+            display_temp=display_temp,
             turbo=bool(frame_a[_A_TURBO]),
             display=bool(frame_a[_A_DISPLAY]),
             blow=bool(frame_a[_A_BLOW]),
@@ -536,7 +592,12 @@ class GreeAcCommand(Command):
         if len(timings) != 2 * (a_length + b_length) + len(_YAP1F_GAPS):
             return None
 
-        offsets = (0, a_length + 1, a_length + b_length + 2, 2 * a_length + b_length + 3)
+        offsets = (
+            0,
+            a_length + 1,
+            a_length + b_length + 2,
+            2 * a_length + b_length + 3,
+        )
         lengths = (a_length, b_length, a_length, b_length)
         for burst in range(4):
             offset = offsets[burst]
@@ -555,9 +616,7 @@ class GreeAcCommand(Command):
             if burst < 3:
                 gap_index = offset + lengths[burst]
                 gap = timings[gap_index]
-                if gap >= 0 or not _is_close(
-                    abs(gap), _YAP1F_GAPS[burst], _TOLERANCE
-                ):
+                if gap >= 0 or not _is_close(abs(gap), _YAP1F_GAPS[burst], _TOLERANCE):
                     return None
             if burst in (0, 2):
                 frame_a = bits
@@ -583,10 +642,10 @@ class GreeAcCommand(Command):
         if any(state_a[index] != 1 for index in _A_TRAILER):
             return None
         if (
-            _get_field(state_b, 8, 8)
-            not in (_YAP1F_B1_DEFAULT, _YAP1F_B1_DEFAULT | 0x04)
+            _get_field(state_b, 8, 8) & ~0x03 != _YAP1F_B1_DEFAULT & ~0x03
             or _get_field(state_b, 16, 8) != 0
-            or _get_field(state_b, 24, 4) != 0
+            or _get_field(state_b, 24, 2) != 0
+            or _get_field(state_b, 27, 1) != 0
             or _get_field(state_b, *_B_CHECKSUM) != _checksum(state_a, state_b)
         ):
             return None
@@ -604,10 +663,13 @@ class GreeAcCommand(Command):
             power=first.power,
             mode=first.mode,
             temperature=first.temperature,
+            fahrenheit=first.fahrenheit,
             fan=first.fan,
             swing_v=first.swing_v,
-            swing_h=first.swing_h,
+            swing_h_position=first.swing_h_position,
             swing_v_position=swing_v_position,
+            econo=first.econo,
+            display_temp=first.display_temp,
             turbo=first.turbo,
             display=first.display,
             blow=first.blow,

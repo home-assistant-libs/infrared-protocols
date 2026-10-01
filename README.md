@@ -26,5 +26,15 @@ Both profiles use `display`, `anion`, and `blow`; for a YAP1F remote
 these correspond to light, health, and X-FAN respectively. YAP1F carries the
 full generic state (power, mode, temperature, fan, swing, turbo, sleep, timer,
 and fresh air). Clock, wall-clock timers, and weekly schedule have no known
-wire mapping and are not encoded. Vane positions and self-clean
+wire mapping and are not encoded. Vertical vane positions and self-clean
 are not supported without verified wire locations.
+
+The Gree command also encodes Fahrenheit setpoints, energy-saving mode, horizontal
+vane positions, and display-temperature source using the field layout documented by
+[IRremoteESP8266 `ir_Gree.h`/`ir_Gree.cpp`](https://github.com/crankyoldgit/IRremoteESP8266).
+These added mappings are reference-derived and are **not yet confirmed by a YAP1F
+capture**. Horizontal position and display-temperature source are `swing_h_position`
+(0–6) and `display_temp` (0 off, 1 setpoint, 2 indoor, 3 outdoor); set
+`fahrenheit=True` for a 61–86 °F setpoint. `econo` represents the energy-saving bit;
+the Gree manual describes this function for cool mode. The reference does not define
+an absence, 8 °C heat, or child-lock bit, so these are not encoded.

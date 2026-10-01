@@ -165,7 +165,11 @@ def test_yap1f_timing_values_and_gap_boundaries() -> None:
     assert timings[-1] == 673
     assert {value for value in timings if value > 0} == {673, 8796}
     assert {abs(value) for value in timings if value < 0} == {
-        516, 1580, 4365, 19500, 39000
+        516,
+        1580,
+        4365,
+        19500,
+        39000,
     }
     decoded = GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F)
     assert decoded is not None
@@ -176,9 +180,7 @@ def test_yap1f_timing_values_and_gap_boundaries() -> None:
     )
     invalid_gap = list(timings)
     invalid_gap[139] = -19500
-    assert GreeAcCommand.from_raw_timings(
-        invalid_gap, model=GreeAcModel.YAP1F
-    ) is None
+    assert GreeAcCommand.from_raw_timings(invalid_gap, model=GreeAcModel.YAP1F) is None
 
 
 def _retime_to_variant(timings: list[int]) -> list[int]:
@@ -1287,3 +1289,60 @@ def test_generic_profile_keeps_shared_flags_and_default_route() -> None:
     assert decoded is not None
     assert decoded.model is GreeAcModel.GENERIC
     assert (decoded.display, decoded.anion, decoded.blow) == (False, True, True)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "block", "bit", "width"),
+    [
+        pytest.param("fahrenheit", True, "a", 27, 1, id="fahrenheit"),
+        pytest.param("econo", True, "b", 26, 1, id="econo"),
+        pytest.param("swing_h_position", 6, "b", 4, 3, id="horizontal-swing"),
+        pytest.param("display_temp", 3, "b", 8, 2, id="display-temp"),
+    ],
+)
+def test_reference_fields_roundtrip_and_match_irremote_bits(
+    field: str, value: int | bool, block: str, bit: int, width: int
+) -> None:
+    """Reference-mapped options occupy the IRremoteESP8266 byte/bit layout."""
+    temperature = 86 if field == "fahrenheit" else 24
+    command = GreeAcCommand(
+        mode=GreeAcMode.COOL, temperature=temperature, **{field: value}
+    )
+    frame_a, frame_b = _extract_frames(command.get_raw_timings())
+    result = GreeAcCommand.from_raw_timings(command.get_raw_timings())
+
+    assert result is not None
+    assert getattr(result, field) == value
+    assert _bits_to_int_lsb(frame_a if block == "a" else frame_b, bit, width) == value
+
+
+@pytest.mark.parametrize("temperature", [61, 72, 86])
+def test_fahrenheit_setpoint_roundtrips(temperature: int) -> None:
+    """Setpoint values with valid Gree Fahrenheit representations round-trip."""
+    command = GreeAcCommand(
+        mode=GreeAcMode.COOL, temperature=temperature, fahrenheit=True
+    )
+    result = GreeAcCommand.from_raw_timings(command.get_raw_timings())
+
+    assert result is not None
+    assert result.fahrenheit is True
+    assert result.temperature == temperature
+
+
+def test_fahrenheit_extra_degree_uses_irremote_byte_three_bit_two() -> None:
+    """The extra-degree flag maps to IRremoteESP8266 byte 3 bit 2."""
+    command = GreeAcCommand(mode=GreeAcMode.COOL, temperature=72, fahrenheit=True)
+    frame_a, _ = _extract_frames(command.get_raw_timings())
+
+    assert frame_a[26] == "1"
+
+
+def test_horizontal_swing_position_uses_all_three_checksum_bits() -> None:
+    """The complete three-bit horizontal field contributes to checksum bits."""
+    base = GreeAcCommand(mode=GreeAcMode.COOL, temperature=24)
+    right = GreeAcCommand(mode=GreeAcMode.COOL, temperature=24, swing_h_position=6)
+    base_b = _extract_frames(base.get_raw_timings())[1]
+    right_b = _extract_frames(right.get_raw_timings())[1]
+
+    assert _bits_to_int_lsb(right_b, 4, 3) == 6
+    assert right_b[28:] != base_b[28:]
