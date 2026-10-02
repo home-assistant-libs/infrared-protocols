@@ -423,12 +423,16 @@ class GreeAcCommand(Command):
         frame_a[_A_SWING] = int(self.swing_v or self.swing_h_position != 0)
         frame_a[_A_SLEEP] = int(self.sleep)
         if self.fahrenheit:
+            # Keep IRremoteESP8266's +0.6 °F conversion, without float truncation
+            # errors at exact Celsius boundaries.
             celsius = min(
-                MAX_TEMP,
-                max(MIN_TEMP, (self.temperature + 0.6 - 32) * 5 / 9),
+                MAX_TEMP, max(MIN_TEMP, ((self.temperature - 32) * 5 + 3) // 9)
             )
-            _set_field(frame_a, *_A_TEMP, int(celsius) - _TEMP_OFFSET)
-            frame_a[_A_TEMP_EXTRA_F] = int(celsius * 2) & 1
+            _set_field(frame_a, *_A_TEMP, celsius - _TEMP_OFFSET)
+            base_fahrenheit = max(
+                MIN_TEMP_F, min(MAX_TEMP_F, celsius * 9 // 5 + 32)
+            )
+            frame_a[_A_TEMP_EXTRA_F] = self.temperature - base_fahrenheit
             frame_a[_A_USE_FAHRENHEIT] = 1
         else:
             _set_field(frame_a, *_A_TEMP, self.temperature - _TEMP_OFFSET)

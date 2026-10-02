@@ -8,6 +8,8 @@ from infrared_protocols.commands.gree_ac import (
     GreeAcFreshAir,
     GreeAcMode,
     GreeAcModel,
+    MAX_TEMP_F,
+    MIN_TEMP_F,
     YAP1F_SWING_POSITIONS,
 )
 
@@ -1327,17 +1329,23 @@ def test_reference_fields_roundtrip_and_match_irremote_bits(
     assert _bits_to_int_lsb(frame_a if block == "a" else frame_b, bit, width) == value
 
 
-@pytest.mark.parametrize("temperature", [61, 72, 86])
-def test_fahrenheit_setpoint_roundtrips(temperature: int) -> None:
-    """Setpoint values with valid Gree Fahrenheit representations round-trip."""
-    command = GreeAcCommand(
-        mode=GreeAcMode.COOL, temperature=temperature, fahrenheit=True
-    )
-    result = GreeAcCommand.from_raw_timings(command.get_raw_timings())
+def test_fahrenheit_setpoint_roundtrips() -> None:
+    """All supported Fahrenheit setpoints round-trip on both Gree wire profiles."""
+    for model in GreeAcModel:
+        for temperature in range(MIN_TEMP_F, MAX_TEMP_F + 1):
+            command = GreeAcCommand(
+                mode=GreeAcMode.COOL,
+                temperature=temperature,
+                fahrenheit=True,
+                model=model,
+            )
+            result = GreeAcCommand.from_raw_timings(
+                command.get_raw_timings(), model=model
+            )
 
-    assert result is not None
-    assert result.fahrenheit is True
-    assert result.temperature == temperature
+            assert result is not None
+            assert result.fahrenheit is True
+            assert result.temperature == temperature
 
 
 def test_fahrenheit_extra_degree_uses_irremote_byte_three_bit_two() -> None:
