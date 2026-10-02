@@ -36,11 +36,16 @@ vane positions, and display-temperature source using the field layout documented
 [IRremoteESP8266 `ir_Gree.h`/`ir_Gree.cpp`](https://github.com/crankyoldgit/IRremoteESP8266).
 The 2026-10-02 YAP1F captures confirm Fahrenheit setpoints, energy saving,
 display-temperature source, and both swing axes. `swing_h_position` retains
-the wire nibble: 0 off, 1 sweep, 2–6 fixed positions, and YAP1F-only 13 sweep.
+the wire nibble: 0 off, 1 sweep, 2–6 fixed positions, and YAP1F-only 12 and 13.
+Session three confirms selection 12 with swing stopped; its physical position
+is not established. Selection 13 is sweep.
 On YAP1F, `swing_h` can explicitly preserve whether the latched horizontal
 selection is moving; omitted values infer movement for positions 1 and 13.
 Session two captures positions 0, 1, 2, 5, 6, and 13; positions 3 and 4 still
-lack captures. Vertical positions 2 and 5 also still lack captures.
+lack captures. Session three captures vertical 5 in two intact, checksummed
+state pairs with damaged fixed tails; vertical 2 still lacks a verified capture.
+YAP1F encoding preserves the explicit `swing_v` movement flag independently
+of the latched vertical-position nibble, including stopped position 9.
 `display_temp` selects 0 off, 1 setpoint, 2 indoor, or 3 outdoor; set
 `fahrenheit=True` for a 61–86 °F setpoint. `econo` represents the energy-saving bit;
 the Gree manual describes this function for cool mode. The YAP1F CLOCK+TEMP

@@ -1117,3 +1117,80 @@ def test_generic_profile_rejects_yap1f_timings() -> None:
     # The generic profile requires the block-B signature bit the YAP1F
     # remote clears, so YAP1F wire bytes never decode as generic either way.
     assert GreeAcCommand.from_raw_timings(command.get_raw_timings()) is None
+
+
+_SESSION_THREE_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "yap1f_remote_captures_2026-10-02-s3.jsonl"
+)
+with _SESSION_THREE_FIXTURE.open(encoding="utf-8") as _handle:
+    _SESSION_THREE_ROWS = [json.loads(line) for line in _handle if line.strip()]
+
+
+@pytest.mark.parametrize(
+    "row",
+    [row for row in _SESSION_THREE_ROWS if row["verdict"] == "complete"],
+    ids=lambda row: row["t"],
+)
+def test_session_three_complete_capture_maps_byte_for_byte(row: dict) -> None:
+    command = GreeAcCommand.from_raw_timings(
+        _broadlink_timings(row["code"]), model=GreeAcModel.YAP1F
+    )
+    assert command is not None
+    assert command.swing_v_position == row["vertical_position"]
+    assert _encoder_pair(command) == bytes.fromhex(row["bytes"])
+
+
+@pytest.mark.parametrize(
+    "row",
+    [row for row in _SESSION_THREE_ROWS if row["verdict"] == "fragment"],
+    ids=lambda row: row["t"],
+)
+def test_session_three_damaged_capture_remains_rejected(row: dict) -> None:
+    timings = _broadlink_timings(row["code"])
+    assert len(timings) == row["timing_count"], row["skip_reason"]
+    assert list(map(len, _split_bursts(timings))) == row["burst_lengths"]
+    assert GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F) is None
+
+
+@pytest.mark.parametrize(
+    "row",
+    [row for row in _SESSION_THREE_ROWS if row["bytes"] is not None],
+    ids=lambda row: row["t"],
+)
+def test_session_three_intact_primary_pair_proves_position(row: dict) -> None:
+    bursts = _split_bursts(_broadlink_timings(row["code"]))
+    state_a = _decode_frame(bursts[0], leader=True, bits=_FRAME_A_BITS)
+    state_b = _decode_frame(bursts[1], leader=False, bits=_FRAME_B_BITS)
+    assert state_a is not None and state_b is not None
+    captured = _frame_bytes(state_a) + _frame_bytes(state_b)
+    assert captured == bytes.fromhex(row["bytes"])
+    # A pristine continuation isolates the intact primary pair from receiver damage.
+    timings = _broadlink_timings(row["code"])[:140]
+    fixed = _command(mode=GreeAcMode.COOL, temperature=22).get_raw_timings()[140:]
+    command = GreeAcCommand.from_raw_timings(timings + fixed, model=GreeAcModel.YAP1F)
+    assert command is not None
+    assert command.swing_v_position == row["vertical_position"]
+    assert _encoder_pair(command) == captured
+
+
+@pytest.mark.parametrize("time", ["09:53:31", "09:53:42"])
+def test_session_three_horizontal_12_is_latched_not_swinging(time: str) -> None:
+    row = next(row for row in _SESSION_THREE_ROWS if row["t"].endswith(time))
+    command = GreeAcCommand.from_raw_timings(
+        _broadlink_timings(row["code"]), model=GreeAcModel.YAP1F
+    )
+    assert command is not None
+    assert command.swing_h_position == 12
+    assert command.swing_h is False
+    assert command.swing_v_position == 9
+    decoded = GreeAcCommand.from_raw_timings(
+        command.get_raw_timings(), model=GreeAcModel.YAP1F
+    )
+    assert decoded is not None
+    assert decoded.swing_h_position == 12
+    assert decoded.swing_h is False
+
+
+def test_session_three_generic_rejects_horizontal_12() -> None:
+    with pytest.raises(ValueError, match="unsupported swing_h_position 12"):
+        GreeAcCommand(mode=GreeAcMode.COOL, temperature=22, swing_h_position=12)

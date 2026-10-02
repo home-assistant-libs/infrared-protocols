@@ -371,7 +371,7 @@ class GreeAcCommand(Command):
         if swing_h_position is None:
             swing_h_position = int(bool(swing_h))
         if swing_h_position not in range(7) and not (
-            model is GreeAcModel.YAP1F and swing_h_position == 13
+            model is GreeAcModel.YAP1F and swing_h_position in (12, 13)
         ):
             raise ValueError(f"unsupported swing_h_position {swing_h_position}")
         if display_temp is None:
@@ -450,9 +450,7 @@ class GreeAcCommand(Command):
             if swing_v_position is None:
                 swing_v_position = int(self.swing_v)
             _set_field(frame_b, 0, 4, swing_v_position)
-            frame_a[_A_SWING] = int(
-                swing_v_position in _YAP1F_ACTIVE_SWING_POSITIONS or self.swing_h
-            )
+            frame_a[_A_SWING] = int(self.swing_v or self.swing_h)
             _set_field(frame_b, 8, 8, _YAP1F_B1_DEFAULT)
             frame_b[_B1_IFEEL] = int(self.ifeel)
         else:
