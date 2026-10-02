@@ -83,7 +83,8 @@ _FRAME_B_BITS = 32
 _FRAME_TIMINGS = 2 + 2 * _FRAME_A_BITS + 1 + 1 + 2 * _FRAME_B_BITS + 1
 # YAP1F remotes transmit at 38029 Hz; generic stays at 38000.
 _YAP1F_MODULATION = 38029
-_YAP1F_SWING_POSITIONS = (0, 1, 2, 3, 4, 5, 6, 7, 9, 11)
+# YAP1F vertical vane positions accepted by ``swing_v_position``.
+YAP1F_SWING_POSITIONS = (0, 1, 2, 3, 4, 5, 6, 7, 9, 11)
 _YAP1F_ACTIVE_SWING_POSITIONS = (1, 7, 9, 11)
 # Block-B byte1 default from all 29 captures: DisplayTemp 0b10, unknown2=0,
 # WiFi and bit7 set, IFeel clear (IFeel is ORed in from state, giving 0xC6).
@@ -365,7 +366,7 @@ class GreeAcCommand(Command):
                 raise ValueError(f"timer_hours {timer_hours} is not a multiple of 0.5")
         if swing_v_position is not None and (
             model is not GreeAcModel.YAP1F
-            or swing_v_position not in _YAP1F_SWING_POSITIONS
+            or swing_v_position not in YAP1F_SWING_POSITIONS
         ):
             raise ValueError(f"unsupported swing_v_position {swing_v_position}")
         if swing_h_position is None:
@@ -719,7 +720,7 @@ class GreeAcCommand(Command):
         ):
             return None
         swing_v_position = _get_field(state_b, 0, 4)
-        if swing_v_position not in _YAP1F_SWING_POSITIONS:
+        if swing_v_position not in YAP1F_SWING_POSITIONS:
             return None
 
         generic_b = list(state_b)

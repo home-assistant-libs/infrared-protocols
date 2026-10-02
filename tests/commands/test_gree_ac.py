@@ -8,7 +8,14 @@ from infrared_protocols.commands.gree_ac import (
     GreeAcFreshAir,
     GreeAcMode,
     GreeAcModel,
+    YAP1F_SWING_POSITIONS,
 )
+
+
+def test_yap1f_swing_positions_are_public() -> None:
+    """The module exposes the supported vertical vane positions."""
+    assert YAP1F_SWING_POSITIONS == (0, 1, 2, 3, 4, 5, 6, 7, 9, 11)
+
 
 # Physical-layer constants are duplicated here rather than imported
 # so the tests are independent
