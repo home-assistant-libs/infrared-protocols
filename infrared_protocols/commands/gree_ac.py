@@ -325,7 +325,7 @@ class GreeAcCommand(Command):
         temperature: int,
         fan: GreeAcFanSpeed = GreeAcFanSpeed.AUTO,
         swing_v: bool = False,
-        swing_h: bool = False,
+        swing_h: bool | None = None,
         swing_h_position: int | None = None,
         fahrenheit: bool = False,
         econo: bool = False,
@@ -369,8 +369,10 @@ class GreeAcCommand(Command):
         ):
             raise ValueError(f"unsupported swing_v_position {swing_v_position}")
         if swing_h_position is None:
-            swing_h_position = int(swing_h)
-        if swing_h_position not in range(7):
+            swing_h_position = int(bool(swing_h))
+        if swing_h_position not in range(7) and not (
+            model is GreeAcModel.YAP1F and swing_h_position == 13
+        ):
             raise ValueError(f"unsupported swing_h_position {swing_h_position}")
         if display_temp is None:
             display_temp = 2 if model is GreeAcModel.YAP1F else 0
@@ -383,7 +385,11 @@ class GreeAcCommand(Command):
         self.fan = fan
         self.swing_v = swing_v
         self.swing_h_position = swing_h_position
-        self.swing_h = swing_h_position != 0
+        self.swing_h = (
+            (swing_h_position in (1, 13) if swing_h is None else swing_h)
+            if model is GreeAcModel.YAP1F
+            else swing_h_position != 0
+        )
         self.fahrenheit = fahrenheit
         self.econo = econo
         self.absence = absence
@@ -435,21 +441,23 @@ class GreeAcCommand(Command):
             frame_a[index] = 1
 
         frame_b = [0] * _FRAME_B_BITS
-        frame_b[_B_SWING_V] = int(self.swing_v)
-        _set_field(frame_b, *_B_SWING_H_FIELD, self.swing_h_position)
-        frame_b[_B_SIGNATURE] = 1
+        _set_field(
+            frame_b, 4, 4 if self.model is GreeAcModel.YAP1F else 3,
+            self.swing_h_position,
+        )
         if self.model is GreeAcModel.YAP1F:
             swing_v_position = self.swing_v_position
             if swing_v_position is None:
                 swing_v_position = int(self.swing_v)
             _set_field(frame_b, 0, 4, swing_v_position)
             frame_a[_A_SWING] = int(
-                swing_v_position in _YAP1F_ACTIVE_SWING_POSITIONS
-                or self.swing_h_position != 0
+                swing_v_position in _YAP1F_ACTIVE_SWING_POSITIONS or self.swing_h
             )
-            frame_b[_B_SIGNATURE] = 0
             _set_field(frame_b, 8, 8, _YAP1F_B1_DEFAULT)
             frame_b[_B1_IFEEL] = int(self.ifeel)
+        else:
+            frame_b[_B_SIGNATURE] = 1
+            frame_b[_B_SWING_V] = int(self.swing_v)
         _set_field(frame_b, *_B1_DISPLAY_TEMP, self.display_temp)
         # Absence shares the energy-saving bit, so either flag sets it.
         frame_b[_B_ECONO] = int(self.econo or self.absence)
@@ -602,6 +610,48 @@ class GreeAcCommand(Command):
     def _from_yap1f_raw_timings(cls, timings: list[int]) -> Self | None:
         a_length = 2 + 2 * _FRAME_A_BITS + 1
         b_length = 2 * _FRAME_B_BITS + 1
+        if len(timings) == 3 * (a_length + b_length) + 5:
+            companion_start = a_length + b_length + 2
+            companion_a = _decode_bits(timings, companion_start + 2, _FRAME_A_BITS)
+            companion_b = _decode_bits(
+                timings, companion_start + a_length + 1, _FRAME_B_BITS
+            )
+            state_a = _decode_bits(timings, 2, _FRAME_A_BITS)
+            if companion_a is None or companion_b is None or state_a is None:
+                return None
+            expected_a = list(state_a)
+            expected_a[28] = 0
+            expected_a[29] = 1
+            if (
+                companion_a != expected_a
+                or _get_field(companion_b, *_B_CHECKSUM)
+                != _checksum(companion_a, companion_b)
+                or not _is_close(
+                    timings[companion_start], _YAP1F_LEADER_MARK, _TOLERANCE
+                )
+                or not _is_close(
+                    abs(timings[companion_start + 1]), _YAP1F_LEADER_SPACE, _TOLERANCE
+                )
+                or abs(timings[companion_start + a_length - 1] - _YAP1F_BIT_MARK)
+                > _BIT_TOLERANCE
+                or abs(timings[companion_start + a_length + b_length] - _YAP1F_BIT_MARK)
+                > _BIT_TOLERANCE
+                or timings[companion_start + a_length] >= 0
+                or not _is_close(
+                    abs(timings[companion_start + a_length]),
+                    _YAP1F_GAPS[0], _TOLERANCE,
+                )
+                or timings[companion_start + a_length + b_length + 1] >= 0
+                or not _is_close(
+                    abs(timings[companion_start + a_length + b_length + 1]),
+                    _YAP1F_GAPS[1], _TOLERANCE,
+                )
+            ):
+                return None
+            return cls._from_yap1f_raw_timings(
+                timings[:companion_start]
+                + timings[companion_start + a_length + b_length + 2 :]
+            )
         if len(timings) != 2 * (a_length + b_length) + len(_YAP1F_GAPS):
             return None
 
@@ -622,6 +672,12 @@ class GreeAcCommand(Command):
                 return None
             bit_offset = 2 if burst in (0, 2) else 0
             bit_count = _FRAME_A_BITS if burst in (0, 2) else _FRAME_B_BITS
+            if any(
+                abs(frame[bit_offset + 2 * index] - _YAP1F_BIT_MARK)
+                > _BIT_TOLERANCE
+                for index in range(bit_count)
+            ):
+                return None
             bits = _decode_bits(frame, bit_offset, bit_count)
             end_mark = bit_offset + 2 * bit_count
             if bits is None or abs(frame[end_mark] - _YAP1F_BIT_MARK) > _BIT_TOLERANCE:
@@ -681,7 +737,9 @@ class GreeAcCommand(Command):
             fahrenheit=first.fahrenheit,
             fan=first.fan,
             swing_v=first.swing_v,
-            swing_h_position=first.swing_h_position,
+            swing_h=bool(state_a[_A_SWING])
+            and swing_v_position not in _YAP1F_ACTIVE_SWING_POSITIONS,
+            swing_h_position=_get_field(state_b, 4, 4),
             swing_v_position=swing_v_position,
             econo=first.econo,
             # The shared bit cannot be told apart on the wire; a YAP1F frame

@@ -1024,6 +1024,71 @@ def test_wrong_state_does_not_reproduce_capture() -> None:
         != pair
     )
 
+_SESSION_TWO_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "yap1f_remote_captures_2026-10-02-s2.jsonl"
+)
+
+
+def _session_two_rows() -> list[dict]:
+    with open(_SESSION_TWO_FIXTURE, encoding="utf-8") as handle:
+        return [json.loads(line) for line in handle if line.strip()]
+
+_SESSION_TWO_DAMAGED_TAILS = {
+    "2026-10-02T09:03:17": (278, (74, 66, 138), "merged/noisy fixed continuation"),
+    "2026-10-02T09:04:13": (278, (74, 66, 74, 64), "noisy fixed A, clipped fixed B"),
+    "2026-10-02T09:04:50": (278, (74, 66, 74, 64), "clipped/noisy fixed B"),
+    "2026-10-02T09:05:50": (277, (74, 66, 72, 65), "clipped/noisy fixed A"),
+}
+
+
+@pytest.mark.parametrize("row", _session_two_rows(), ids=lambda row: row["t"])
+def test_session_two_capture_maps_byte_for_byte(row: dict) -> None:
+    """Each complete state re-encodes exactly; fragments document why they skip."""
+    timings = _broadlink_timings(row["code"])
+    bursts = _split_bursts(timings)
+    pair = row["bytes"]
+    if pair:
+        state_a = _decode_frame(bursts[0], leader=True, bits=_FRAME_A_BITS)
+        state_b = _decode_frame(bursts[1], leader=False, bits=_FRAME_B_BITS)
+        assert state_a is not None and state_b is not None
+        captured = _frame_bytes(state_a) + _frame_bytes(state_b)
+        assert captured == bytes.fromhex(pair)
+        if row["t"] in _SESSION_TWO_DAMAGED_TAILS:
+            count, lengths, reason = _SESSION_TWO_DAMAGED_TAILS[row["t"]]
+            assert len(timings) == count, reason
+            assert tuple(map(len, bursts)) == lengths, reason
+            assert GreeAcCommand.from_raw_timings(
+                timings, model=GreeAcModel.YAP1F
+            ) is None
+            return
+        command = GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F)
+        assert command is not None
+        assert _encoder_pair(command) == captured
+    else:
+        command = GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F)
+        assert command is None, row["t"]
+        assert row["skip_reason"], row["t"]
+
+
+def test_session_two_negative_control_changes_encoded_bytes() -> None:
+    row = next(row for row in _session_two_rows() if row["t"].endswith("09:01:48"))
+    timings = _broadlink_timings(row["code"])
+    command = GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F)
+    assert command is not None
+    assert _encoder_pair(command) == bytes.fromhex(row["bytes"])
+    changed = GreeAcCommand(
+        power=command.power,
+        mode=command.mode,
+        temperature=command.temperature,
+        fan=command.fan,
+        turbo=False,
+        swing_v=command.swing_v,
+        swing_v_position=command.swing_v_position,
+        swing_h_position=command.swing_h_position,
+        model=GreeAcModel.YAP1F,
+    )
+    assert _encoder_pair(changed) != bytes.fromhex(row["bytes"])
+
 
 def test_generic_profile_rejects_yap1f_timings() -> None:
     """Negative control: YAP1F captures never decode as generic frames."""
