@@ -428,9 +428,7 @@ class GreeAcCommand(Command):
                 MAX_TEMP, max(MIN_TEMP, ((self.temperature - 32) * 5 + 3) // 9)
             )
             _set_field(frame_a, *_A_TEMP, celsius - _TEMP_OFFSET)
-            base_fahrenheit = max(
-                MIN_TEMP_F, min(MAX_TEMP_F, celsius * 9 // 5 + 32)
-            )
+            base_fahrenheit = max(MIN_TEMP_F, min(MAX_TEMP_F, celsius * 9 // 5 + 32))
             frame_a[_A_TEMP_EXTRA_F] = self.temperature - base_fahrenheit
             frame_a[_A_USE_FAHRENHEIT] = 1
         else:
@@ -446,7 +444,9 @@ class GreeAcCommand(Command):
 
         frame_b = [0] * _FRAME_B_BITS
         _set_field(
-            frame_b, 4, 4 if self.model is GreeAcModel.YAP1F else 3,
+            frame_b,
+            4,
+            4 if self.model is GreeAcModel.YAP1F else 3,
             self.swing_h_position,
         )
         if self.model is GreeAcModel.YAP1F:
@@ -641,12 +641,14 @@ class GreeAcCommand(Command):
                 or timings[companion_start + a_length] >= 0
                 or not _is_close(
                     abs(timings[companion_start + a_length]),
-                    _YAP1F_GAPS[0], _TOLERANCE,
+                    _YAP1F_GAPS[0],
+                    _TOLERANCE,
                 )
                 or timings[companion_start + a_length + b_length + 1] >= 0
                 or not _is_close(
                     abs(timings[companion_start + a_length + b_length + 1]),
-                    _YAP1F_GAPS[1], _TOLERANCE,
+                    _YAP1F_GAPS[1],
+                    _TOLERANCE,
                 )
             ):
                 return None
@@ -664,6 +666,7 @@ class GreeAcCommand(Command):
             2 * a_length + b_length + 3,
         )
         lengths = (a_length, b_length, a_length, b_length)
+        decoded_frames: list[list[int]] = []
         for burst in range(4):
             offset = offsets[burst]
             frame = timings[offset : offset + lengths[burst]]
@@ -675,8 +678,7 @@ class GreeAcCommand(Command):
             bit_offset = 2 if burst in (0, 2) else 0
             bit_count = _FRAME_A_BITS if burst in (0, 2) else _FRAME_B_BITS
             if any(
-                abs(frame[bit_offset + 2 * index] - _YAP1F_BIT_MARK)
-                > _BIT_TOLERANCE
+                abs(frame[bit_offset + 2 * index] - _YAP1F_BIT_MARK) > _BIT_TOLERANCE
                 for index in range(bit_count)
             ):
                 return None
@@ -689,14 +691,9 @@ class GreeAcCommand(Command):
                 gap = timings[gap_index]
                 if gap >= 0 or not _is_close(abs(gap), _YAP1F_GAPS[burst], _TOLERANCE):
                     return None
-            if burst in (0, 2):
-                frame_a = bits
-            else:
-                frame_b = bits
-            if burst == 1:
-                state_a, state_b = frame_a, frame_b
-            if burst == 3:
-                fixed_a, fixed_b = frame_a, frame_b
+            decoded_frames.append(bits)
+
+        state_a, state_b, fixed_a, fixed_b = decoded_frames
 
         expected_fixed_a = [0] * _FRAME_A_BITS
         expected_fixed_a[29] = 1

@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import base64
 import json
+from functools import partial
 from pathlib import Path
 
 import pytest
@@ -33,14 +34,11 @@ import pytest
 from infrared_protocols.commands.gree_ac import (
     GreeAcCommand,
     GreeAcFanSpeed,
-    GreeAcFreshAir,
     GreeAcMode,
     GreeAcModel,
 )
 
-_FIXTURE = (
-    Path(__file__).parent / "fixtures" / "yap1f_remote_captures_2026-10-02.jsonl"
-)
+_FIXTURE = Path(__file__).parent / "fixtures" / "yap1f_remote_captures_2026-10-02.jsonl"
 
 # YAP1F capture classes (means), duplicated so the tests stand alone.
 _LEADER_MARK = 8796
@@ -143,8 +141,7 @@ def _by_time() -> dict[str, dict]:
     return {row["t"][11:]: row for row in _rows()}
 
 
-def _command(**kwargs) -> GreeAcCommand:
-    return GreeAcCommand(model=GreeAcModel.YAP1F, **kwargs)
+_command = partial(GreeAcCommand, model=GreeAcModel.YAP1F)
 
 
 def _encoder_pair(command: GreeAcCommand) -> bytes:
@@ -158,7 +155,7 @@ def _encoder_pair(command: GreeAcCommand) -> bytes:
 
 
 def _check_roundtrip(command: GreeAcCommand, expect: dict) -> None:
-    """The encoder output decodes back to the mapped fields."""
+    """Check that encoder output decodes back to the mapped fields."""
     decoded = GreeAcCommand.from_raw_timings(
         command.get_raw_timings(), model=GreeAcModel.YAP1F
     )
@@ -516,9 +513,7 @@ _MAPPED = [
 ]
 
 
-@pytest.mark.parametrize(
-    ("time", "pair", "kwargs", "button", "companion_b"), _MAPPED
-)
+@pytest.mark.parametrize(("time", "pair", "kwargs", "button", "companion_b"), _MAPPED)
 def test_capture_maps_to_button_bits(
     time: str, pair: str, kwargs: dict, button: str, companion_b: str | None
 ) -> None:
@@ -541,9 +536,7 @@ def test_capture_maps_to_button_bits(
 
     if companion_b is not None:
         companion_a = _decode_frame(bursts[2], leader=True, bits=_FRAME_A_BITS)
-        companion_b_bits = _decode_frame(
-            bursts[3], leader=False, bits=_FRAME_B_BITS
-        )
+        companion_b_bits = _decode_frame(bursts[3], leader=False, bits=_FRAME_B_BITS)
         assert companion_a is not None and companion_b_bits is not None
         assert _frame_bytes(companion_a) == _companion_tag(bytes.fromhex(pair[:8]))
         assert _frame_bytes(companion_b_bits) == bytes.fromhex(companion_b)
@@ -584,7 +577,12 @@ def test_noisy_swing_position_proven_through_companion() -> None:
     assert _encoder_pair(command) == bytes.fromhex("0980e95003c00084")
     _check_roundtrip(
         command,
-        {**_COOL16, "swing_v": False, "swing_v_position": 3, "model": GreeAcModel.YAP1F},
+        {
+            **_COOL16,
+            "swing_v": False,
+            "swing_v_position": 3,
+            "model": GreeAcModel.YAP1F,
+        },
     )
 
 
@@ -609,7 +607,12 @@ def test_noisy_timer_bytes_contradicted_by_companion() -> None:
     assert _encoder_pair(command) == bytes.fromhex("0980e95004c00084")
     _check_roundtrip(
         command,
-        {**_COOL16, "swing_v": False, "swing_v_position": 4, "model": GreeAcModel.YAP1F},
+        {
+            **_COOL16,
+            "swing_v": False,
+            "swing_v_position": 4,
+            "model": GreeAcModel.YAP1F,
+        },
     )
 
 
@@ -734,9 +737,12 @@ def test_second_transmission_of_double_capture_maps() -> None:
     second_b = _decode_frame(bursts[1], leader=False, bits=_FRAME_B_BITS)
     assert second_b is not None
     assert _frame_bytes(second_b) == bytes.fromhex("00c20030")
-    assert GreeAcCommand.from_raw_timings(
-        _broadlink_timings(row["code"]), model=GreeAcModel.YAP1F
-    ) is None
+    assert (
+        GreeAcCommand.from_raw_timings(
+            _broadlink_timings(row["code"]), model=GreeAcModel.YAP1F
+        )
+        is None
+    )
 
     # Second transmission: full state + companion + fixed.
     state_a = _decode_frame(bursts[4], leader=True, bits=_FRAME_A_BITS)
@@ -755,7 +761,12 @@ def test_second_transmission_of_double_capture_maps() -> None:
     assert _encoder_pair(command) == bytes.fromhex("4980e9500bc00084")
     _check_roundtrip(
         command,
-        {**_COOL16, "swing_v": True, "swing_v_position": 11, "model": GreeAcModel.YAP1F},
+        {
+            **_COOL16,
+            "swing_v": True,
+            "swing_v_position": 11,
+            "model": GreeAcModel.YAP1F,
+        },
     )
 
 
@@ -805,7 +816,18 @@ def test_double_press_light_off_then_on() -> None:
     assert row["bytes"].replace(" ", "").lower() == "5190885810c20080"
     bursts = _split_bursts(_broadlink_timings(row["code"]))
     assert [len(burst) for burst in bursts] == [
-        74, 66, 74, 66, 74, 66, 74, 66, 74, 66, 74, 65,
+        74,
+        66,
+        74,
+        66,
+        74,
+        66,
+        74,
+        66,
+        74,
+        66,
+        74,
+        65,
     ]
 
     first_a = _decode_frame(bursts[0], leader=True, bits=_FRAME_A_BITS)
@@ -935,12 +957,10 @@ def test_timer_cleared_frame_has_bit_noisy_fixed_tail() -> None:
         "5100a05010c20080"
     )
     # No companion pair: the timer is no longer programmed.
-    assert _frame_bytes(
-        _decode_frame(bursts[2], leader=True, bits=_FRAME_A_BITS) or ""
-    ) == bytes.fromhex("000800a0") or True
-    assert (
-        GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F) is None
-    )
+    fixed_a = _decode_frame(bursts[2], leader=True, bits=_FRAME_A_BITS)
+    assert fixed_a is not None
+    assert _frame_bytes(fixed_a) == bytes.fromhex("000800a0")
+    assert GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F) is None
 
 
 @pytest.mark.parametrize(
@@ -987,9 +1007,7 @@ def test_fragments_carry_no_mappable_state(
     row = _by_time()[time]
     timings = _broadlink_timings(row["code"])
     assert tuple(len(burst) for burst in _split_bursts(timings)) == bursts
-    assert (
-        GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F) is None
-    )
+    assert GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F) is None
 
 
 def test_companion_tag_rule_holds_for_every_clean_pair() -> None:
@@ -1014,15 +1032,20 @@ def test_companion_tag_rule_holds_for_every_clean_pair() -> None:
 
 def test_wrong_state_does_not_reproduce_capture() -> None:
     """Negative control: flipping eco changes the encoded pair."""
-    row = _by_time()["02:38:13"]
     pair = bytes.fromhex("0980e95005c00084")
-    assert _encoder_pair(_command(**{**_COOL16, "swing_v": False, "swing_v_position": 5})) == pair
+    assert (
+        _encoder_pair(_command(**{**_COOL16, "swing_v": False, "swing_v_position": 5}))
+        == pair
+    )
     assert (
         _encoder_pair(
-            _command(**{**_COOL16, "swing_v": False, "swing_v_position": 5, "econo": False})
+            _command(
+                **{**_COOL16, "swing_v": False, "swing_v_position": 5, "econo": False}
+            )
         )
         != pair
     )
+
 
 _SESSION_TWO_FIXTURE = (
     Path(__file__).parent / "fixtures" / "yap1f_remote_captures_2026-10-02-s2.jsonl"
@@ -1032,6 +1055,7 @@ _SESSION_TWO_FIXTURE = (
 def _session_two_rows() -> list[dict]:
     with open(_SESSION_TWO_FIXTURE, encoding="utf-8") as handle:
         return [json.loads(line) for line in handle if line.strip()]
+
 
 _SESSION_TWO_DAMAGED_TAILS = {
     "2026-10-02T09:03:17": (278, (74, 66, 138), "merged/noisy fixed continuation"),
@@ -1057,9 +1081,9 @@ def test_session_two_capture_maps_byte_for_byte(row: dict) -> None:
             count, lengths, reason = _SESSION_TWO_DAMAGED_TAILS[row["t"]]
             assert len(timings) == count, reason
             assert tuple(map(len, bursts)) == lengths, reason
-            assert GreeAcCommand.from_raw_timings(
-                timings, model=GreeAcModel.YAP1F
-            ) is None
+            assert (
+                GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F) is None
+            )
             return
         command = GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F)
         assert command is not None
@@ -1071,6 +1095,7 @@ def test_session_two_capture_maps_byte_for_byte(row: dict) -> None:
 
 
 def test_session_two_negative_control_changes_encoded_bytes() -> None:
+    """Changing a captured state must change its encoded bytes."""
     row = next(row for row in _session_two_rows() if row["t"].endswith("09:01:48"))
     timings = _broadlink_timings(row["code"])
     command = GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F)
@@ -1132,6 +1157,7 @@ with _SESSION_THREE_FIXTURE.open(encoding="utf-8") as _handle:
     ids=lambda row: row["t"],
 )
 def test_session_three_complete_capture_maps_byte_for_byte(row: dict) -> None:
+    """Re-encode each complete session-three capture byte for byte."""
     command = GreeAcCommand.from_raw_timings(
         _broadlink_timings(row["code"]), model=GreeAcModel.YAP1F
     )
@@ -1146,6 +1172,7 @@ def test_session_three_complete_capture_maps_byte_for_byte(row: dict) -> None:
     ids=lambda row: row["t"],
 )
 def test_session_three_damaged_capture_remains_rejected(row: dict) -> None:
+    """Reject damaged session-three captures."""
     timings = _broadlink_timings(row["code"])
     assert len(timings) == row["timing_count"], row["skip_reason"]
     assert list(map(len, _split_bursts(timings))) == row["burst_lengths"]
@@ -1158,6 +1185,7 @@ def test_session_three_damaged_capture_remains_rejected(row: dict) -> None:
     ids=lambda row: row["t"],
 )
 def test_session_three_intact_primary_pair_proves_position(row: dict) -> None:
+    """Use intact primary pairs to pin captured vane positions."""
     bursts = _split_bursts(_broadlink_timings(row["code"]))
     state_a = _decode_frame(bursts[0], leader=True, bits=_FRAME_A_BITS)
     state_b = _decode_frame(bursts[1], leader=False, bits=_FRAME_B_BITS)
@@ -1175,6 +1203,7 @@ def test_session_three_intact_primary_pair_proves_position(row: dict) -> None:
 
 @pytest.mark.parametrize("time", ["09:53:31", "09:53:42"])
 def test_session_three_horizontal_12_is_latched_not_swinging(time: str) -> None:
+    """Preserve horizontal selection 12 while the vane is stopped."""
     row = next(row for row in _SESSION_THREE_ROWS if row["t"].endswith(time))
     command = GreeAcCommand.from_raw_timings(
         _broadlink_timings(row["code"]), model=GreeAcModel.YAP1F
@@ -1192,5 +1221,6 @@ def test_session_three_horizontal_12_is_latched_not_swinging(time: str) -> None:
 
 
 def test_session_three_generic_rejects_horizontal_12() -> None:
+    """Reject the YAP1F-only horizontal position in the generic profile."""
     with pytest.raises(ValueError, match="unsupported swing_h_position 12"):
         GreeAcCommand(mode=GreeAcMode.COOL, temperature=22, swing_h_position=12)

@@ -3,14 +3,14 @@
 import pytest
 
 from infrared_protocols.commands.gree_ac import (
+    MAX_TEMP_F,
+    MIN_TEMP_F,
+    YAP1F_SWING_POSITIONS,
     GreeAcCommand,
     GreeAcFanSpeed,
     GreeAcFreshAir,
     GreeAcMode,
     GreeAcModel,
-    MAX_TEMP_F,
-    MIN_TEMP_F,
-    YAP1F_SWING_POSITIONS,
 )
 
 
@@ -1191,13 +1191,13 @@ def _command_from_yap1f_labels(labels: dict[str, str], frame: bytes) -> GreeAcCo
         "DRY": GreeAcMode.DRY,
         "FAN": GreeAcMode.FAN_ONLY,
         "HEAT": GreeAcMode.HEAT,
-    }.get(labels.get("Mode"), GreeAcMode(a0 & 0x07))
+    }.get(labels.get("Mode", ""), GreeAcMode(a0 & 0x07))
     fan = {
         "AUTO": GreeAcFanSpeed.AUTO,
         "1": GreeAcFanSpeed.LOW,
         "2": GreeAcFanSpeed.MEDIUM,
         "3": GreeAcFanSpeed.HIGH,
-    }.get(labels.get("Fan"), GreeAcFanSpeed((a0 >> 4) & 0x03))
+    }.get(labels.get("Fan", ""), GreeAcFanSpeed((a0 >> 4) & 0x03))
     swing_v_position = {
         "11111": 1,
         "10000": 2,
@@ -1208,7 +1208,7 @@ def _command_from_yap1f_labels(labels: dict[str, str], frame: bytes) -> GreeAcCo
         "00111": 7,
         "01110": 9,
         "11100": 11,
-    }.get(labels.get("SwingV"), b0 & 0x0F)
+    }.get(labels.get("SwingV", ""), b0 & 0x0F)
     return GreeAcCommand(
         power=labels.get("Mode") != "OFF",
         mode=mode,
@@ -1276,28 +1276,61 @@ def test_generic_profile_keeps_shared_flags_and_default_route() -> None:
 
 
 @pytest.mark.parametrize(
-    ("field", "value", "block", "bit", "width"),
+    ("field", "value", "frame_index", "bit", "width", "command"),
     [
-        pytest.param("fahrenheit", True, "a", 27, 1, id="fahrenheit"),
-        pytest.param("econo", True, "b", 26, 1, id="econo"),
-        pytest.param("swing_h_position", 6, "b", 4, 3, id="horizontal-swing"),
-        pytest.param("display_temp", 3, "b", 8, 2, id="display-temp"),
+        pytest.param(
+            "fahrenheit",
+            True,
+            0,
+            27,
+            1,
+            GreeAcCommand(mode=GreeAcMode.COOL, temperature=86, fahrenheit=True),
+            id="fahrenheit",
+        ),
+        pytest.param(
+            "econo",
+            True,
+            1,
+            26,
+            1,
+            GreeAcCommand(mode=GreeAcMode.COOL, temperature=24, econo=True),
+            id="econo",
+        ),
+        pytest.param(
+            "swing_h_position",
+            6,
+            1,
+            4,
+            3,
+            GreeAcCommand(mode=GreeAcMode.COOL, temperature=24, swing_h_position=6),
+            id="horizontal-swing",
+        ),
+        pytest.param(
+            "display_temp",
+            3,
+            1,
+            8,
+            2,
+            GreeAcCommand(mode=GreeAcMode.COOL, temperature=24, display_temp=3),
+            id="display-temp",
+        ),
     ],
 )
 def test_reference_fields_roundtrip_and_match_irremote_bits(
-    field: str, value: int | bool, block: str, bit: int, width: int
+    field: str,
+    value: int | bool,
+    frame_index: int,
+    bit: int,
+    width: int,
+    command: GreeAcCommand,
 ) -> None:
     """Reference-mapped options occupy the IRremoteESP8266 byte/bit layout."""
-    temperature = 86 if field == "fahrenheit" else 24
-    command = GreeAcCommand(
-        mode=GreeAcMode.COOL, temperature=temperature, **{field: value}
-    )
     frame_a, frame_b = _extract_frames(command.get_raw_timings())
     result = GreeAcCommand.from_raw_timings(command.get_raw_timings())
 
     assert result is not None
     assert getattr(result, field) == value
-    assert _bits_to_int_lsb(frame_a if block == "a" else frame_b, bit, width) == value
+    assert _bits_to_int_lsb((frame_a, frame_b)[frame_index], bit, width) == value
 
 
 def test_fahrenheit_setpoint_roundtrips() -> None:
