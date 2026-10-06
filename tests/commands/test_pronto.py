@@ -48,6 +48,32 @@ def test_encode_pronto_from_timing() -> None:
     assert pronto.pronto_data == TEST_DATA_KNOWN_GOOD_PRONTO_FULL
 
 
+@pytest.mark.parametrize(
+    ("timings", "modulation", "expected_pronto_hex"),
+    [
+        pytest.param(
+            [5_000_000, -500], 38000, "0000 006d 0001 0000 ffff 0014", id="long_mark"
+        ),
+        pytest.param(
+            [500, -5_000_000], 38000, "0000 006d 0001 0000 0013 ffff", id="long_space"
+        ),
+        pytest.param(
+            [10, -500], 38000, "0000 006d 0001 0000 0001 0014", id="mark_rounds_to_zero"
+        ),
+        # Above 50 kHz the 20 us compensation makes a short mark negative.
+        pytest.param(
+            [1, -1], 455000, "0000 0009 0001 0000 0001 000a", id="mark_rounds_negative"
+        ),
+    ],
+)
+def test_encode_pronto_from_timing_clamps_words(
+    timings: list[int], modulation: int, expected_pronto_hex: str
+) -> None:
+    """Test that out-of-range durations saturate to valid pronto words."""
+    pronto = ProntoCommand.from_raw_timings(timings, modulation)
+    assert pronto.to_pronto_hex() == expected_pronto_hex
+
+
 def test_decode_pronto_to_timing() -> None:
     """Test that a ProntoCommand can be decoded to raw timings."""
     pronto = ProntoCommand(pronto_data=TEST_DATA_KNOWN_GOOD_PRONTO_FULL)
