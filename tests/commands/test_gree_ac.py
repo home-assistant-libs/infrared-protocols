@@ -3,11 +3,21 @@
 import pytest
 
 from infrared_protocols.commands.gree_ac import (
+    MAX_TEMP_F,
+    MIN_TEMP_F,
+    YAP1F_SWING_POSITIONS,
     GreeAcCommand,
     GreeAcFanSpeed,
     GreeAcFreshAir,
     GreeAcMode,
+    GreeAcModel,
 )
+
+
+def test_yap1f_swing_positions_are_public() -> None:
+    """The module exposes the supported vertical vane positions."""
+    assert YAP1F_SWING_POSITIONS == (0, 1, 2, 3, 4, 5, 6, 7, 9, 11)
+
 
 # Physical-layer constants are duplicated here rather than imported
 # so the tests are independent
@@ -138,15 +148,47 @@ def _command_for(label: str) -> GreeAcCommand:
 
 
 def test_encode_timing_values() -> None:
-    """Pin the physical layer: leader, bit mark, and the two bit spaces."""
+    """Pin the generic profile's unchanged physical layer."""
     timings = GreeAcCommand(mode=GreeAcMode.COOL, temperature=24).get_raw_timings()
 
     assert timings[:2] == [9000, -4500]
-    assert timings[2::2].count(562) > 0
     marks = [t for t in timings if t > 0]
     assert set(marks) == {9000, 562}
     spaces = {abs(t) for t in timings if t < 0}
     assert spaces == {4500, 1687, 562, 20100}
+
+
+def test_yap1f_timing_values_and_gap_boundaries() -> None:
+    """YAP1F timings match captured classes and end at a mark."""
+    timings = GreeAcCommand(
+        mode=GreeAcMode.COOL,
+        temperature=16,
+        fan=GreeAcFanSpeed.HIGH,
+        model=GreeAcModel.YAP1F,
+    ).get_raw_timings()
+
+    assert len(timings) == 279
+    assert timings[0:2] == [8796, -4365]
+    assert [timings[index] for index in (73, 139, 213)] == [-19500, -39000, -19500]
+    assert timings[-1] == 673
+    assert {value for value in timings if value > 0} == {673, 8796}
+    assert {abs(value) for value in timings if value < 0} == {
+        516,
+        1580,
+        4365,
+        19500,
+        39000,
+    }
+    decoded = GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F)
+    assert decoded is not None
+    assert (decoded.mode, decoded.temperature, decoded.fan) == (
+        GreeAcMode.COOL,
+        16,
+        GreeAcFanSpeed.HIGH,
+    )
+    invalid_gap = list(timings)
+    invalid_gap[139] = -19500
+    assert GreeAcCommand.from_raw_timings(invalid_gap, model=GreeAcModel.YAP1F) is None
 
 
 def _retime_to_variant(timings: list[int]) -> list[int]:
@@ -600,6 +642,10 @@ def test_fields_inside_the_checksum_nibbles_change_it(command: GreeAcCommand) ->
             GreeAcCommand(mode=GreeAcMode.COOL, temperature=24, timer_hours=10),
             id="timer_half_tens_and_enabled",
         ),
+        pytest.param(
+            GreeAcCommand(mode=GreeAcMode.COOL, temperature=24, absence=True),
+            id="absence",
+        ),
     ],
 )
 def test_fields_outside_the_checksum_nibbles_leave_it_alone(
@@ -674,3 +720,708 @@ def test_timer_hours_out_of_range(timer_hours: float, match: str) -> None:
     """A timer the remote cannot set is rejected at construction."""
     with pytest.raises(ValueError, match=match):
         GreeAcCommand(mode=GreeAcMode.COOL, temperature=24, timer_hours=timer_hours)
+
+
+# ESPHome Pronto captures from the YAP1F remote: labels and first-frame bytes.
+_YAP1F_CAPTURED = [
+    pytest.param(
+        {"Mode": "OFF", "Temp": "N/A", "Sleep": "OFF"},
+        "430C005001C20050",
+        id="press_00",
+    ),
+    pytest.param(
+        {
+            "Mode": "AUTO",
+            "Temp": "N/A",
+            "Fan": "AUTO",
+            "SwingV": "-",
+            "Xfan": "-",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "OFF",
+            "Sleep": "OFF",
+        },
+        "0809405000C20070",
+        id="press_01",
+    ),
+    pytest.param(
+        {
+            "Mode": "AUTO",
+            "Temp": "N/A",
+            "Fan": "AUTO",
+            "SwingV": "-",
+            "Xfan": "-",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "OFF",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0809005100C20080",
+        id="press_02",
+    ),
+    pytest.param(
+        {
+            "Mode": "AUTO",
+            "Temp": "N/A",
+            "Fan": "AUTO",
+            "SwingV": "-",
+            "Xfan": "-",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0809405100C20080",
+        id="press_03",
+    ),
+    pytest.param(
+        {
+            "Mode": "AUTO",
+            "Temp": "N/A",
+            "Fan": "AUTO",
+            "SwingV": "-",
+            "Xfan": "-",
+            "Ifeel": "OFF",
+            "Light": "ON",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0809605100C20080",
+        id="press_04",
+    ),
+    pytest.param(
+        {
+            "Mode": "AUTO",
+            "Temp": "N/A",
+            "Fan": "AUTO",
+            "SwingV": "-",
+            "Xfan": "-",
+            "Ifeel": "ON",
+            "Light": "ON",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0809605100C60080",
+        id="press_05",
+    ),
+    pytest.param(
+        {
+            "Mode": "COOL",
+            "Temp": "25",
+            "Fan": "AUTO",
+            "SwingV": "11111",
+            "Xfan": "ON",
+            "Ifeel": "OFF",
+            "Light": "ON",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "4909E05101C20090",
+        id="press_06",
+    ),
+    pytest.param(
+        {
+            "Mode": "COOL",
+            "Temp": "25",
+            "Fan": "AUTO",
+            "SwingV": "11111",
+            "Xfan": "ON",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "4909C05101C20090",
+        id="press_07",
+    ),
+    pytest.param(
+        {
+            "Mode": "DRY",
+            "Temp": "25",
+            "Fan": "1",
+            "SwingV": "-",
+            "Xfan": "ON",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "1A09C05100C200A0",
+        id="press_08",
+    ),
+    pytest.param(
+        {
+            "Mode": "FAN",
+            "Temp": "28",
+            "Fan": "AUTO",
+            "SwingV": "11111",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "4B0C405101C200E0",
+        id="press_09",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "25",
+            "Fan": "AUTO",
+            "SwingV": "-",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0C09405100C200C0",
+        id="press_10",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "26",
+            "Fan": "AUTO",
+            "SwingV": "-",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0C0A405100C200D0",
+        id="press_11",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "27",
+            "Fan": "AUTO",
+            "SwingV": "-",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0C0B405100C200E0",
+        id="press_12",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "28",
+            "Fan": "AUTO",
+            "SwingV": "-",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0C0C405100C200F0",
+        id="press_13",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "30",
+            "Fan": "AUTO",
+            "SwingV": "-",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0C0E405100C20010",
+        id="press_14",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "AUTO",
+            "SwingV": "-",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0C00405100C20030",
+        id="press_15",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "AUTO",
+            "SwingV": "11111",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "4C00405101C20030",
+        id="press_16",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "AUTO",
+            "SwingV": "10000",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0C00405102C20030",
+        id="press_17",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "AUTO",
+            "SwingV": "01000",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0C00405103C20030",
+        id="press_18",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "AUTO",
+            "SwingV": "00100",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0C00405104C20030",
+        id="press_19",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "AUTO",
+            "SwingV": "00010",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0C00405105C20030",
+        id="press_20",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "AUTO",
+            "SwingV": "00001",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "0C00405106C20030",
+        id="press_21",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "AUTO",
+            "SwingV": "00111",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "4C00405107C20030",
+        id="press_22",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "AUTO",
+            "SwingV": "01110",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "4C00405109C20030",
+        id="press_23",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "AUTO",
+            "SwingV": "11100",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "4C0040510BC20030",
+        id="press_24",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "1",
+            "SwingV": "-",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "1C00405100C20030",
+        id="press_25",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "2",
+            "SwingV": "-",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "2C00405100C20030",
+        id="press_26",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "3",
+            "SwingV": "-",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "OFF",
+        },
+        "3C00405100C20030",
+        id="press_27",
+    ),
+    pytest.param(
+        {
+            "Mode": "HEAT",
+            "Temp": "16",
+            "Fan": "AUTO",
+            "SwingV": "-",
+            "Xfan": "OFF",
+            "Ifeel": "OFF",
+            "Light": "OFF",
+            "Tree": "ON",
+            "Home": "ON",
+            "Sleep": "ON",
+        },
+        "8C00405100C20030",
+        id="press_28",
+    ),
+]
+
+_YAP_FRAME_TIMINGS = 2 + 2 * _FRAME_A_BITS + 1 + 1 + 2 * _FRAME_B_BITS + 1
+
+
+def _command_from_yap1f_labels(labels: dict[str, str], frame: bytes) -> GreeAcCommand:
+    """Build captured state from remote labels, retaining unlabeled state fields."""
+    a0, a1, a2, a3, b0, _, _, _ = frame
+    mode = {
+        "AUTO": GreeAcMode.AUTO,
+        "COOL": GreeAcMode.COOL,
+        "DRY": GreeAcMode.DRY,
+        "FAN": GreeAcMode.FAN_ONLY,
+        "HEAT": GreeAcMode.HEAT,
+    }.get(labels.get("Mode", ""), GreeAcMode(a0 & 0x07))
+    fan = {
+        "AUTO": GreeAcFanSpeed.AUTO,
+        "1": GreeAcFanSpeed.LOW,
+        "2": GreeAcFanSpeed.MEDIUM,
+        "3": GreeAcFanSpeed.HIGH,
+    }.get(labels.get("Fan", ""), GreeAcFanSpeed((a0 >> 4) & 0x03))
+    swing_v_position = {
+        "11111": 1,
+        "10000": 2,
+        "01000": 3,
+        "00100": 4,
+        "00010": 5,
+        "00001": 6,
+        "00111": 7,
+        "01110": 9,
+        "11100": 11,
+    }.get(labels.get("SwingV", ""), b0 & 0x0F)
+    return GreeAcCommand(
+        power=labels.get("Mode") != "OFF",
+        mode=mode,
+        temperature=(
+            int(labels["Temp"])
+            if labels.get("Temp") not in (None, "N/A", "-", "")
+            else (a1 & 0x0F) + 16
+        ),
+        fan=fan,
+        swing_v=bool(a0 & 0x40),
+        swing_v_position=swing_v_position,
+        turbo=False,
+        display=(labels.get("Light") == "ON" if "Light" in labels else bool(a2 & 0x20)),
+        blow=(labels.get("Xfan") == "ON" if "Xfan" in labels else bool(a2 & 0x80)),
+        sleep=labels.get("Sleep") == "ON",
+        anion=(labels.get("Tree") == "ON" if "Tree" in labels else bool(a2 & 0x40)),
+        fresh_air=(
+            GreeAcFreshAir.LEVEL_1
+            if labels.get("Home") == "ON"
+            else GreeAcFreshAir.OFF
+            if labels.get("Home") == "OFF"
+            else GreeAcFreshAir(a3 & 0x03)
+        ),
+        ifeel=labels.get("Ifeel") == "ON",
+        model=GreeAcModel.YAP1F,
+    )
+
+
+def _bytes_of(bits: str) -> list[int]:
+    """Pack the first 32 bits of a bitstring into bytes, least-significant first."""
+    values = [1 if bit == "1" else 0 for bit in bits]
+    return [sum(values[i + j] << j for j in range(8)) for i in range(0, 32, 8)]
+
+
+@pytest.mark.parametrize(("labels", "frame1"), _YAP1F_CAPTURED)
+def test_yap1f_matches_captured_first_frame(
+    labels: dict[str, str], frame1: str
+) -> None:
+    """The YAP1F encoder reproduces all 29 remote state frames byte for byte."""
+    command = _command_from_yap1f_labels(labels, bytes.fromhex(frame1))
+    timings = command.get_raw_timings()
+    assert len(timings) == 279
+    assert [timings[index] for index in (73, 139, 213)] == [-19500, -39000, -19500]
+    assert timings[-1] > 0
+    frame_a, frame_b = _extract_frames(timings[:_YAP_FRAME_TIMINGS])
+    encoded = bytes(_bytes_of(frame_a) + _bytes_of(frame_b))
+    assert encoded == bytes.fromhex(frame1)
+    assert [int(bit) for bit in frame_a[32:35]] == [0, 1, 0]
+    fixed_a, fixed_b = _extract_frames(timings[_YAP_FRAME_TIMINGS + 1 :])
+    assert bytes(_bytes_of(fixed_a) + _bytes_of(fixed_b)) == bytes.fromhex(
+        "000000A0000000A0"
+    )
+
+
+def test_generic_profile_keeps_shared_flags_and_default_route() -> None:
+    """The generic profile keeps shared flags without selecting YAP1F."""
+    command = GreeAcCommand(
+        mode=GreeAcMode.COOL, temperature=25, display=False, anion=True, blow=True
+    )
+    decoded = GreeAcCommand.from_raw_timings(command.get_raw_timings())
+    assert command.model is GreeAcModel.GENERIC
+    assert decoded is not None
+    assert decoded.model is GreeAcModel.GENERIC
+    assert (decoded.display, decoded.anion, decoded.blow) == (False, True, True)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "frame_index", "bit", "width", "command"),
+    [
+        pytest.param(
+            "fahrenheit",
+            True,
+            0,
+            27,
+            1,
+            GreeAcCommand(mode=GreeAcMode.COOL, temperature=86, fahrenheit=True),
+            id="fahrenheit",
+        ),
+        pytest.param(
+            "econo",
+            True,
+            1,
+            26,
+            1,
+            GreeAcCommand(mode=GreeAcMode.COOL, temperature=24, econo=True),
+            id="econo",
+        ),
+        pytest.param(
+            "swing_h_position",
+            6,
+            1,
+            4,
+            3,
+            GreeAcCommand(mode=GreeAcMode.COOL, temperature=24, swing_h_position=6),
+            id="horizontal-swing",
+        ),
+        pytest.param(
+            "display_temp",
+            3,
+            1,
+            8,
+            2,
+            GreeAcCommand(mode=GreeAcMode.COOL, temperature=24, display_temp=3),
+            id="display-temp",
+        ),
+    ],
+)
+def test_reference_fields_roundtrip_and_match_irremote_bits(
+    field: str,
+    value: int | bool,
+    frame_index: int,
+    bit: int,
+    width: int,
+    command: GreeAcCommand,
+) -> None:
+    """Reference-mapped options occupy the IRremoteESP8266 byte/bit layout."""
+    frame_a, frame_b = _extract_frames(command.get_raw_timings())
+    result = GreeAcCommand.from_raw_timings(command.get_raw_timings())
+
+    assert result is not None
+    assert getattr(result, field) == value
+    assert _bits_to_int_lsb((frame_a, frame_b)[frame_index], bit, width) == value
+
+
+def test_fahrenheit_setpoint_roundtrips() -> None:
+    """All supported Fahrenheit setpoints round-trip on both Gree wire profiles."""
+    for model in GreeAcModel:
+        for temperature in range(MIN_TEMP_F, MAX_TEMP_F + 1):
+            command = GreeAcCommand(
+                mode=GreeAcMode.COOL,
+                temperature=temperature,
+                fahrenheit=True,
+                model=model,
+            )
+            result = GreeAcCommand.from_raw_timings(
+                command.get_raw_timings(), model=model
+            )
+
+            assert result is not None
+            assert result.fahrenheit is True
+            assert result.temperature == temperature
+
+
+def test_fahrenheit_extra_degree_uses_irremote_byte_three_bit_two() -> None:
+    """The extra-degree flag maps to IRremoteESP8266 byte 3 bit 2."""
+    command = GreeAcCommand(mode=GreeAcMode.COOL, temperature=72, fahrenheit=True)
+    frame_a, _ = _extract_frames(command.get_raw_timings())
+
+    assert frame_a[26] == "1"
+
+
+def test_horizontal_swing_position_uses_all_three_checksum_bits() -> None:
+    """The complete three-bit horizontal field contributes to checksum bits."""
+    base = GreeAcCommand(mode=GreeAcMode.COOL, temperature=24)
+    right = GreeAcCommand(mode=GreeAcMode.COOL, temperature=24, swing_h_position=6)
+    base_b = _extract_frames(base.get_raw_timings())[1]
+    right_b = _extract_frames(right.get_raw_timings())[1]
+
+    assert _bits_to_int_lsb(right_b, 4, 3) == 6
+    assert right_b[28:] != base_b[28:]
+
+
+# YAP1F CLOCK+TEMP absence captures (Guest zone blaster, 2026-10-02): heat 28
+# with a 9.5 h off timer, display and anion on, display source clock. Block-B
+# bytes are the captured state-frame bytes 4..7, each byte printed LSB-first;
+# absence is the only difference (0x04 in byte 7) and the checksum nibble
+# stays 0x7 in both captures.
+_YAP1F_ABSENCE_BLOCK_B = {
+    False: "00000000 00000011 00000000 00001110",
+    True: "00000000 00000011 00000000 00101110",
+}
+
+
+def _yap1f_absence_command(absence: bool) -> GreeAcCommand:
+    """Build the heat state the remote held for both CLOCK+TEMP presses."""
+    return GreeAcCommand(
+        mode=GreeAcMode.HEAT,
+        temperature=28,
+        timer_hours=9.5,
+        display=True,
+        anion=True,
+        display_temp=0,
+        absence=absence,
+        model=GreeAcModel.YAP1F,
+    )
+
+
+@pytest.mark.parametrize("absence", [False, True])
+def test_yap1f_absence_matches_captured_block_b(absence: bool) -> None:
+    """Encoding absence on/off reproduces the two captured block-B byte strings."""
+    command = _yap1f_absence_command(absence)
+    _, frame_b = _extract_frames(command.get_raw_timings()[:_YAP_FRAME_TIMINGS])
+
+    assert bytes(_bytes_of(frame_b)) == bytes(
+        _bytes_of("".join(_YAP1F_ABSENCE_BLOCK_B[absence].split()))
+    )
+    # The stored checksum nibble is 0x7 in both captures and ignores absence.
+    assert frame_b[28:] == "1110"
+
+
+@pytest.mark.parametrize("absence", [False, True])
+def test_yap1f_absence_roundtrips(absence: bool) -> None:
+    """The captured absence states decode back to the same command fields."""
+    command = _yap1f_absence_command(absence)
+    decoded = GreeAcCommand.from_raw_timings(
+        command.get_raw_timings(), model=GreeAcModel.YAP1F
+    )
+
+    assert decoded is not None
+    assert decoded.model is GreeAcModel.YAP1F
+    assert decoded.absence is absence
+    # The shared bit reads as both functions; the wire cannot distinguish them.
+    assert decoded.econo is absence
+    assert decoded.mode is GreeAcMode.HEAT
+    assert decoded.temperature == 28
+    assert decoded.timer_hours == 9.5
