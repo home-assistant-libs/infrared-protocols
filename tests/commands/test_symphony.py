@@ -163,7 +163,7 @@ RELEASE_WINDOWS_REFUSED = [
     if min(end, 4) - start < 2
 ]
 
-# Fifteen bits of Symphony-shaped pulses, the shape of a Wilfan 15-bit frame.
+# Fifteen bits of Symphony-shaped pulses, as some other fan remotes send.
 FIFTEEN_BIT_FRAME = [
     1260, -460, 460, -1260, 1260, -460, 460, -1260, 460, -1260,
     1260, -460, 1260, -460, 460, -1260, 1260, -460, 460, -1260,

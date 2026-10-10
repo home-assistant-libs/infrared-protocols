@@ -1,24 +1,34 @@
 """Symphony IR command (rc_switch family).
 
-Symphony is the protocol used by ceiling fans, coolers and similar
-remotes with RF heritage, among them Silvercrest and Dreo fans.
+Symphony is the format of the SM5021 remote control encoder and the chips
+that copy it, used by ceiling fans, air coolers and similar devices, among
+them Dreo, Westinghouse and SilverCrest fans.
 
-Frame structure:
+Frame structure, per the SM5021 datasheet:
 - No leader. A logical '1' is a 1265us mark and a 420us space, a logical
   '0' is a 420us mark and a 1265us space, most significant bit first.
-- A frame is 12 bits: a 3-bit frame head, a 2-bit custom code and a 7-bit
-  control word.
-- A transmission is the frame re-sent while the button is held, with a
-  footer gap of 4 * (420 + 1265) us after every frame.
+- 12 data bits: a 3-bit frame head, a 2-bit custom code and a 7-bit
+  control word, then 4 empty bit periods. The empty bits lengthen the last
+  bit's space, so the timings alternate mark and space throughout.
+- A held key retransmits the whole frame on a fixed 16-bit-period
+  (26.96ms) frame period, the same repeat model as RC-5.
 - There is no checksum of any kind.
 
-The missing checksum drives the two decode rules below. A capture is
-accepted only when at least two frames agree, because one frame of
-1265/420-shaped pulses is not evidence enough to tell Symphony from line
-noise. The identity is then decided by majority vote across the frames.
-Frames carrying a reserved control word (start frames) are left out of
-the vote, truncated tail frames lose it, and a tie is refused. Relaxing
-either rule makes this decoder a false-match machine, so both are
+Two remote families share this timing and frame layout. SM5021 remotes
+send only the button frames, and some follow them with control word 0x00
+frames once the key is released. XIN HUI remotes send two start frames
+first, control word 0x00 then 0x7F, with the button's frame head and
+custom code. Since nothing else differs, start frames are an encoding
+option rather than a separate command class.
+
+The missing checksum drives the decode rules. A capture is accepted only
+when at least two frames agree, because one frame of Symphony-shaped
+pulses is not evidence enough to tell Symphony from line noise or from
+another pulse-width protocol. The identity is then decided by majority
+vote across the frames. Frames carrying a reserved control word (start
+and release frames) are left out of the vote, truncated tail frames lose
+it, and a tie is refused rather than broken by frame order. Relaxing any
+of these rules makes this decoder a false-match machine, so they are
 load-bearing rather than defensive.
 """
 
@@ -112,13 +122,20 @@ class SymphonyCommand(Command):
 
     The fields follow the SM5021 datasheet layout, most significant bit
     first: frame_head (3 bits), custom_code (2 bits), control_word (7 bits).
-    from_code() and code take the same frame as one 12-bit value, the form
-    other tools print and the one to use for remotes that do not follow the
-    SM5021 layout.
+    Some remotes, such as projector screens, do not follow that layout but
+    use the same 12-bit frame. from_code() and code carry the frame as one
+    12-bit value, the form other Symphony tools print, so those remotes can
+    be passed through without splitting the value by hand.
 
-    start_frames sends the two frames XIN HUI remotes put ahead of the
-    button frames: control word 0x00 then 0x7F, with the same frame head and
-    custom code. It only affects encoding.
+    repeat_count defaults to 2, so a default send is three frames. Every
+    captured Symphony remote sends at least three, and from_raw_timings()
+    needs two agreeing frames, so the default send is one this decoder
+    accepts.
+
+    start_frames sends the two XIN HUI start frames ahead of the button
+    frames. It only affects encoding: whether a capture window caught the
+    start frames depends on when it opened, so the decoder never reports
+    them.
     """
 
     MIN_FRAME_VOTES: ClassVar[int] = 2
@@ -129,9 +146,16 @@ class SymphonyCommand(Command):
     """
 
     frame_head: int
+    """Frame head, 3 bits. 110 on most remotes."""
+
     custom_code: int
+    """Custom code, 2 bits, set per remote model."""
+
     control_word: int
+    """Control word, 7 bits: the key. 0x00 and 0x7F are reserved."""
+
     start_frames: bool
+    """Send the XIN HUI start frames ahead of the button frames."""
 
     def __init__(
         self,
