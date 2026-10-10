@@ -163,6 +163,25 @@ RELEASE_WINDOWS_REFUSED = [
     if min(end, 4) - start < 2
 ]
 
+# Release frames in other layouts. Some remotes keep the custom code in the
+# release frame and some clear it, so both forms are covered.
+OTHER_LAYOUT_RELEASES = [
+    pytest.param(0x081, 0x000, id="frame_head_000"),
+    pytest.param(0x581, 0x580, id="frame_head_010"),
+    pytest.param(0x581, 0x400, id="frame_head_010_cleared"),
+    pytest.param(0xD81, 0xD80, id="custom_code_11"),
+    pytest.param(0xC90, 0xC00, id="custom_code_01_cleared"),
+]
+RELEASE_WINDOWS = [(start, end) for start in range(8) for end in range(start + 1, 9)]
+
+
+def _release_frame(code: int) -> list[int]:
+    """One frame of code, whose control word must be 0x00."""
+    return SymphonyCommand.from_code(
+        code | 0x01, start_frames=True, repeat_count=0
+    ).get_raw_timings()[:24]
+
+
 # Fifteen bits of Symphony-shaped pulses, as some other fan remotes send.
 FIFTEEN_BIT_FRAME = [
     1260, -460, 460, -1260, 1260, -460, 460, -1260, 460, -1260,
@@ -377,6 +396,12 @@ def test_symphony_command_rejects_out_of_range(
         pytest.param(0x1000, "code", id="too_wide"),
         pytest.param(0xC00, "reserved", id="start_frame_0x00"),
         pytest.param(0xC7F, "reserved", id="start_frame_0x7f"),
+        # Reserved in every layout, not only frame head 110.
+        pytest.param(0x000, "reserved", id="frame_head_000"),
+        pytest.param(0x580, "reserved", id="frame_head_010"),
+        pytest.param(0xC80, "reserved", id="custom_code_01"),
+        pytest.param(0xF00, "reserved", id="frame_head_111"),
+        pytest.param(0xDFF, "reserved", id="custom_code_11_0x7f"),
     ],
 )
 def test_symphony_command_from_code_rejects(code: int, message: str) -> None:
@@ -456,6 +481,40 @@ def test_symphony_command_release_frames_alone_are_refused(
     """A window with fewer than two button frames is refused, not read as 0xC00."""
     capture = [value for frame in RELEASE_CAPTURE[start:end] for value in frame]
     assert SymphonyCommand.from_raw_timings(capture) is None
+
+
+@pytest.mark.parametrize(("button", "release"), OTHER_LAYOUT_RELEASES)
+def test_symphony_command_release_frames_never_win_in_any_layout(
+    button: int, release: int
+) -> None:
+    """No window of key then release frames reads as the release frame.
+
+    The reserved control words apply to every frame head and custom code,
+    so a window holding more release frames than button frames is refused
+    in every layout rather than read as the release value.
+    """
+    capture = [
+        SymphonyCommand.from_code(button, repeat_count=0).get_raw_timings()
+    ] * 4 + [_release_frame(release)] * 4
+    results = [
+        SymphonyCommand.from_raw_timings(
+            [value for frame in capture[start:end] for value in frame]
+        )
+        for start, end in RELEASE_WINDOWS
+    ]
+    assert {None if result is None else result.code for result in results} == {
+        None,
+        button,
+    }
+
+
+def test_symphony_command_reads_a_key_frame_interleaved_with_release() -> None:
+    """A release frame after every key frame still leaves the key the winner."""
+    pair = SymphonyCommand.from_code(0xC90, repeat_count=0).get_raw_timings()
+    pair += _release_frame(0xC00)
+    decoded = SymphonyCommand.from_raw_timings(pair * 3)
+    assert decoded is not None
+    assert (decoded.code, decoded.repeat_count) == (0xC90, 2)
 
 
 def test_symphony_command_refuses_other_frame_lengths() -> None:

@@ -26,8 +26,9 @@ when at least two frames agree, because one frame of Symphony-shaped
 pulses is not evidence enough to tell Symphony from line noise or from
 another pulse-width protocol. The identity is then decided by majority
 vote across the frames. Frames carrying a reserved control word (start
-and release frames) are left out of the vote, truncated tail frames lose
-it, and a tie is refused rather than broken by frame order. Relaxing any
+and release frames) are left out of the vote whatever their frame head
+and custom code, truncated tail frames lose it, and a tie is refused
+rather than broken by frame order. Relaxing any
 of these rules makes this decoder a false-match machine, so they are
 load-bearing rather than defensive.
 """
@@ -127,6 +128,11 @@ class SymphonyCommand(Command):
     12-bit value, the form other Symphony tools print, so those remotes can
     be passed through without splitting the value by hand.
 
+    Control words 0x00 and 0x7F are reserved in every layout, because a
+    frame carrying one cannot be told apart from a start or release frame.
+    A command using one is refused when built and never decoded, so it has
+    to be sent as raw timings.
+
     repeat_count defaults to 2, so a default send is three frames. Every
     captured Symphony remote sends at least three, and from_raw_timings()
     needs two agreeing frames, so the default send is one this decoder
@@ -200,7 +206,11 @@ class SymphonyCommand(Command):
         modulation: int = MODULATION_HZ,
         repeat_count: int = 2,
     ) -> Self:
-        """Create a SymphonyCommand from the 12-bit frame value."""
+        """Create a SymphonyCommand from the 12-bit frame value.
+
+        Raises ValueError when the value is wider than 12 bits or its low
+        7 bits, the control word, are 0x00 or 0x7F.
+        """
         if not 0 <= code <= 0xFFF:
             raise ValueError(f"code must be a 12-bit value (0-0xFFF), got {code:#x}")
         return cls(
