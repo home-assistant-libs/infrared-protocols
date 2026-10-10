@@ -140,19 +140,46 @@ DREO_DECODED = [
 ]
 
 
-def _scale_pulses(timings: list[int], delta_us: int) -> list[int]:
-    """Grow or shrink every pulse in a capture by delta_us.
+# IRremoteESP8266 issue 1105: an SM5021 remote sent four 0xC20 frames and
+# then four 0x00 control word frames after the key was released.
+_C20_FRAME = SymphonyCommand(custom_code=0, control_word=0x20).get_raw_timings()
+_C00_FRAME = SymphonyCommand(
+    custom_code=0, control_word=0x20, start_frames=True
+).get_raw_timings()[:24]
+RELEASE_CAPTURE = [_C20_FRAME] * 4 + [_C00_FRAME] * 4
+RELEASE_WINDOWS_DECODED = [
+    pytest.param(start, end, min(end, 4) - start - 1, id=f"frames_{start}_to_{end}")
+    for start in range(8)
+    for end in range(start + 1, 9)
+    if min(end, 4) - start >= 2
+]
+RELEASE_WINDOWS_REFUSED = [
+    pytest.param(start, end, id=f"frames_{start}_to_{end}")
+    for start in range(8)
+    for end in range(start + 1, 9)
+    if min(end, 4) - start < 2
+]
 
-    Receivers report marks and spaces a little longer or shorter than they
-    were transmitted. The decoded identity must not move with them.
+# Fifteen bits of Symphony-shaped pulses, the shape of a Wilfan 15-bit frame.
+FIFTEEN_BIT_FRAME = [
+    1260, -460, 460, -1260, 1260, -460, 460, -1260, 460, -1260,
+    1260, -460, 1260, -460, 460, -1260, 1260, -460, 460, -1260,
+    1260, -460, 460, -1260, 460, -1260, 460, -1260, 460, -1260 - 6880,
+]  # fmt: skip
+
+
+def _skew_pulses(timings: list[int], delta_us: int) -> list[int]:
+    """Lengthen every mark by delta_us and shorten every space to match.
+
+    IR receivers report marks longer or shorter than they were sent and
+    the following space shifts the other way, so the bit period holds.
     """
-    scaled: list[int] = []
-    for value in timings:
-        if value > 0:
-            scaled.append(value + delta_us)
-        else:
-            scaled.append(min(-1, value - delta_us))
-    return scaled
+    return [value + delta_us for value in timings]
+
+
+def _stretch_pulses(timings: list[int], percent: int) -> list[int]:
+    """Scale every mark and space, as a transmitter clock running off would."""
+    return [round(value * percent / 100) for value in timings]
 
 
 def _fields(command: SymphonyCommand) -> tuple[int, int, int, bool, int]:
@@ -370,13 +397,82 @@ def test_symphony_command_discards_start_frames() -> None:
     assert _fields(decoded) == (0b110, 0b00, 0x20, False, 4)
 
 
-@pytest.mark.parametrize("delta_us", [-100, -50, 50, 100, 200])
-def test_symphony_command_decodes_through_pulse_drift(delta_us: int) -> None:
-    """Identity must survive a receiver that reports every pulse off by delta_us."""
+def test_symphony_command_refuses_a_tie() -> None:
+    """A tie between two readings is refused rather than broken by order."""
+    capture = (
+        SymphonyCommand(
+            custom_code=0, control_word=0x01, repeat_count=1
+        ).get_raw_timings()
+        + SymphonyCommand(
+            custom_code=0, control_word=0x02, repeat_count=1
+        ).get_raw_timings()
+    )
+    assert SymphonyCommand.from_raw_timings(capture) is None
+
+
+@pytest.mark.parametrize(("start", "end", "repeat_count"), RELEASE_WINDOWS_DECODED)
+def test_symphony_command_release_frames_never_win(
+    start: int, end: int, repeat_count: int
+) -> None:
+    """Release frames after the button frames never become the result.
+
+    Before reserved control words were left out of the vote, a capture
+    window holding more release frames than button frames read as 0xC00.
+    """
+    capture = [value for frame in RELEASE_CAPTURE[start:end] for value in frame]
+    decoded = SymphonyCommand.from_raw_timings(capture)
+    assert decoded is not None
+    assert (decoded.code, decoded.repeat_count) == (0xC20, repeat_count)
+
+
+@pytest.mark.parametrize(("start", "end"), RELEASE_WINDOWS_REFUSED)
+def test_symphony_command_release_frames_alone_are_refused(
+    start: int, end: int
+) -> None:
+    """A window with fewer than two button frames is refused, not read as 0xC00."""
+    capture = [value for frame in RELEASE_CAPTURE[start:end] for value in frame]
+    assert SymphonyCommand.from_raw_timings(capture) is None
+
+
+def test_symphony_command_refuses_other_frame_lengths() -> None:
+    """Symphony-shaped pulses in a frame of another length are not Symphony."""
+    assert SymphonyCommand.from_raw_timings(FIFTEEN_BIT_FRAME * 3) is None
+
+
+@pytest.mark.parametrize(
+    "percent",
+    [pytest.param(80, id="too_short"), pytest.param(125, id="too_long")],
+)
+def test_symphony_command_refuses_a_foreign_bit_period(percent: int) -> None:
+    """Twelve well-formed bits are still refused when the bit period is wrong.
+
+    The marks and spaces still read as short and long, so only the bit
+    period tells this apart from Symphony.
+    """
     clean = SymphonyCommand(
         custom_code=0, control_word=0x20, repeat_count=3
     ).get_raw_timings()
-    decoded = SymphonyCommand.from_raw_timings(_scale_pulses(clean, delta_us))
+    assert SymphonyCommand.from_raw_timings(_stretch_pulses(clean, percent)) is None
+
+
+@pytest.mark.parametrize("delta_us", [-200, -100, 100, 200])
+def test_symphony_command_decodes_through_pulse_skew(delta_us: int) -> None:
+    """Identity must survive a receiver that skews every mark by delta_us."""
+    clean = SymphonyCommand(
+        custom_code=0, control_word=0x20, repeat_count=3
+    ).get_raw_timings()
+    decoded = SymphonyCommand.from_raw_timings(_skew_pulses(clean, delta_us))
+    assert decoded is not None
+    assert decoded.code == 0xC20
+
+
+@pytest.mark.parametrize("percent", [90, 95, 105, 110])
+def test_symphony_command_decodes_through_clock_drift(percent: int) -> None:
+    """Identity must survive a transmitter clock that runs a little off."""
+    clean = SymphonyCommand(
+        custom_code=0, control_word=0x20, repeat_count=3
+    ).get_raw_timings()
+    decoded = SymphonyCommand.from_raw_timings(_stretch_pulses(clean, percent))
     assert decoded is not None
     assert decoded.code == 0xC20
 

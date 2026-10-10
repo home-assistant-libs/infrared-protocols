@@ -17,9 +17,9 @@ accepted only when at least two frames agree, because one frame of
 1260/460-shaped pulses is not evidence enough to tell Symphony from line
 noise. The identity is then decided by majority vote across the frames.
 Frames carrying a reserved control word (start frames) are left out of
-the vote, and truncated tail frames lose it. Relaxing either rule makes
-this decoder a false-match machine, so both are load-bearing rather than
-defensive.
+the vote, truncated tail frames lose it, and a tie is refused. Relaxing
+either rule makes this decoder a false-match machine, so both are
+load-bearing rather than defensive.
 """
 
 from collections import Counter
@@ -36,6 +36,10 @@ PULSE_MIDPOINT_US = 860
 # A pulse outside this band is not a Symphony bit half.
 PULSE_MIN_US = 180
 PULSE_MAX_US = 2200
+# A real bit's mark and space add up to one bit period; this band rejects
+# other pulse-width protocols whose halves happen to look alike.
+BIT_PERIOD_MIN_US = 1450
+BIT_PERIOD_MAX_US = 1950
 # Gap after every frame, including the last one.
 FOOTER_GAP_US = 4 * (SHORT_US + LONG_US)
 # Bit spaces top out at LONG_US, so a space this long separates frames.
@@ -223,10 +227,15 @@ class SymphonyCommand(Command):
             for code in map(cls._decode_frame, _split_frames(timings, FRAME_GAP_US))
             if code is not None and code & 0x7F not in RESERVED_CONTROL_WORDS
         ]
-        if not codes:
+        ranked = Counter(codes).most_common(2)
+        if not ranked:
             return None
-        code, votes = Counter(codes).most_common()[0]
+        code, votes = ranked[0]
         if votes < cls.MIN_FRAME_VOTES:
+            return None
+        # A tie is refused rather than broken by frame order, which would let
+        # a capture window that clipped the button frames pick the result.
+        if len(ranked) > 1 and ranked[1][1] == votes:
             return None
         return cls.from_code(code, repeat_count=votes - 1)
 
@@ -252,6 +261,8 @@ class SymphonyCommand(Command):
                 # Mark and space widths must disagree; an equal-width pair
                 # is not a Symphony bit.
                 if (space > PULSE_MIDPOINT_US) == long_mark:
+                    return None
+                if not BIT_PERIOD_MIN_US <= mark + space <= BIT_PERIOD_MAX_US:
                     return None
             code = code << 1 | long_mark
         return code
