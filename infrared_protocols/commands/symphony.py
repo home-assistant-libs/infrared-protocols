@@ -1,4 +1,4 @@
-"""Symphony IR command (rc_switch family).
+"""Symphony IR command.
 
 Symphony is the format of the SM5021 remote control encoder and the chips
 that copy it, used by ceiling fans, air coolers and similar devices, among
@@ -119,7 +119,7 @@ def _encode_frame(code: int) -> list[int]:
 
 
 class SymphonyCommand(Command):
-    """Symphony IR command (12 bit, rc_switch family).
+    """Symphony IR command (12 bit).
 
     The fields follow the SM5021 datasheet layout, most significant bit
     first: frame_head (3 bits), custom_code (2 bits), control_word (7 bits).
