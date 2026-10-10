@@ -4,7 +4,11 @@ import itertools
 
 import pytest
 
-from infrared_protocols.commands.symphony import FOOTER_GAP_US, SymphonyCommand
+from infrared_protocols.commands.symphony import (
+    FOOTER_GAP_US,
+    SymphonyCommand,
+    SymphonyKey,
+)
 
 # Real captures from a Dreo DR-HAF004S fan remote, released as a CC0 corpus.
 # Signed microseconds, mark positive and space negative, as the receiver
@@ -123,14 +127,16 @@ DREO_MODE: list[int] = [
     1262, -421, 421, -1262, 421, -65503,
 ]  # fmt: skip
 
-# The value, bit count and frame count each Dreo capture decodes to.
+
+# The fields and frame count each Dreo capture decodes to. The remote uses
+# frame head 110 and custom code 11.
 DREO_DECODED = [
-    pytest.param(DREO_POWER, 0xD81, 7, id="power"),
-    pytest.param(DREO_SPEED_UP, 0xD82, 5, id="speed_up"),
-    pytest.param(DREO_SPEED_DOWN, 0xD92, 1, id="speed_down"),
-    pytest.param(DREO_OSCILLATE_VERTICAL, 0xDA0, 5, id="oscillate_vertical"),
-    pytest.param(DREO_TIMER, 0xD88, 7, id="timer"),
-    pytest.param(DREO_MODE, 0xD84, 9, id="mode"),
+    pytest.param(DREO_POWER, 0x01, 7, id="power"),
+    pytest.param(DREO_SPEED_UP, 0x02, 5, id="speed_up"),
+    pytest.param(DREO_SPEED_DOWN, 0x12, 1, id="speed_down"),
+    pytest.param(DREO_OSCILLATE_VERTICAL, 0x20, 5, id="oscillate_vertical"),
+    pytest.param(DREO_TIMER, 0x08, 7, id="timer"),
+    pytest.param(DREO_MODE, 0x04, 9, id="mode"),
 ]
 
 
@@ -149,37 +155,85 @@ def _scale_pulses(timings: list[int], delta_us: int) -> list[int]:
     return scaled
 
 
-def test_symphony_command_get_raw_timings() -> None:
-    """Test Symphony timings for a 12-bit frame, most significant bit first.
+def _fields(command: SymphonyCommand) -> tuple[int, int, int, bool, int]:
+    """Return everything a decode reports, for one comparison per test."""
+    return (
+        command.frame_head,
+        command.custom_code,
+        command.control_word,
+        command.start_frames,
+        command.repeat_count,
+    )
 
-    0xC00 is two set bits followed by ten clear ones, so the frame opens
-    with two long marks and closes with ten short ones.
+
+def test_symphony_command_get_raw_timings() -> None:
+    """Test Symphony timings for one frame, most significant bit first.
+
+    0xC01 is frame head 110, custom code 00 and control word K1, so the
+    frame opens with two long marks and closes on a long mark whose short
+    space carries the footer gap.
     """
     expected_raw_timings = [
         1260, -460, 1260, -460, 460, -1260, 460, -1260, 460, -1260,
         460, -1260, 460, -1260, 460, -1260, 460, -1260, 460, -1260,
-        460, -1260, 460, -1260 - 6880,
+        460, -1260, 1260, -460 - 6880,
     ]  # fmt: skip
-    command = SymphonyCommand(data=0xC00, nbits=12)
+    command = SymphonyCommand(custom_code=0b00, control_word=SymphonyKey.K1)
     assert command.get_raw_timings() == expected_raw_timings
     assert command.modulation == 38000
 
 
 def test_symphony_command_repeat_count_retransmits_the_frame() -> None:
     """Each repeat is the same frame again, closed by the footer gap."""
-    single = SymphonyCommand(data=0xC00, nbits=12).get_raw_timings()
-    repeated = SymphonyCommand(data=0xC00, nbits=12, repeat_count=2).get_raw_timings()
+    single = SymphonyCommand(custom_code=0, control_word=0x01).get_raw_timings()
+    repeated = SymphonyCommand(
+        custom_code=0, control_word=0x01, repeat_count=2
+    ).get_raw_timings()
     assert repeated == single * 3
-    assert repeated.count(-(1260 + FOOTER_GAP_US)) == 3
+    assert repeated.count(-(460 + FOOTER_GAP_US)) == 3
+
+
+def test_symphony_command_start_frames() -> None:
+    """Start frames are control words 0x00 then 0x7F ahead of the button.
+
+    They keep the frame head and custom code of the button frames, so with
+    custom code 00 they read 0xC00 and 0xC7F.
+    """
+    expected_start_frames = [
+        1260, -460, 1260, -460, 460, -1260, 460, -1260, 460, -1260,
+        460, -1260, 460, -1260, 460, -1260, 460, -1260, 460, -1260,
+        460, -1260, 460, -1260 - 6880,
+        1260, -460, 1260, -460, 460, -1260, 460, -1260, 460, -1260,
+        1260, -460, 1260, -460, 1260, -460, 1260, -460, 1260, -460,
+        1260, -460, 1260, -460 - 6880,
+    ]  # fmt: skip
+    button = SymphonyCommand(custom_code=0, control_word=0x20, repeat_count=2)
+    with_start = SymphonyCommand(
+        custom_code=0, control_word=0x20, start_frames=True, repeat_count=2
+    )
+    timings = with_start.get_raw_timings()
+    assert timings[:48] == expected_start_frames
+    assert timings[48:] == button.get_raw_timings()
 
 
 @pytest.mark.parametrize(
     "command",
     [
-        pytest.param(SymphonyCommand(data=0xC00, nbits=12), id="ends_on_zero"),
-        pytest.param(SymphonyCommand(data=0xC01, nbits=12), id="ends_on_one"),
+        pytest.param(SymphonyCommand(custom_code=0, control_word=0x20), id="zero"),
+        pytest.param(SymphonyCommand(custom_code=0, control_word=0x01), id="one"),
         pytest.param(
-            SymphonyCommand(data=0xD81, nbits=12, repeat_count=4), id="repeated"
+            SymphonyCommand(custom_code=3, control_word=0x01, repeat_count=4),
+            id="repeated",
+        ),
+        pytest.param(
+            SymphonyCommand(custom_code=0, control_word=0x20, start_frames=True),
+            id="start_frames_last_bit_zero",
+        ),
+        pytest.param(
+            SymphonyCommand(
+                custom_code=0, control_word=0x01, start_frames=True, repeat_count=2
+            ),
+            id="start_frames_last_bit_one",
         ),
     ],
 )
@@ -197,126 +251,182 @@ def test_symphony_command_timings_alternate(command: SymphonyCommand) -> None:
 
 
 @pytest.mark.parametrize(
-    ("data", "nbits"),
+    ("frame_head", "custom_code", "control_word"),
     [
-        pytest.param(0x00, 8, id="8_bit_min"),
-        pytest.param(0xFF, 8, id="8_bit_max"),
-        pytest.param(0xC00, 12, id="12_bit"),
-        pytest.param(0xFFF, 12, id="12_bit_max"),
-        pytest.param(0x0000, 16, id="16_bit_min"),
-        pytest.param(0xBEEF, 16, id="16_bit"),
+        pytest.param(0b110, 0b00, SymphonyKey.K1, id="xin_hui"),
+        pytest.param(0b110, 0b11, SymphonyKey.K8, id="sm5021"),
+        pytest.param(0b010, 0b11, SymphonyKey.K3, id="head_010"),
+        pytest.param(0b000, 0b00, 0x01, id="lowest"),
+        pytest.param(0b111, 0b11, 0x7E, id="highest"),
     ],
 )
-def test_symphony_command_round_trips(data: int, nbits: int) -> None:
-    """Every frame width must decode back to the value that produced it."""
-    encoded = SymphonyCommand(data=data, nbits=nbits, repeat_count=3).get_raw_timings()
-    decoded = SymphonyCommand.from_raw_timings(encoded)
+def test_symphony_command_round_trips(
+    frame_head: int, custom_code: int, control_word: int
+) -> None:
+    """The three fields decode back to the values that produced them."""
+    command = SymphonyCommand(
+        frame_head=frame_head,
+        custom_code=custom_code,
+        control_word=control_word,
+        repeat_count=3,
+    )
+    decoded = SymphonyCommand.from_raw_timings(command.get_raw_timings())
     assert decoded is not None
-    assert (decoded.data, decoded.nbits, decoded.repeat_count) == (data, nbits, 3)
+    assert _fields(decoded) == (frame_head, custom_code, control_word, False, 3)
+
+
+@pytest.mark.parametrize(
+    ("code", "frame_head", "custom_code", "control_word"),
+    [
+        pytest.param(0xC01, 0b110, 0b00, 0x01, id="xin_hui"),
+        pytest.param(0xD81, 0b110, 0b11, 0x01, id="sm5021"),
+        pytest.param(0x5C6, 0b010, 0b11, 0x46, id="head_010"),
+        # Remotes outside the SM5021 layout still carry one 12-bit value.
+        pytest.param(0x1DA, 0b000, 0b11, 0x5A, id="non_sm5021_layout"),
+    ],
+)
+def test_symphony_command_from_code(
+    code: int, frame_head: int, custom_code: int, control_word: int
+) -> None:
+    """from_code() splits the 12-bit value and code joins it again."""
+    command = SymphonyCommand.from_code(code)
+    assert (command.frame_head, command.custom_code, command.control_word) == (
+        frame_head,
+        custom_code,
+        control_word,
+    )
+    assert command.code == code
+
+
+@pytest.mark.parametrize(
+    ("frame_head", "custom_code", "control_word", "message"),
+    [
+        pytest.param(-1, 0, 0x01, "frame_head", id="frame_head_negative"),
+        pytest.param(8, 0, 0x01, "frame_head", id="frame_head_too_wide"),
+        pytest.param(6, -1, 0x01, "custom_code", id="custom_code_negative"),
+        pytest.param(6, 4, 0x01, "custom_code", id="custom_code_too_wide"),
+        pytest.param(6, 0, -1, "control_word", id="control_word_negative"),
+        pytest.param(6, 0, 0x80, "control_word", id="control_word_too_wide"),
+        pytest.param(6, 0, 0x00, "reserved", id="control_word_0x00"),
+        pytest.param(6, 0, 0x7F, "reserved", id="control_word_0x7f"),
+    ],
+)
+def test_symphony_command_rejects_out_of_range(
+    frame_head: int, custom_code: int, control_word: int, message: str
+) -> None:
+    """Each field must fit its width, and reserved control words are refused."""
+    with pytest.raises(ValueError, match=message):
+        SymphonyCommand(
+            frame_head=frame_head, custom_code=custom_code, control_word=control_word
+        )
+
+
+@pytest.mark.parametrize(
+    ("code", "message"),
+    [
+        pytest.param(-1, "code", id="negative"),
+        pytest.param(0x1000, "code", id="too_wide"),
+        pytest.param(0xC00, "reserved", id="start_frame_0x00"),
+        pytest.param(0xC7F, "reserved", id="start_frame_0x7f"),
+    ],
+)
+def test_symphony_command_from_code_rejects(code: int, message: str) -> None:
+    """from_code() refuses values outside 12 bits and reserved control words."""
+    with pytest.raises(ValueError, match=message):
+        SymphonyCommand.from_code(code)
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        pytest.param(SymphonyKey.K1, 0b0000001, id="K1"),
+        pytest.param(SymphonyKey.K2, 0b0000010, id="K2"),
+        pytest.param(SymphonyKey.K3, 0b0000100, id="K3"),
+        pytest.param(SymphonyKey.K4, 0b0001000, id="K4"),
+        pytest.param(SymphonyKey.K5, 0b0010000, id="K5"),
+        pytest.param(SymphonyKey.K6, 0b0100000, id="K6"),
+        pytest.param(SymphonyKey.K7, 0b1000011, id="K7"),
+        pytest.param(SymphonyKey.K8, 0b1000110, id="K8"),
+    ],
+)
+def test_symphony_key_matches_the_datasheet(key: SymphonyKey, value: int) -> None:
+    """Key codes equal the SM5021 datasheet control words."""
+    assert key == value
 
 
 def test_symphony_command_rejects_a_single_frame() -> None:
     """One frame is not enough evidence when the protocol has no checksum."""
-    encoded = SymphonyCommand(data=0xC00, nbits=12).get_raw_timings()
+    encoded = SymphonyCommand(custom_code=0, control_word=0x01).get_raw_timings()
     assert SymphonyCommand.from_raw_timings(encoded) is None
 
 
-def test_symphony_command_discards_vendor_preamble_frames() -> None:
-    """An all-zeros and an all-ones frame ahead of the button code lose the vote.
-
-    This is the capture shape reported by mvdwetering on a public issue for
-    a Silvercrest fan remote, which is what motivated the majority vote.
-    """
-    capture = (
-        SymphonyCommand(data=0x000, nbits=12).get_raw_timings()
-        + SymphonyCommand(data=0xFFF, nbits=12).get_raw_timings()
-        + SymphonyCommand(data=0xC00, nbits=12, repeat_count=4).get_raw_timings()
+def test_symphony_command_discards_start_frames() -> None:
+    """XIN HUI start frames are left out of the vote and never reported."""
+    command = SymphonyCommand(
+        custom_code=0, control_word=0x20, start_frames=True, repeat_count=4
     )
-    decoded = SymphonyCommand.from_raw_timings(capture)
+    decoded = SymphonyCommand.from_raw_timings(command.get_raw_timings())
     assert decoded is not None
-    assert (decoded.data, decoded.nbits, decoded.repeat_count) == (0xC00, 12, 4)
+    assert _fields(decoded) == (0b110, 0b00, 0x20, False, 4)
 
 
 @pytest.mark.parametrize("delta_us", [-100, -50, 50, 100, 200])
 def test_symphony_command_decodes_through_pulse_drift(delta_us: int) -> None:
     """Identity must survive a receiver that reports every pulse off by delta_us."""
-    clean = SymphonyCommand(data=0xC00, nbits=12, repeat_count=3).get_raw_timings()
+    clean = SymphonyCommand(
+        custom_code=0, control_word=0x20, repeat_count=3
+    ).get_raw_timings()
     decoded = SymphonyCommand.from_raw_timings(_scale_pulses(clean, delta_us))
     assert decoded is not None
-    assert (decoded.data, decoded.nbits) == (0xC00, 12)
+    assert decoded.code == 0xC20
 
 
-def test_symphony_command_variable_frame_counts_decode_alike() -> None:
+@pytest.mark.parametrize("repeat_count", [1, 7, 8, 9])
+def test_symphony_command_variable_frame_counts_decode_alike(
+    repeat_count: int,
+) -> None:
     """Captures of one button press that caught different frame counts agree.
 
     A capture window opens and closes independently of the transmission, so
     the same press arrives with a different number of frames each time. Only
     repeat_count may differ.
     """
-    identities = set()
-    for repeats in (7, 8, 9):
-        capture = (
-            SymphonyCommand(data=0x000, nbits=12).get_raw_timings()
-            + SymphonyCommand(data=0xFFF, nbits=12).get_raw_timings()
-            + SymphonyCommand(
-                data=0xC00, nbits=12, repeat_count=repeats
-            ).get_raw_timings()
-        )
-        decoded = SymphonyCommand.from_raw_timings(capture)
-        assert decoded is not None
-        identities.add((decoded.data, decoded.nbits))
-    assert identities == {(0xC00, 12)}
-
-
-@pytest.mark.parametrize(
-    ("data", "nbits"),
-    [
-        pytest.param(0x00, 10, id="unsupported_frame_width"),
-        pytest.param(0x00, 0, id="zero_frame_width"),
-        pytest.param(-1, 12, id="negative_data"),
-        pytest.param(0x1000, 12, id="data_too_wide"),
-        pytest.param(0x100, 8, id="data_too_wide_for_8_bit"),
-    ],
-)
-def test_symphony_command_rejects_out_of_range(data: int, nbits: int) -> None:
-    """Frames are 8, 12 or 16 bits and the value has to fit inside them."""
-    with pytest.raises(ValueError):
-        SymphonyCommand(data=data, nbits=nbits)
-
-
-@pytest.mark.parametrize(("capture", "data", "repeat_count"), DREO_DECODED)
-def test_symphony_command_decodes_dreo_capture(
-    capture: list[int], data: int, repeat_count: int
-) -> None:
-    """Every readable capture in the corpus decodes to its recorded identity."""
+    capture = SymphonyCommand(
+        custom_code=0, control_word=0x20, start_frames=True, repeat_count=repeat_count
+    ).get_raw_timings()
     decoded = SymphonyCommand.from_raw_timings(capture)
     assert decoded is not None
-    assert (decoded.data, decoded.nbits, decoded.repeat_count) == (
-        data,
-        12,
-        repeat_count,
-    )
+    assert _fields(decoded) == (0b110, 0b00, 0x20, False, repeat_count)
 
 
-@pytest.mark.parametrize(("capture", "data", "repeat_count"), DREO_DECODED)
+@pytest.mark.parametrize(("capture", "control_word", "repeat_count"), DREO_DECODED)
+def test_symphony_command_decodes_dreo_capture(
+    capture: list[int], control_word: int, repeat_count: int
+) -> None:
+    """Every readable capture in the corpus decodes to its recorded fields."""
+    decoded = SymphonyCommand.from_raw_timings(capture)
+    assert decoded is not None
+    assert _fields(decoded) == (0b110, 0b11, control_word, False, repeat_count)
+
+
+@pytest.mark.parametrize(("capture", "control_word", "repeat_count"), DREO_DECODED)
 def test_symphony_command_re_encodes_dreo_capture(
-    capture: list[int], data: int, repeat_count: int
+    capture: list[int], control_word: int, repeat_count: int
 ) -> None:
     """A decoded capture re-encodes to timings that decode back to itself."""
     decoded = SymphonyCommand.from_raw_timings(capture)
     assert decoded is not None
     round_tripped = SymphonyCommand.from_raw_timings(decoded.get_raw_timings())
     assert round_tripped is not None
-    assert (round_tripped.data, round_tripped.nbits) == (data, 12)
-    assert round_tripped.repeat_count == repeat_count
+    assert _fields(round_tripped) == (0b110, 0b11, control_word, False, repeat_count)
 
 
 def test_symphony_command_refuses_a_capture_whose_frames_disagree() -> None:
     """The two-frame rule refuses a real capture rather than guessing at it.
 
     Four of the six frames in this Dreo capture are too distorted to read at
-    all, and the two that do read disagree with each other. With no checksum
-    to fall back on there is no evidence for either reading, so the capture
-    is refused instead of one of them being picked.
+    all, and the two that do read disagree with each other (0xD10 and 0xD90).
+    With no checksum to fall back on there is no evidence for either reading,
+    so the capture is refused instead of one of them being picked.
     """
     assert SymphonyCommand.from_raw_timings(DREO_OSCILLATE_HORIZONTAL) is None
