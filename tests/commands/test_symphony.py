@@ -1,5 +1,7 @@
 """Tests for the Symphony IR command encoder and decoder."""
 
+import itertools
+
 import pytest
 
 from infrared_protocols.commands.symphony import FOOTER_GAP_US, SymphonyCommand
@@ -156,7 +158,7 @@ def test_symphony_command_get_raw_timings() -> None:
     expected_raw_timings = [
         1260, -460, 1260, -460, 460, -1260, 460, -1260, 460, -1260,
         460, -1260, 460, -1260, 460, -1260, 460, -1260, 460, -1260,
-        460, -1260, 460, -1260, -6880,
+        460, -1260, 460, -1260 - 6880,
     ]  # fmt: skip
     command = SymphonyCommand(data=0xC00, nbits=12)
     assert command.get_raw_timings() == expected_raw_timings
@@ -168,7 +170,30 @@ def test_symphony_command_repeat_count_retransmits_the_frame() -> None:
     single = SymphonyCommand(data=0xC00, nbits=12).get_raw_timings()
     repeated = SymphonyCommand(data=0xC00, nbits=12, repeat_count=2).get_raw_timings()
     assert repeated == single * 3
-    assert repeated.count(-FOOTER_GAP_US) == 3
+    assert repeated.count(-(1260 + FOOTER_GAP_US)) == 3
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        pytest.param(SymphonyCommand(data=0xC00, nbits=12), id="ends_on_zero"),
+        pytest.param(SymphonyCommand(data=0xC01, nbits=12), id="ends_on_one"),
+        pytest.param(
+            SymphonyCommand(data=0xD81, nbits=12, repeat_count=4), id="repeated"
+        ),
+    ],
+)
+def test_symphony_command_timings_alternate(command: SymphonyCommand) -> None:
+    """Timings open on a mark, close on a space and never repeat a sign.
+
+    Emitters that take absolute durations, such as Broadlink, assume strict
+    mark and space alternation, so a second space in a row would play as a
+    mark and swap every pulse after it.
+    """
+    timings = command.get_raw_timings()
+    assert timings[0] > 0
+    assert timings[-1] < 0
+    assert all((a > 0) != (b > 0) for a, b in itertools.pairwise(timings))
 
 
 @pytest.mark.parametrize(

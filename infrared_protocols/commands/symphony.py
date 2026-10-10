@@ -132,7 +132,7 @@ class SymphonyCommand(Command):
         - Logical '0': 460us high, 1260us low
         - Logical '1': 1260us high, 460us low
         - Frame: 8, 12 or 16 bits, most significant bit first, no leader
-        - Footer gap: 6880us after every frame
+        - Footer gap: 6880us after every frame, added to the last bit's space
         - Repeat: the full frame retransmitted on that footer gap
 
         The footer gap closes the last frame as well as the ones before
@@ -145,12 +145,11 @@ class SymphonyCommand(Command):
                 frame.extend([LONG_US, -SHORT_US])
             else:
                 frame.extend([SHORT_US, -LONG_US])
+        # Remotes extend the last bit's space by the gap rather than sending
+        # a second space, so the timings keep alternating mark and space.
+        frame[-1] -= FOOTER_GAP_US
 
-        timings: list[int] = []
-        for _ in range(self.repeat_count + 1):
-            timings.extend(frame)
-            timings.append(-FOOTER_GAP_US)
-        return timings
+        return frame * (self.repeat_count + 1)
 
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
