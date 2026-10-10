@@ -1,3 +1,3 @@
-FROM mcr.microsoft.com/devcontainers/python:3.14@sha256:824bd18367c4c8c79f21f195f26f59733d303ceecc77c1a10f301ef315f96b1f
+FROM mcr.microsoft.com/devcontainers/python:3.14@sha256:28835c112fd097cb6d2fe1e195b660d66ae051859070a9b871fa2308f35897d3
 
 RUN pip install --no-cache-dir uv ruff
