@@ -4,17 +4,17 @@ Symphony is the protocol used by ceiling fans, coolers and similar
 remotes with RF heritage, among them Silvercrest and Dreo fans.
 
 Frame structure:
-- No leader. A logical '1' is a 1260us mark and a 460us space, a logical
-  '0' is a 460us mark and a 1260us space, most significant bit first.
+- No leader. A logical '1' is a 1265us mark and a 420us space, a logical
+  '0' is a 420us mark and a 1265us space, most significant bit first.
 - A frame is 12 bits: a 3-bit frame head, a 2-bit custom code and a 7-bit
   control word.
 - A transmission is the frame re-sent while the button is held, with a
-  footer gap of 4 * (460 + 1260) us after every frame.
+  footer gap of 4 * (420 + 1265) us after every frame.
 - There is no checksum of any kind.
 
 The missing checksum drives the two decode rules below. A capture is
 accepted only when at least two frames agree, because one frame of
-1260/460-shaped pulses is not evidence enough to tell Symphony from line
+1265/420-shaped pulses is not evidence enough to tell Symphony from line
 noise. The identity is then decided by majority vote across the frames.
 Frames carrying a reserved control word (start frames) are left out of
 the vote, truncated tail frames lose it, and a tie is refused. Relaxing
@@ -29,10 +29,13 @@ from typing import ClassVar, Self, override
 
 from . import Command
 
-SHORT_US = 460
-LONG_US = 1260
+# Measured on captured remotes. ESPHome's 460/1260 and IRremoteESP8266's
+# 400/1250 bracket them, and the captures agree on a 1685us bit period.
+SHORT_US = 420
+LONG_US = 1265
+BIT_PERIOD_US = SHORT_US + LONG_US
 # Midpoint between the short and long pulse widths.
-PULSE_MIDPOINT_US = 860
+PULSE_MIDPOINT_US = BIT_PERIOD_US // 2
 # A pulse outside this band is not a Symphony bit half.
 PULSE_MIN_US = 180
 PULSE_MAX_US = 2200
@@ -40,8 +43,10 @@ PULSE_MAX_US = 2200
 # other pulse-width protocols whose halves happen to look alike.
 BIT_PERIOD_MIN_US = 1450
 BIT_PERIOD_MAX_US = 1950
-# Gap after every frame, including the last one.
-FOOTER_GAP_US = 4 * (SHORT_US + LONG_US)
+# The SM5021 datasheet ends each frame with 4 empty bits, so every frame
+# takes 16 bit periods and a held key repeats on that period.
+FOOTER_GAP_US = 4 * BIT_PERIOD_US
+FRAME_PERIOD_US = 16 * BIT_PERIOD_US
 # Bit spaces top out at LONG_US, so a space this long separates frames.
 FRAME_GAP_US = 4000
 MODULATION_HZ = 38000
@@ -136,7 +141,7 @@ class SymphonyCommand(Command):
         frame_head: int = 0b110,
         start_frames: bool = False,
         modulation: int = MODULATION_HZ,
-        repeat_count: int = 0,
+        repeat_count: int = 2,
     ) -> None:
         """Initialize the Symphony IR command."""
         super().__init__(modulation=modulation, repeat_count=repeat_count)
@@ -169,7 +174,7 @@ class SymphonyCommand(Command):
         *,
         start_frames: bool = False,
         modulation: int = MODULATION_HZ,
-        repeat_count: int = 0,
+        repeat_count: int = 2,
     ) -> Self:
         """Create a SymphonyCommand from the 12-bit frame value."""
         if not 0 <= code <= 0xFFF:
@@ -193,11 +198,11 @@ class SymphonyCommand(Command):
         """Get raw timings for the Symphony command.
 
         Symphony protocol timing (in microseconds):
-        - Logical '0': 460us high, 1260us low
-        - Logical '1': 1260us high, 460us low
+        - Logical '0': 420us high, 1265us low
+        - Logical '1': 1265us high, 420us low
         - Frame: 12 bits, most significant bit first, no leader
-        - Footer gap: 6880us after every frame, added to the last bit's space
-        - Repeat: the full frame retransmitted on that footer gap
+        - Footer gap: 6740us after every frame, added to the last bit's space
+        - Repeat: the full frame retransmitted every 26960us
 
         The footer gap closes the last frame as well as the ones before
         it, which is how the hardware remotes pad every transmission.

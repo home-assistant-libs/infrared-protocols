@@ -6,6 +6,7 @@ import pytest
 
 from infrared_protocols.commands.symphony import (
     FOOTER_GAP_US,
+    FRAME_PERIOD_US,
     SymphonyCommand,
     SymphonyKey,
 )
@@ -142,7 +143,9 @@ DREO_DECODED = [
 
 # IRremoteESP8266 issue 1105: an SM5021 remote sent four 0xC20 frames and
 # then four 0x00 control word frames after the key was released.
-_C20_FRAME = SymphonyCommand(custom_code=0, control_word=0x20).get_raw_timings()
+_C20_FRAME = SymphonyCommand(
+    custom_code=0, control_word=0x20, repeat_count=0
+).get_raw_timings()
 _C00_FRAME = SymphonyCommand(
     custom_code=0, control_word=0x20, start_frames=True
 ).get_raw_timings()[:24]
@@ -193,31 +196,50 @@ def _fields(command: SymphonyCommand) -> tuple[int, int, int, bool, int]:
     )
 
 
-def test_symphony_command_get_raw_timings() -> None:
-    """Test Symphony timings for one frame, most significant bit first.
+# One 0xC01 frame: frame head 110, custom code 00 and control word K1, so it
+# opens with two long marks and closes on a long mark whose short space
+# carries the footer gap.
+C01_FRAME = [
+    1265, -420, 1265, -420, 420, -1265, 420, -1265, 420, -1265,
+    420, -1265, 420, -1265, 420, -1265, 420, -1265, 420, -1265,
+    420, -1265, 1265, -420 - 6740,
+]  # fmt: skip
 
-    0xC01 is frame head 110, custom code 00 and control word K1, so the
-    frame opens with two long marks and closes on a long mark whose short
-    space carries the footer gap.
-    """
-    expected_raw_timings = [
-        1260, -460, 1260, -460, 460, -1260, 460, -1260, 460, -1260,
-        460, -1260, 460, -1260, 460, -1260, 460, -1260, 460, -1260,
-        460, -1260, 1260, -460 - 6880,
-    ]  # fmt: skip
-    command = SymphonyCommand(custom_code=0b00, control_word=SymphonyKey.K1)
-    assert command.get_raw_timings() == expected_raw_timings
+
+def test_symphony_command_get_raw_timings() -> None:
+    """Test Symphony timings for one frame, most significant bit first."""
+    command = SymphonyCommand(
+        custom_code=0b00, control_word=SymphonyKey.K1, repeat_count=0
+    )
+    assert command.get_raw_timings() == C01_FRAME
+    assert sum(abs(value) for value in C01_FRAME) == FRAME_PERIOD_US
     assert command.modulation == 38000
+
+
+def test_symphony_command_default_send_is_three_frames() -> None:
+    """A default send is three frames, the fewest any captured remote sends."""
+    command = SymphonyCommand(custom_code=0b00, control_word=SymphonyKey.K1)
+    assert command.get_raw_timings() == C01_FRAME * 3
+
+
+def test_symphony_command_default_send_decodes() -> None:
+    """A default send carries the two agreeing frames the decoder needs."""
+    command = SymphonyCommand(custom_code=0b11, control_word=SymphonyKey.K5)
+    decoded = SymphonyCommand.from_raw_timings(command.get_raw_timings())
+    assert decoded is not None
+    assert _fields(decoded) == _fields(command)
 
 
 def test_symphony_command_repeat_count_retransmits_the_frame() -> None:
     """Each repeat is the same frame again, closed by the footer gap."""
-    single = SymphonyCommand(custom_code=0, control_word=0x01).get_raw_timings()
-    repeated = SymphonyCommand(
-        custom_code=0, control_word=0x01, repeat_count=2
+    single = SymphonyCommand(
+        custom_code=0, control_word=0x01, repeat_count=0
     ).get_raw_timings()
-    assert repeated == single * 3
-    assert repeated.count(-(460 + FOOTER_GAP_US)) == 3
+    repeated = SymphonyCommand(
+        custom_code=0, control_word=0x01, repeat_count=4
+    ).get_raw_timings()
+    assert repeated == single * 5
+    assert repeated.count(-(420 + FOOTER_GAP_US)) == 5
 
 
 def test_symphony_command_start_frames() -> None:
@@ -227,12 +249,12 @@ def test_symphony_command_start_frames() -> None:
     custom code 00 they read 0xC00 and 0xC7F.
     """
     expected_start_frames = [
-        1260, -460, 1260, -460, 460, -1260, 460, -1260, 460, -1260,
-        460, -1260, 460, -1260, 460, -1260, 460, -1260, 460, -1260,
-        460, -1260, 460, -1260 - 6880,
-        1260, -460, 1260, -460, 460, -1260, 460, -1260, 460, -1260,
-        1260, -460, 1260, -460, 1260, -460, 1260, -460, 1260, -460,
-        1260, -460, 1260, -460 - 6880,
+        1265, -420, 1265, -420, 420, -1265, 420, -1265, 420, -1265,
+        420, -1265, 420, -1265, 420, -1265, 420, -1265, 420, -1265,
+        420, -1265, 420, -1265 - 6740,
+        1265, -420, 1265, -420, 420, -1265, 420, -1265, 420, -1265,
+        1265, -420, 1265, -420, 1265, -420, 1265, -420, 1265, -420,
+        1265, -420, 1265, -420 - 6740,
     ]  # fmt: skip
     button = SymphonyCommand(custom_code=0, control_word=0x20, repeat_count=2)
     with_start = SymphonyCommand(
@@ -383,7 +405,9 @@ def test_symphony_key_matches_the_datasheet(key: SymphonyKey, value: int) -> Non
 
 def test_symphony_command_rejects_a_single_frame() -> None:
     """One frame is not enough evidence when the protocol has no checksum."""
-    encoded = SymphonyCommand(custom_code=0, control_word=0x01).get_raw_timings()
+    encoded = SymphonyCommand(
+        custom_code=0, control_word=0x01, repeat_count=0
+    ).get_raw_timings()
     assert SymphonyCommand.from_raw_timings(encoded) is None
 
 
