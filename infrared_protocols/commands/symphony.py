@@ -1,0 +1,307 @@
+"""Symphony IR command.
+
+Symphony is the format of the SM5021 remote control encoder and the chips
+that copy it, used by ceiling fans, air coolers and similar devices, among
+them Dreo, Westinghouse and SilverCrest fans.
+
+Frame structure, per the SM5021 datasheet:
+- No leader. A logical '1' is a 1265us mark and a 420us space, a logical
+  '0' is a 420us mark and a 1265us space, most significant bit first.
+- 12 data bits: a 3-bit frame head, a 2-bit custom code and a 7-bit
+  control word, then 4 empty bit periods. The empty bits lengthen the last
+  bit's space, so the timings alternate mark and space throughout.
+- A held key retransmits the whole frame on a fixed 16-bit-period
+  (26.96ms) frame period, the same repeat model as RC-5.
+- There is no checksum of any kind.
+
+Two remote families share this timing and frame layout. SM5021 remotes
+send only the button frames, and some follow them with control word 0x00
+frames once the key is released. XIN HUI remotes send two start frames
+first, control word 0x00 then 0x7F, with the button's frame head and
+custom code. Since nothing else differs, start frames are an encoding
+option rather than a separate command class.
+
+The missing checksum drives the decode rules. A capture is accepted only
+when at least two frames agree, because one frame of Symphony-shaped
+pulses is not evidence enough to tell Symphony from line noise or from
+another pulse-width protocol. The identity is then decided by majority
+vote across the frames. Frames carrying a reserved control word (start
+and release frames) are left out of the vote whatever their frame head
+and custom code, truncated tail frames lose it, and a tie is refused
+rather than broken by frame order. Relaxing any
+of these rules makes this decoder a false-match machine, so they are
+load-bearing rather than defensive.
+"""
+
+from collections import Counter
+from collections.abc import Sequence
+from enum import IntEnum
+from typing import ClassVar, Self, override
+
+from . import Command
+
+# Measured on captured remotes. ESPHome's 460/1260 and IRremoteESP8266's
+# 400/1250 bracket them, and the captures agree on a 1685us bit period.
+SHORT_US = 420
+LONG_US = 1265
+BIT_PERIOD_US = SHORT_US + LONG_US
+# Midpoint between the short and long pulse widths.
+PULSE_MIDPOINT_US = BIT_PERIOD_US // 2
+# A pulse outside this band is not a Symphony bit half.
+PULSE_MIN_US = 180
+PULSE_MAX_US = 2200
+# A real bit's mark and space add up to one bit period; this band rejects
+# other pulse-width protocols whose halves happen to look alike.
+BIT_PERIOD_MIN_US = 1450
+BIT_PERIOD_MAX_US = 1950
+# The SM5021 datasheet ends each frame with 4 empty bits, so every frame
+# takes 16 bit periods and a held key repeats on that period.
+FOOTER_GAP_US = 4 * BIT_PERIOD_US
+FRAME_PERIOD_US = 16 * BIT_PERIOD_US
+# Bit spaces top out at LONG_US, so a space this long separates frames.
+FRAME_GAP_US = 4000
+MODULATION_HZ = 38000
+FRAME_BITS = 12
+# Control words that never carry a key: XIN HUI start frames send 0x00 then
+# 0x7F, and SM5021 remotes send 0x00 frames after the key is released.
+RESERVED_CONTROL_WORDS = (0x00, 0x7F)
+
+
+class SymphonyKey(IntEnum):
+    """SM5021 datasheet key codes (control word values)."""
+
+    K1 = 0x01
+    K2 = 0x02
+    K3 = 0x04
+    K4 = 0x08
+    K5 = 0x10
+    K6 = 0x20
+    K7 = 0x43
+    K8 = 0x46
+
+
+def _split_frames(timings: Sequence[int], min_gap_us: int) -> list[list[int]]:
+    """Split signed timings into frames at spaces of at least min_gap_us.
+
+    The gap spaces themselves are dropped and every returned frame starts
+    on a mark. A capture that ends without a trailing gap yields its final
+    frame as-is, since captures routinely truncate the last footer space.
+    """
+    frames: list[list[int]] = []
+    current: list[int] = []
+    for value in timings:
+        if value < 0 and -value >= min_gap_us:
+            if current:
+                frames.append(current)
+                current = []
+            continue
+        if not current and value < 0:
+            # A frame never starts on a space, so leading idle is dropped.
+            continue
+        current.append(value)
+    if current:
+        frames.append(current)
+    return frames
+
+
+def _encode_frame(code: int) -> list[int]:
+    """Encode one 12-bit frame, closed by the footer gap."""
+    frame: list[int] = []
+    for i in range(FRAME_BITS - 1, -1, -1):
+        if (code >> i) & 1:
+            frame.extend([LONG_US, -SHORT_US])
+        else:
+            frame.extend([SHORT_US, -LONG_US])
+    # Remotes extend the last bit's space by the gap rather than sending
+    # a second space, so the timings keep alternating mark and space.
+    frame[-1] -= FOOTER_GAP_US
+    return frame
+
+
+class SymphonyCommand(Command):
+    """Symphony IR command (12 bit).
+
+    The fields follow the SM5021 datasheet layout, most significant bit
+    first: frame_head (3 bits), custom_code (2 bits), control_word (7 bits).
+    Some remotes, such as projector screens, do not follow that layout but
+    use the same 12-bit frame. from_code() and code carry the frame as one
+    12-bit value, the form other Symphony tools print, so those remotes can
+    be passed through without splitting the value by hand.
+
+    Control words 0x00 and 0x7F are reserved in every layout, because a
+    frame carrying one cannot be told apart from a start or release frame.
+    A command using one is refused when built and never decoded, so it has
+    to be sent as raw timings.
+
+    repeat_count defaults to 2, so a default send is three frames. Every
+    captured Symphony remote sends at least three, and from_raw_timings()
+    needs two agreeing frames, so the default send is one this decoder
+    accepts.
+
+    start_frames sends the two XIN HUI start frames ahead of the button
+    frames. It only affects encoding: whether a capture window caught the
+    start frames depends on when it opened, so the decoder never reports
+    them.
+    """
+
+    MIN_FRAME_VOTES: ClassVar[int] = 2
+    """Frames that must agree before a capture is accepted.
+
+    Symphony carries no checksum, so agreement between repeated frames is
+    the only integrity evidence there is; one decoded frame is not enough.
+    """
+
+    frame_head: int
+    """Frame head, 3 bits. 110 on most remotes."""
+
+    custom_code: int
+    """Custom code, 2 bits, set per remote model."""
+
+    control_word: int
+    """Control word, 7 bits: the key. 0x00 and 0x7F are reserved."""
+
+    start_frames: bool
+    """Send the XIN HUI start frames ahead of the button frames."""
+
+    def __init__(
+        self,
+        *,
+        custom_code: int,
+        control_word: int,
+        frame_head: int = 0b110,
+        start_frames: bool = False,
+        modulation: int = MODULATION_HZ,
+        repeat_count: int = 2,
+    ) -> None:
+        """Initialize the Symphony IR command."""
+        super().__init__(modulation=modulation, repeat_count=repeat_count)
+        if not 0 <= frame_head <= 0b111:
+            raise ValueError(
+                f"frame_head must be a 3-bit value (0-7), got {frame_head:#x}"
+            )
+        if not 0 <= custom_code <= 0b11:
+            raise ValueError(
+                f"custom_code must be a 2-bit value (0-3), got {custom_code:#x}"
+            )
+        if not 0 <= control_word <= 0x7F:
+            raise ValueError(
+                f"control_word must be a 7-bit value (0-0x7F), got {control_word:#x}"
+            )
+        if control_word in RESERVED_CONTROL_WORDS:
+            raise ValueError(
+                f"control_word {control_word:#x} is reserved for start and release"
+                " frames, not a key"
+            )
+        self.frame_head = frame_head
+        self.custom_code = custom_code
+        self.control_word = control_word
+        self.start_frames = start_frames
+
+    @classmethod
+    def from_code(
+        cls,
+        code: int,
+        *,
+        start_frames: bool = False,
+        modulation: int = MODULATION_HZ,
+        repeat_count: int = 2,
+    ) -> Self:
+        """Create a SymphonyCommand from the 12-bit frame value.
+
+        Raises ValueError when the value is wider than 12 bits or its low
+        7 bits, the control word, are 0x00 or 0x7F.
+        """
+        if not 0 <= code <= 0xFFF:
+            raise ValueError(f"code must be a 12-bit value (0-0xFFF), got {code:#x}")
+        return cls(
+            frame_head=code >> 9,
+            custom_code=(code >> 7) & 0b11,
+            control_word=code & 0x7F,
+            start_frames=start_frames,
+            modulation=modulation,
+            repeat_count=repeat_count,
+        )
+
+    @property
+    def code(self) -> int:
+        """The 12-bit frame value, as other Symphony tools print it."""
+        return self.frame_head << 9 | self.custom_code << 7 | self.control_word
+
+    @override
+    def get_raw_timings(self) -> list[int]:
+        """Get raw timings for the Symphony command.
+
+        Symphony protocol timing (in microseconds):
+        - Logical '0': 420us high, 1265us low
+        - Logical '1': 1265us high, 420us low
+        - Frame: 12 bits, most significant bit first, no leader
+        - Footer gap: 6740us after every frame, added to the last bit's space
+        - Repeat: the full frame retransmitted every 26960us
+
+        The footer gap closes the last frame as well as the ones before
+        it, which is how the hardware remotes pad every transmission.
+        """
+        timings: list[int] = []
+        if self.start_frames:
+            prefix = self.frame_head << 9 | self.custom_code << 7
+            for control_word in RESERVED_CONTROL_WORDS:
+                timings.extend(_encode_frame(prefix | control_word))
+        timings.extend(_encode_frame(self.code) * (self.repeat_count + 1))
+        return timings
+
+    @classmethod
+    def from_raw_timings(cls, timings: list[int]) -> Self | None:
+        """Decode raw IR timings into a SymphonyCommand.
+
+        The whole capture is expected rather than one frame: the frames
+        are split apart here, decoded independently and majority-voted,
+        and repeat_count is derived from how many of them carried the
+        winning value. Start frames are never reported.
+
+        Returns a SymphonyCommand when at least MIN_FRAME_VOTES frames
+        agree, or None otherwise.
+        """
+        codes = [
+            code
+            for code in map(cls._decode_frame, _split_frames(timings, FRAME_GAP_US))
+            if code is not None and code & 0x7F not in RESERVED_CONTROL_WORDS
+        ]
+        ranked = Counter(codes).most_common(2)
+        if not ranked:
+            return None
+        code, votes = ranked[0]
+        if votes < cls.MIN_FRAME_VOTES:
+            return None
+        # A tie is refused rather than broken by frame order, which would let
+        # a capture window that clipped the button frames pick the result.
+        if len(ranked) > 1 and ranked[1][1] == votes:
+            return None
+        return cls.from_code(code, repeat_count=votes - 1)
+
+    @staticmethod
+    def _decode_frame(frame: Sequence[int]) -> int | None:
+        """Decode one Symphony frame to its 12-bit value."""
+        # Each bit is a mark and space pair; the final space may be the
+        # stripped footer gap, so a frame ending on a mark is valid.
+        marks = frame[0::2]
+        spaces = frame[1::2]
+        if len(marks) != FRAME_BITS:
+            return None
+
+        code = 0
+        for index, mark in enumerate(marks):
+            if mark <= 0 or not PULSE_MIN_US <= mark <= PULSE_MAX_US:
+                return None
+            long_mark = mark > PULSE_MIDPOINT_US
+            if index < len(spaces):
+                space = -spaces[index]
+                if not PULSE_MIN_US <= space <= PULSE_MAX_US:
+                    return None
+                # Mark and space widths must disagree; an equal-width pair
+                # is not a Symphony bit.
+                if (space > PULSE_MIDPOINT_US) == long_mark:
+                    return None
+                if not BIT_PERIOD_MIN_US <= mark + space <= BIT_PERIOD_MAX_US:
+                    return None
+            code = code << 1 | long_mark
+        return code
