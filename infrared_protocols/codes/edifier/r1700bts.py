@@ -1,7 +1,4 @@
-"""Command codes for Edifier R1700BTs speakers.
-
-Shared command set used by R1700BTs, RC17A, RC80B, and R1855DB.
-"""
+"""Command codes for Edifier R1700BTs speakers."""
 
 from enum import IntEnum
 
