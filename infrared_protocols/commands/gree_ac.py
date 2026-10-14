@@ -291,6 +291,9 @@ class GreeAcCommand(Command):
     ``timer_hours`` is the countdown the remote is set to, 0.5 to 24 in half-hour
     steps, or None when the timer is off.
 
+    ``timer_companion`` (YAP1F only) preserves the extra timer payload from
+    captured commands. Its clock and scheduling fields are not yet interpreted.
+
     ``absence`` (YAP1F only) is the CLOCK+TEMP 8 °C frost-protection flag from
     the 2026-10-02 capture; it shares the energy-saving bit with ``econo``, so
     the wire cannot distinguish the two functions and either one sets the bit.
@@ -312,6 +315,7 @@ class GreeAcCommand(Command):
     blow: bool
     sleep: bool
     timer_hours: float | None
+    timer_companion: int | None
     anion: bool
     fresh_air: GreeAcFreshAir
     ifeel: bool
@@ -337,6 +341,7 @@ class GreeAcCommand(Command):
         blow: bool = False,
         sleep: bool = False,
         timer_hours: float | None = None,
+        timer_companion: int | None = None,
         anion: bool = False,
         fresh_air: GreeAcFreshAir = GreeAcFreshAir.OFF,
         ifeel: bool = False,
@@ -364,6 +369,10 @@ class GreeAcCommand(Command):
                 )
             if (timer_hours * 2) % 1:
                 raise ValueError(f"timer_hours {timer_hours} is not a multiple of 0.5")
+        if timer_companion is not None and (
+            model is not GreeAcModel.YAP1F or not 0 <= timer_companion < 1 << 28
+        ):
+            raise ValueError(f"unsupported timer_companion {timer_companion}")
         if swing_v_position is not None and (
             model is not GreeAcModel.YAP1F
             or swing_v_position not in YAP1F_SWING_POSITIONS
@@ -400,6 +409,7 @@ class GreeAcCommand(Command):
         self.blow = blow
         self.sleep = sleep
         self.timer_hours = timer_hours
+        self.timer_companion = timer_companion
         self.anion = anion
         self.fresh_air = fresh_air
         self.ifeel = ifeel
@@ -488,13 +498,22 @@ class GreeAcCommand(Command):
         fixed_b = [0] * _FRAME_B_BITS
         _set_field(fixed_b, *_B_CHECKSUM, _checksum(fixed_a, fixed_b))
 
-        frames = (frame_a, frame_b, fixed_a, fixed_b)
+        frames = [frame_a, frame_b]
+        if self.timer_companion is not None:
+            companion_a = list(frame_a)
+            companion_a[28] = 0
+            companion_a[29] = 1
+            companion_b = [0] * _FRAME_B_BITS
+            _set_field(companion_b, 0, 28, self.timer_companion)
+            _set_field(companion_b, *_B_CHECKSUM, _checksum(companion_a, companion_b))
+            frames.extend((companion_a, companion_b))
+        frames.extend((fixed_a, fixed_b))
         timings: list[int] = []
         for index, bits in enumerate(frames):
             timings.extend(
                 _encode_frame(
                     bits,
-                    leader=index in (0, 2),
+                    leader=index % 2 == 0,
                     leader_mark=_YAP1F_LEADER_MARK,
                     leader_space=_YAP1F_LEADER_SPACE,
                     bit_mark=_YAP1F_BIT_MARK,
@@ -502,8 +521,8 @@ class GreeAcCommand(Command):
                     bit_zero_space=_YAP1F_BIT_ZERO_SPACE,
                 )
             )
-            if index < len(_YAP1F_GAPS):
-                timings.append(-_YAP1F_GAPS[index])
+            if index < len(frames) - 1:
+                timings.append(-_YAP1F_GAPS[index % 2])
         return timings
 
     @classmethod
@@ -653,10 +672,13 @@ class GreeAcCommand(Command):
                 )
             ):
                 return None
-            return cls._from_yap1f_raw_timings(
+            command = cls._from_yap1f_raw_timings(
                 timings[:companion_start]
                 + timings[companion_start + a_length + b_length + 2 :]
             )
+            if command is not None:
+                command.timer_companion = _get_field(companion_b, 0, 28)
+            return command
         if len(timings) != 2 * (a_length + b_length) + len(_YAP1F_GAPS):
             return None
 

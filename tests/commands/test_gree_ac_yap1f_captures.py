@@ -147,7 +147,7 @@ _command = partial(GreeAcCommand, model=GreeAcModel.YAP1F)
 def _encoder_pair(command: GreeAcCommand) -> bytes:
     """Return the encoder's first-pair bytes for a command."""
     timings = command.get_raw_timings()
-    assert len(timings) == 279
+    assert len(timings) in (279, 419)
     frame_a = _decode_frame(timings[:74], leader=True, bits=_FRAME_A_BITS)
     frame_b = _decode_frame(timings[74 : 74 + 66], leader=False, bits=_FRAME_B_BITS)
     assert frame_a is not None and frame_b is not None
@@ -1179,6 +1179,34 @@ def test_session_three_damaged_capture_remains_rejected(row: dict) -> None:
     assert GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F) is None
 
 
+_COMPLETE_PACKET_ROWS = [
+    row
+    for row in [*_rows(), *_session_two_rows(), *_SESSION_THREE_ROWS]
+    if GreeAcCommand.from_raw_timings(
+        _broadlink_timings(row["code"]), model=GreeAcModel.YAP1F
+    )
+    is not None
+]
+
+
+@pytest.mark.parametrize("row", _COMPLETE_PACKET_ROWS, ids=lambda row: row["t"])
+def test_complete_capture_preserves_every_frame(row: dict) -> None:
+    """Decoding and encoding preserves timer frames as well as the state pair."""
+    original = _split_bursts(_broadlink_timings(row["code"]))
+    command = GreeAcCommand.from_raw_timings(
+        _broadlink_timings(row["code"]), model=GreeAcModel.YAP1F
+    )
+    assert command is not None
+    encoded = _split_bursts(command.get_raw_timings())
+    assert len(encoded) == len(original)
+    for index, (before, after) in enumerate(zip(original, encoded, strict=True)):
+        leader = index % 2 == 0
+        width = _FRAME_A_BITS if leader else _FRAME_B_BITS
+        assert _decode_frame(before, leader=leader, bits=width) == _decode_frame(
+            after, leader=leader, bits=width
+        )
+
+
 @pytest.mark.parametrize(
     "row",
     [row for row in _SESSION_THREE_ROWS if row["bytes"] is not None],
@@ -1224,3 +1252,16 @@ def test_session_three_generic_rejects_horizontal_12() -> None:
     """Reject the YAP1F-only horizontal position in the generic profile."""
     with pytest.raises(ValueError, match="unsupported swing_h_position 12"):
         GreeAcCommand(mode=GreeAcMode.COOL, temperature=22, swing_h_position=12)
+
+
+@pytest.mark.parametrize("payload", [-1, 1 << 28])
+def test_timer_companion_rejects_out_of_range(payload: int) -> None:
+    """Reject payloads that cannot fit before the checksum."""
+    with pytest.raises(ValueError, match="unsupported timer_companion"):
+        _command(mode=GreeAcMode.COOL, temperature=22, timer_companion=payload)
+
+
+def test_generic_rejects_timer_companion() -> None:
+    """Generic Gree commands have no YAP1F timer companion pair."""
+    with pytest.raises(ValueError, match="unsupported timer_companion"):
+        GreeAcCommand(mode=GreeAcMode.COOL, temperature=22, timer_companion=0)
