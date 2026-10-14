@@ -1179,13 +1179,105 @@ def test_session_three_damaged_capture_remains_rejected(row: dict) -> None:
     assert GreeAcCommand.from_raw_timings(timings, model=GreeAcModel.YAP1F) is None
 
 
+# Frozen complete-capture indices; decoder regressions must not shrink the oracle.
+_COMPLETE_PACKET_INDICES = (
+    (
+        1,
+        3,
+        4,
+        5,
+        7,
+        8,
+        9,
+        16,
+        17,
+        18,
+        19,
+        21,
+        22,
+        23,
+        24,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        34,
+        37,
+        39,
+        40,
+        41,
+    ),
+    (
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        38,
+        40,
+        43,
+        44,
+        45,
+        47,
+        49,
+        52,
+        54,
+        55,
+        58,
+        59,
+        62,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+    ),
+    (0, 1, 2, 8, 22, 27, 33, 36, 37, 38, 41, 42, 43),
+)
+
+
 _COMPLETE_PACKET_ROWS = [
-    row
-    for row in [*_rows(), *_session_two_rows(), *_SESSION_THREE_ROWS]
-    if GreeAcCommand.from_raw_timings(
-        _broadlink_timings(row["code"]), model=GreeAcModel.YAP1F
+    rows[index]
+    for rows, indices in zip(
+        (_rows(), _session_two_rows(), _SESSION_THREE_ROWS),
+        _COMPLETE_PACKET_INDICES,
+        strict=True,
     )
-    is not None
+    for index in indices
 ]
 
 
