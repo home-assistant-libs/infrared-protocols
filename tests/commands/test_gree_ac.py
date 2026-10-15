@@ -15,10 +15,10 @@ _FRAME_A_BITS = 35
 _FRAME_B_BITS = 32
 _LEADER_MARK = 9000
 _LEADER_SPACE = 4500
-_BIT_MARK = 562
-_BIT_ONE_SPACE = 1687
-_BIT_ZERO_SPACE = 562
-_FRAME_GAP = 20100
+_BIT_MARK = 620
+_BIT_ONE_SPACE = 1600
+_BIT_ZERO_SPACE = 540
+_FRAME_GAP = 19980
 _CHECKSUM_BASE = 10
 
 _ONE_THRESHOLD = (_BIT_ONE_SPACE + _BIT_ZERO_SPACE) // 2
@@ -142,17 +142,17 @@ def test_encode_timing_values() -> None:
     timings = GreeAcCommand(mode=GreeAcMode.COOL, temperature=24).get_raw_timings()
 
     assert timings[:2] == [9000, -4500]
-    assert timings[2::2].count(562) > 0
+    assert timings[2::2].count(620) > 0
     marks = [t for t in timings if t > 0]
-    assert set(marks) == {9000, 562}
+    assert set(marks) == {9000, 620}
     spaces = {abs(t) for t in timings if t < 0}
-    assert spaces == {4500, 1687, 562, 20100}
+    assert spaces == {4500, 1600, 540, 19980}
 
 
 def _retime_to_variant(timings: list[int]) -> list[int]:
     """Re-render these timings at the other pulse lengths Gree remotes emit."""
-    marks = {562: 620}
-    spaces = {1687: 1600, 562: 540, 20100: 19980}
+    marks = {620: 562}
+    spaces = {1600: 1687, 540: 562, 19980: 20100}
     return [
         marks.get(value, value) if value > 0 else -spaces.get(-value, -value)
         for value in timings
@@ -172,6 +172,34 @@ def test_decode_accepts_variant_pulse_lengths(label: str) -> None:
     assert result.temperature == expected.temperature
     assert result.power == expected.power
     assert result.fan == expected.fan
+
+
+# Heat 24 °C, fan auto, vertical swing, as received from a YB1F2 remote: pulses
+# jitter around the nominal lengths, and block B sets bit 27, which the encoder
+# never does.
+_YB1F2_HEAT_24 = [
+    9098, -4549, 631, -579, 631, -579, 631, -1683, 657, -1683, 631, -579, 631, -579,
+    631, -1683, 657, -579, 631, -579, 631, -579, 631, -579, 631, -1683, 657, -579, 631,
+    -579, 631, -579, 631, -552, 657, -579, 631, -552, 657, -552, 657, -579, 631, -579,
+    631, -1683, 631, -579, 631, -579, 657, -579, 631, -552, 657, -579, 631, -579, 631,
+    -1683, 631, -579, 631, -1683, 631, -579, 631, -579, 631, -1683, 631, -579, 631,
+    -20248, 631, -1683, 657, -552, 657, -579, 631, -579, 657, -552, 631, -579, 631,
+    -579, 631, -579, 631, -579, 631, -579, 631, -579, 631, -579, 631, -579, 631, -1683,
+    631, -579, 657, -552, 631, -579, 631, -579, 631, -579, 631, -579, 631, -579, 631,
+    -579, 657, -552, 631, -579, 631, -579, 631, -579, 631, -579, 631, -1683, 631, -579,
+    631, -579, 631, -579, 631, -579, 631,
+]  # fmt: skip
+
+
+def test_decode_yb1f2_capture() -> None:
+    """Decode a raw remote capture with real pulse-length jitter."""
+    result = GreeAcCommand.from_raw_timings(_YB1F2_HEAT_24)
+
+    assert result is not None
+    assert result.power
+    assert result.mode == GreeAcMode.HEAT
+    assert result.temperature == 24
+    assert result.fan == GreeAcFanSpeed.AUTO
 
 
 @pytest.mark.parametrize("label", list(_CAPTURED))
@@ -415,7 +443,7 @@ def test_decode_returns_none_for_decoded_temperature_out_of_range() -> None:
 def test_decode_returns_none_for_bad_data_bit() -> None:
     """A data bit whose mark is out of tolerance is rejected."""
     timings = GreeAcCommand(mode=GreeAcMode.COOL, temperature=24).get_raw_timings()
-    timings[2] = 3000  # first block A bit mark, far from the 562 nominal
+    timings[2] = 3000  # first block A bit mark, far from the 620 nominal
 
     assert GreeAcCommand.from_raw_timings(timings) is None
 
@@ -440,7 +468,7 @@ def test_decode_returns_none_for_bad_end_mark(index: int) -> None:
     [
         pytest.param(-_BIT_ONE_SPACE, id="too_short"),
         pytest.param(-60000, id="too_long"),
-        pytest.param(20100, id="mark_not_space"),
+        pytest.param(_FRAME_GAP, id="mark_not_space"),
     ],
 )
 def test_decode_returns_none_for_bad_mid_frame_gap(gap: int) -> None:

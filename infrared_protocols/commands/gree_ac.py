@@ -1,12 +1,12 @@
 """Gree air-conditioner IR protocol.
 
-A 9000/4500 leader, 562 marks, and 562 and 1687 spaces. Remotes vary around these
-values, so the decoder matches bits with a window wide enough to also take a 620
-mark and 540/1600 spaces.
+A 9000/4500 leader, 620 marks, and 540 and 1600 spaces. Remotes vary around these
+values, so the decoder matches bits with a window wide enough to also take a 562
+mark and 562/1687 spaces.
 
 A command is a single frame built from two bit blocks separated by a long space:
 
-  leader + block A (35 data bits) + end pulse + ~20100 us space
+  leader + block A (35 data bits) + end pulse + ~19980 us space
          + block B (32 data bits) + end pulse
 
 Block A carries the full state; block B carries the swing detail and the checksum.
@@ -60,20 +60,20 @@ _TEMP_OFFSET = 16
 
 _LEADER_MARK = 9000
 _LEADER_SPACE = 4500
-_BIT_MARK = 562
-_BIT_ONE_SPACE = 1687
-_BIT_ZERO_SPACE = 562
+_BIT_MARK = 620
+_BIT_ONE_SPACE = 1600
+_BIT_ZERO_SPACE = 540
 
 # Long mid-frame space after block A, and the trailing space after block B.
-_FRAME_GAP = 20100
+_FRAME_GAP = 19980
 
 _FRAME_A_BITS = 35
 _FRAME_B_BITS = 32
 
 _TOLERANCE = 0.35
 # Marks are stretched by receiver AGC far more than spaces, so bit timing is matched
-# with an absolute window that keeps a zero and a one space apart (562 vs 1687). The
-# window is also wide enough to decode remotes emitting a 620 mark and 540/1600
+# with an absolute window that keeps a zero and a one space apart (540 vs 1600). The
+# window is also wide enough to decode remotes emitting a 562 mark and 562/1687
 # spaces.
 _BIT_TOLERANCE = 350
 
