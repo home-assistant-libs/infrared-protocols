@@ -1,8 +1,14 @@
-"""Command codes for NAD AV receivers.
+"""Command codes for NAD amplifiers and the amplifier section of NAD AV receivers.
 
-Codes are taken from NAD's "IR Commands by Model" tables (April 2012), which
-list the same set for the T187, T777 and T787. They are sent on IR channel 0;
-other IR channels use a non-NEC variant of the frame.
+Codes are taken from NAD's "IR Commands by Model" tables (2008 and 2012), which
+list the same set for the T175, T187, T765, T775, T777, T785 and T787. The T175
+has no Speaker A/B codes and the T765 no Audyssey code. They are sent on IR
+channel 0; other IR channels use a non-NEC variant of the frame. Tuner codes
+live in tuner.py; TUNER here selects the tuner input.
+
+Codes for older NAD receivers and amplifiers (Video, Tape, Aux and multi-room
+keys) are taken from the IRDB. Some codes carry other names on
+older models: FRONT is the CD input and MP the Phono/Disc input.
 """
 
 from enum import IntEnum
@@ -11,14 +17,15 @@ from ...commands import Command
 from ...commands.nec import NECCommand
 
 # NAD documents the customer code as 877C: first byte 0x87, second byte 0x7C.
-NAD_RECEIVER_ADDRESS = 0x7C87
+# The same address is shared by all NAD components (see cd.py, tape.py and tuner.py).
+NAD_AMPLIFIER_ADDRESS = 0x7C87
 
 
-class NADReceiverCode(IntEnum):
-    """NAD AV receiver IR command codes."""
+class NADAmplifierCode(IntEnum):
+    """NAD amplifier IR command codes."""
 
-    AM = 0x82
     AUDYSSEY = 0xC9
+    AUX = 0x9B
     AV_PRESET_1 = 0x3A
     AV_PRESET_2 = 0x3B
     AV_PRESET_3 = 0xC3
@@ -27,11 +34,11 @@ class NADReceiverCode(IntEnum):
     BYPASS = 0xDB
     CENTER_VOLUME_DOWN = 0xD5
     CENTER_VOLUME_UP = 0xD0
+    CHANNEL = 0x2B
     CURSOR_DOWN = 0x28
     CURSOR_LEFT = 0x29
     CURSOR_RIGHT = 0x2A
     CURSOR_UP = 0x27
-    DB_XM_DAB = 0x7E
     DELAY = 0xDA
     DIMMER = 0x38
     DIRECT = 0x64
@@ -40,7 +47,7 @@ class NADReceiverCode(IntEnum):
     EARS = 0x6F
     ENHANCED_STEREO_1 = 0x70
     ENTER = 0x32
-    FM = 0x81
+    EXT_5_1 = 0x2E
     FRONT = 0x85
     INPUT_1 = 0xC2
     INPUT_2 = 0xC0
@@ -51,8 +58,10 @@ class NADReceiverCode(IntEnum):
     INPUT_7 = 0x60
     LATE_NIGHT = 0x2F
     MATRIX_7_1 = 0x6E
-    MEMORY = 0xF5
     MP = 0x89
+    MULTI_SOURCE = 0x21
+    MULTI_VOLUME_DOWN = 0x23
+    MULTI_VOLUME_UP = 0x22
     MUTE = 0x94
     NEO6_CINEMA = 0x6C
     NEO6_MUSIC = 0x6D
@@ -61,10 +70,6 @@ class NADReceiverCode(IntEnum):
     PLIIX_MOVIE = 0x6B
     PLIIX_MUSIC = 0x6A
     POWER_TOGGLE = 0x80
-    PRESET_DOWN = 0xD1
-    PRESET_UP = 0xD2
-    SEARCH_DOWN = 0x86
-    SEARCH_UP = 0x87
     SLEEP = 0x20
     SPEAKER_A = 0xCE
     SPEAKER_B = 0xCF
@@ -74,23 +79,13 @@ class NADReceiverCode(IntEnum):
     SURROUND_MODE = 0xCC
     SURROUND_VOLUME_DOWN = 0xD7
     SURROUND_VOLUME_UP = 0xD6
+    TAPE_1 = 0x8D
+    TAPE_2 = 0x91
     TEST = 0xCD
     TONE = 0x39
     TONE_DEFEAT = 0xDC
     TUNER = 0xDD
-    TUNER_1 = 0x8A
-    TUNER_2 = 0x8E
-    TUNER_3 = 0x92
-    TUNER_4 = 0x96
-    TUNER_5 = 0x8B
-    TUNER_6 = 0x8F
-    TUNER_7 = 0x93
-    TUNER_8 = 0x97
-    TUNER_9 = 0x98
-    TUNER_ENTER = 0xC5
-    TUNER_MODE = 0x37
-    TUNE_DOWN = 0xD3
-    TUNE_UP = 0xD4
+    VIDEO = 0x84
     VOLUME_DOWN = 0x8C
     VOLUME_UP = 0x88
     ZONE_AM = 0xA1
@@ -119,5 +114,5 @@ class NADReceiverCode(IntEnum):
     ZONE_VIDEO_6 = 0xAD
 
     def to_command(self) -> Command:
-        """Build an NEC command for this NAD receiver code."""
-        return NECCommand(address=NAD_RECEIVER_ADDRESS, command=self.value)
+        """Build an NEC command for this NAD amplifier code."""
+        return NECCommand(address=NAD_AMPLIFIER_ADDRESS, command=self.value)
