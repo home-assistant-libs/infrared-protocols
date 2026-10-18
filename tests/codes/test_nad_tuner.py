@@ -39,6 +39,7 @@ def test_nad_tuner_codes_do_not_overlap(
     [
         pytest.param(NADTunerCode.FM, 0x81, id="fm"),
         pytest.param(NADTunerCode.PRESET_UP, 0xD2, id="preset_up"),
+        pytest.param(NADTunerCode.DELETE, 0xF6, id="delete"),
         pytest.param(NADTunerCode.NUM_0, 0xC7, id="num_0"),
         pytest.param(NADTunerCode.NUM_1, 0x8A, id="num_1"),
     ],

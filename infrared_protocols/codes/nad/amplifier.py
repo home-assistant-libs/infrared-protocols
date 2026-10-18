@@ -9,6 +9,8 @@ live in tuner.py; TUNER here selects the tuner input.
 Codes for older NAD receivers and amplifiers (Video, Tape, Aux and multi-room
 keys) are taken from the IRDB. Some codes carry other names on
 older models: FRONT is the CD input and MP the Phono/Disc input.
+
+MENU, SOURCE_UP and SOURCE_DOWN are captured from a NAD AVR 4 remote.
 """
 
 from enum import IntEnum
@@ -58,6 +60,7 @@ class NADAmplifierCode(IntEnum):
     INPUT_7 = 0x60
     LATE_NIGHT = 0x2F
     MATRIX_7_1 = 0x6E
+    MENU = 0x7F
     MP = 0x89
     MULTI_SOURCE = 0x21
     MULTI_VOLUME_DOWN = 0x23
@@ -71,6 +74,8 @@ class NADAmplifierCode(IntEnum):
     PLIIX_MUSIC = 0x6A
     POWER_TOGGLE = 0x80
     SLEEP = 0x20
+    SOURCE_DOWN = 0x1D
+    SOURCE_UP = 0x1A
     SPEAKER_A = 0xCE
     SPEAKER_B = 0xCF
     STEREO_DOWNMIX = 0x65
@@ -84,6 +89,7 @@ class NADAmplifierCode(IntEnum):
     TEST = 0xCD
     TONE = 0x39
     TONE_DEFEAT = 0xDC
+    # Selects the tuner input; when already selected, steps through AM, FM and DAB.
     TUNER = 0xDD
     VIDEO = 0x84
     VOLUME_DOWN = 0x8C

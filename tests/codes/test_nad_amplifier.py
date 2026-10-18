@@ -25,6 +25,9 @@ def test_nad_amplifier_codes_are_unique() -> None:
         pytest.param(NADAmplifierCode.INPUT_1, 0xC2, id="input_1"),
         pytest.param(NADAmplifierCode.TAPE_1, 0x8D, id="tape_1"),
         pytest.param(NADAmplifierCode.AUX, 0x9B, id="aux"),
+        pytest.param(NADAmplifierCode.SOURCE_UP, 0x1A, id="source_up"),
+        pytest.param(NADAmplifierCode.SOURCE_DOWN, 0x1D, id="source_down"),
+        pytest.param(NADAmplifierCode.MENU, 0x7F, id="menu"),
     ],
 )
 def test_nad_amplifier_code_to_command(code: NADAmplifierCode, command: int) -> None:

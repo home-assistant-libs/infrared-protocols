@@ -3,6 +3,8 @@
 Codes are taken from NAD's "IR Commands by Model" tables and the IRDB. The
 built-in tuner of NAD receivers and standalone NAD tuners respond to the same
 codes. All NAD components share one NEC address.
+
+DELETE is captured from a NAD AVR 4 remote.
 """
 
 from enum import IntEnum
@@ -28,6 +30,7 @@ class NADTunerCode(IntEnum):
     PRESET_DOWN = 0xD1
     PRESET_TUNE = 0x33
     MEMORY = 0xF5
+    DELETE = 0xF6
     BANK = 0x24
     BLEND = 0x35
     ENTER = 0xC5
