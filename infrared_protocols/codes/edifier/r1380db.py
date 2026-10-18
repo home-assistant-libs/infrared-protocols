@@ -12,18 +12,18 @@ from ...commands.nec import NECCommand
 class EdifierR1380DBCode(IntEnum):
     """Edifier R1380DB speaker IR command codes."""
 
-    POWER = 0xB946
-    VOLUME_UP = 0xF906
-    VOLUME_DOWN = 0xB847
-    MUTE = 0xBE41
-    PLAY_PAUSE = 0xA05F
-    FORWARD = 0xA25D
-    BACK = 0xBB44
-    LINE_1 = 0xE51A
-    LINE_2 = 0xE41B
-    COAX = 0xF20D
-    OPTICAL = 0xEA15
-    BLUETOOTH = 0xA35C
+    POWER = 0x46
+    VOLUME_UP = 0x06
+    VOLUME_DOWN = 0x47
+    MUTE = 0x41
+    PLAY_PAUSE = 0x5F
+    FORWARD = 0x5D
+    BACK = 0x44
+    LINE_1 = 0x1A
+    LINE_2 = 0x1B
+    COAX = 0x0D
+    OPTICAL = 0x15
+    BLUETOOTH = 0x5C
 
     def to_command(self, repeat_count: int = 0) -> Command:
         """Build an NECCommand."""
