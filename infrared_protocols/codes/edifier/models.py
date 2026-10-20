@@ -13,7 +13,7 @@ class EdifierCommandSet(StrEnum):
     R1700BT_PRE_2017 = "r1700bt_pre_2017"
     R1700BT_2017 = "r1700bt_2017"
     R1700BTS = "r1700bts"
-    R1380DB = "r3280db"
+    R1380DB = "r1380db"
     R1280DB = "r1280db"
     R1280T = "r1280t"
     R2000DB = "r2000db"
@@ -40,7 +40,7 @@ class EdifierModel(StrEnum):
     R1855DB = "R1855DB"
     # R1380DB command set
     R1380DB = "R1380DB"
-    RC13D = "R1380DB"
+    RC13D = "RC13D"
     # R1280DB command set
     R1280DB = "R1280DB"
     # R1280T command set (basic)
