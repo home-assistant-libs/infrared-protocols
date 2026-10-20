@@ -235,10 +235,11 @@ def test_symphony_command_get_raw_timings() -> None:
     assert command.modulation == 38000
 
 
-def test_symphony_command_default_send_is_three_frames() -> None:
-    """A default send is three frames, the fewest any captured remote sends."""
+def test_symphony_command_default_send_is_six_frames() -> None:
+    """A default send is six frames, enough for a real fan's receiver."""
     command = SymphonyCommand(custom_code=0b00, control_word=SymphonyKey.K1)
-    assert command.get_raw_timings() == C01_FRAME * 3
+    assert command.get_raw_timings() == C01_FRAME * 6
+    assert SymphonyCommand.from_code(0xC01).get_raw_timings() == C01_FRAME * 6
 
 
 def test_symphony_command_default_send_decodes() -> None:

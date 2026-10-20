@@ -133,10 +133,11 @@ class SymphonyCommand(Command):
     A command using one is refused when built and never decoded, so it has
     to be sent as raw timings.
 
-    repeat_count defaults to 2, so a default send is three frames. Every
-    captured Symphony remote sends at least three, and from_raw_timings()
-    needs two agreeing frames, so the default send is one this decoder
-    accepts.
+    repeat_count defaults to 5, so a default send is six frames. Real
+    remotes send 4 to 10 frames on a single tap, and from_raw_timings()
+    needs two agreeing frames. Tested on a real fan, six frames worked
+    every time while fewer worked only occasionally, so the receiver in
+    the device needs more frames than this decoder does.
 
     start_frames sends the two XIN HUI start frames ahead of the button
     frames. It only affects encoding: whether a capture window caught the
@@ -171,7 +172,7 @@ class SymphonyCommand(Command):
         frame_head: int = 0b110,
         start_frames: bool = False,
         modulation: int = MODULATION_HZ,
-        repeat_count: int = 2,
+        repeat_count: int = 5,
     ) -> None:
         """Initialize the Symphony IR command."""
         super().__init__(modulation=modulation, repeat_count=repeat_count)
@@ -204,7 +205,7 @@ class SymphonyCommand(Command):
         *,
         start_frames: bool = False,
         modulation: int = MODULATION_HZ,
-        repeat_count: int = 2,
+        repeat_count: int = 5,
     ) -> Self:
         """Create a SymphonyCommand from the 12-bit frame value.
 
