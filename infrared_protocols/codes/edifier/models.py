@@ -13,12 +13,14 @@ class EdifierCommandSet(StrEnum):
     R1700BT_PRE_2017 = "r1700bt_pre_2017"
     R1700BT_2017 = "r1700bt_2017"
     R1700BTS = "r1700bts"
+    R1380DB = "r1380db"
     R1280DB = "r1280db"
     R1280T = "r1280t"
     R2000DB = "r2000db"
     R2730DB = "r2730db"
     S360DB = "s360db"
     RC20G = "rc20g"
+    RC2_1B = "rc2_1b"
     S3000PRO = "s3000pro"
 
 
@@ -31,9 +33,14 @@ class EdifierModel(StrEnum):
     R1700BT_2017 = "R1700BT (2017)"
     # R1700BTs command set
     R1700BTS = "R1700BTs"
+    D12 = "D12"
+    RC12D = "RC12D"
     RC17A = "RC17A"
     RC80B = "RC80B"
     R1855DB = "R1855DB"
+    # R1380DB command set
+    R1380DB = "R1380DB"
+    RC13D = "RC13D"
     # R1280DB command set
     R1280DB = "R1280DB"
     # R1280T command set (basic)
@@ -48,6 +55,9 @@ class EdifierModel(StrEnum):
     RC31A = "RC31A"
     # RC20G command set (unique left/right volume controls)
     RC20G = "RC20G"
+    # RC2.1B command set
+    S530D = "S530D"
+    S730 = "S730"
     # S3000 Pro command set (RCA10B remote)
     S3000PRO = "S3000 Pro"
 
@@ -62,10 +72,15 @@ MODEL_TO_COMMAND_SET: dict[EdifierModel, EdifierCommandSet] = {
     EdifierModel.RC17A: EdifierCommandSet.R1700BTS,
     EdifierModel.RC80B: EdifierCommandSet.R1700BTS,
     EdifierModel.R1855DB: EdifierCommandSet.R1700BTS,
+    EdifierModel.D12: EdifierCommandSet.R1700BTS,
+    EdifierModel.RC12D: EdifierCommandSet.R1700BTS,
     # R1280DB command set
     EdifierModel.R1280DB: EdifierCommandSet.R1280DB,
     # R1280T command set
     EdifierModel.R1280T: EdifierCommandSet.R1280T,
+    # R1380DB command set
+    EdifierModel.R1380DB: EdifierCommandSet.R1380DB,
+    EdifierModel.RC13D: EdifierCommandSet.R1380DB,
     # R2000DB command set
     EdifierModel.R2000DB: EdifierCommandSet.R2000DB,
     # R2730DB command set
@@ -76,6 +91,9 @@ MODEL_TO_COMMAND_SET: dict[EdifierModel, EdifierCommandSet] = {
     EdifierModel.RC31A: EdifierCommandSet.S360DB,
     # RC20G command set
     EdifierModel.RC20G: EdifierCommandSet.RC20G,
+    # RC2.1B command set
+    EdifierModel.S530D: EdifierCommandSet.RC2_1B,
+    EdifierModel.S730: EdifierCommandSet.RC2_1B,
     # S3000 Pro command set
     EdifierModel.S3000PRO: EdifierCommandSet.S3000PRO,
 }

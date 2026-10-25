@@ -1,15 +1,15 @@
-"""Onida air-conditioner IR protocol.
+"""Gree air-conditioner IR protocol.
 
-NEC-family timing (9000/4500 leader, 562 mark, 562/1687 spaces), reverse-engineered
-from a physical Onida remote. A command is a single frame built from two bit blocks
-separated by a long space:
+A 9000/4500 leader, 620 marks, and 540 and 1600 spaces. Remotes vary around these
+values, so the decoder matches bits with a window wide enough to also take a 562
+mark and 562/1687 spaces.
 
-  leader + block A (35 data bits) + end pulse + ~20100 us space
+A command is a single frame built from two bit blocks separated by a long space:
+
+  leader + block A (35 data bits) + end pulse + ~19980 us space
          + block B (32 data bits) + end pulse
 
 Block A carries the full state; block B carries the swing detail and the checksum.
-(An earlier capture with a too-short receiver idle split this into two frames; it is
-one frame with a long mid-space.)
 
 Bits are sent least-significant first within each field; index 0 below is the first
 transmitted bit.
@@ -19,10 +19,15 @@ Block A (35 bits):
   bit 3:      power
   bits 4-5:   fan speed
   bit 6:      swing (set while either axis is actually swinging)
+  bit 7:      sleep
   bits 8-11:  temperature (temp_c - 16)
+  bits 12-19: timer (half hour at 12, hour tens at 13-14, enabled at 15,
+              hour units at 16-19; the hour is split into decimal digits)
   bit 20:     turbo
   bit 21:     display light
+  bit 22:     anion
   bit 23:     blow
+  bits 24-25: fresh-air intake (the fourth value is undefined)
   bits 28,30,33: fixed trailer
 
 Block B (32 bits):
@@ -35,6 +40,9 @@ Block A's bit 6 records whether anything is swinging; block B's bits 0 and 4 say
 axis. Block B's bits latch: they keep the last selected axis after swing is switched
 off, so they only describe live movement while block A's bit 6 is set. The checksum is
 computed over block B's latched horizontal bit rather than the effective state.
+
+Only part of the state enters the checksum, so many fields do not affect it; see
+``_checksum``.
 """
 
 from enum import IntEnum
@@ -45,23 +53,28 @@ from . import Command
 MIN_TEMP = 16
 MAX_TEMP = 30
 
+MIN_TIMER_HOURS = 0.5
+MAX_TIMER_HOURS = 24
+
 _TEMP_OFFSET = 16
 
 _LEADER_MARK = 9000
 _LEADER_SPACE = 4500
-_BIT_MARK = 562
-_BIT_ONE_SPACE = 1687
-_BIT_ZERO_SPACE = 562
+_BIT_MARK = 620
+_BIT_ONE_SPACE = 1600
+_BIT_ZERO_SPACE = 540
 
 # Long mid-frame space after block A, and the trailing space after block B.
-_FRAME_GAP = 20100
+_FRAME_GAP = 19980
 
 _FRAME_A_BITS = 35
 _FRAME_B_BITS = 32
 
 _TOLERANCE = 0.35
 # Marks are stretched by receiver AGC far more than spaces, so bit timing is matched
-# with an absolute window that keeps a zero and a one space apart (562 vs 1687).
+# with an absolute window that keeps a zero and a one space apart (540 vs 1600). The
+# window is also wide enough to decode remotes emitting a 562 mark and 562/1687
+# spaces.
 _BIT_TOLERANCE = 350
 
 # Block A field positions (bit index, width), LSB-first within the field.
@@ -69,10 +82,17 @@ _A_MODE = (0, 3)
 _A_POWER = 3
 _A_FAN = (4, 2)
 _A_SWING = 6
+_A_SLEEP = 7
 _A_TEMP = (8, 4)
+_A_TIMER_HALF = 12
+_A_TIMER_TENS = (13, 2)
+_A_TIMER_ENABLED = 15
+_A_TIMER_UNITS = (16, 4)
 _A_TURBO = 20
 _A_DISPLAY = 21
+_A_ANION = 22
 _A_BLOW = 23
+_A_FRESH_AIR = (24, 2)
 _A_TRAILER = (28, 30, 33)
 
 # Block B field positions.
@@ -81,11 +101,11 @@ _B_SWING_H = 4
 _B_SIGNATURE = 13
 _B_CHECKSUM = (28, 4)
 
-# Added into the checksum on top of the state; the contribution of the fixed bits.
-_CHECKSUM_CONST = 12
+# The checksum starts from a fixed base rather than zero.
+_CHECKSUM_BASE = 10
 
 
-class OnidaAcMode(IntEnum):
+class GreeAcMode(IntEnum):
     """AC operating mode; value is the mode field at block A bits 0-2."""
 
     AUTO = 0
@@ -95,13 +115,25 @@ class OnidaAcMode(IntEnum):
     HEAT = 4
 
 
-class OnidaAcFanSpeed(IntEnum):
+class GreeAcFanSpeed(IntEnum):
     """Fan speed; value is the fan field at block A bits 4-5."""
 
     AUTO = 0
     LOW = 1
     MEDIUM = 2
     HIGH = 3
+
+
+class GreeAcFreshAir(IntEnum):
+    """Fresh-air intake; value is the field at block A bits 24-25.
+
+    The field's fourth value is not produced by the remote and has no known
+    meaning, so it is rejected when decoding.
+    """
+
+    OFF = 0
+    LEVEL_1 = 1
+    LEVEL_2 = 2
 
 
 def _get_field(bits: list[int], start: int, width: int) -> int:
@@ -115,13 +147,54 @@ def _set_field(bits: list[int], start: int, width: int, value: int) -> None:
         bits[start + i] = (value >> i) & 1
 
 
-def _checksum(*, mode: int, power: bool, temp: int, swing_h: bool) -> int:
-    """Return the block B checksum nibble.
+def _pack_timer(bits: list[int], hours: float | None) -> None:
+    """Write a timer setting into block A bits 12-19; an off timer leaves them zero."""
+    if hours is None:
+        return
+    whole_hours, half = divmod(round(hours * 2), 2)
+    tens, units = divmod(whole_hours, 10)
+    bits[_A_TIMER_HALF] = half
+    _set_field(bits, *_A_TIMER_TENS, tens)
+    bits[_A_TIMER_ENABLED] = 1
+    _set_field(bits, *_A_TIMER_UNITS, units)
 
-    Vertical swing does not enter the checksum; only horizontal does.
+
+def _unpack_timer(bits: list[int]) -> float | None:
+    """Read the timer from block A bits 12-19, or None when it is off.
+
+    Raises ValueError for a digit or duration the remote cannot produce, so the
+    decoder rejects the frame alongside the undefined enum values.
     """
-    total = mode + (8 if power else 0) + (temp - _TEMP_OFFSET)
-    total += (1 if swing_h else 0) + _CHECKSUM_CONST
+    half = bits[_A_TIMER_HALF]
+    tens = _get_field(bits, *_A_TIMER_TENS)
+    units = _get_field(bits, *_A_TIMER_UNITS)
+
+    if not bits[_A_TIMER_ENABLED]:
+        # The remote zeroes the whole field when the timer is off.
+        if half or tens or units:
+            raise ValueError("timer bits set while the timer is off")
+        return None
+
+    hours = tens * 10 + units + 0.5 * half
+    if units > 9 or not MIN_TIMER_HOURS <= hours <= MAX_TIMER_HOURS:
+        raise ValueError(
+            f"timer {hours} out of range {MIN_TIMER_HOURS}..{MAX_TIMER_HOURS}"
+        )
+    return hours
+
+
+def _checksum(frame_a: list[int], frame_b: list[int]) -> int:
+    """Return the block B checksum nibble for the two blocks as sent.
+
+    The state is eight bytes, block A's 32 data bits followed by block B's. The sum
+    takes the low nibble of the first four and the high nibble of the next three, so
+    half of the state stays outside it: mode, power, temperature, the timer hour
+    units, fresh air and horizontal swing enter, while sleep, the rest of the timer,
+    turbo, display, anion, blow and vertical swing do not.
+    """
+    total = _CHECKSUM_BASE
+    total += sum(_get_field(frame_a, 8 * i, 4) for i in range(4))
+    total += sum(_get_field(frame_b, 8 * i + 4, 4) for i in range(3))
     return total & 0xF
 
 
@@ -163,43 +236,62 @@ def _decode_bits(timings: list[int], offset: int, count: int) -> list[int] | Non
     return bits
 
 
-class OnidaAcCommand(Command):
-    """Onida air-conditioner IR command.
+class GreeAcCommand(Command):
+    """Gree air-conditioner IR command.
 
     ``temperature`` is in whole degrees celsius, 16 to 30.
+
+    ``timer_hours`` is the countdown the remote is set to, 0.5 to 24 in half-hour
+    steps, or None when the timer is off.
     """
 
     power: bool
-    mode: OnidaAcMode
+    mode: GreeAcMode
     temperature: int
-    fan: OnidaAcFanSpeed
+    fan: GreeAcFanSpeed
     swing_v: bool
     swing_h: bool
     turbo: bool
     display: bool
     blow: bool
+    sleep: bool
+    timer_hours: float | None
+    anion: bool
+    fresh_air: GreeAcFreshAir
 
     def __init__(
         self,
         *,
         power: bool = True,
-        mode: OnidaAcMode,
+        mode: GreeAcMode,
         temperature: int,
-        fan: OnidaAcFanSpeed = OnidaAcFanSpeed.AUTO,
+        fan: GreeAcFanSpeed = GreeAcFanSpeed.AUTO,
         swing_v: bool = False,
         swing_h: bool = False,
         turbo: bool = False,
         display: bool = True,
         blow: bool = False,
+        sleep: bool = False,
+        timer_hours: float | None = None,
+        anion: bool = False,
+        fresh_air: GreeAcFreshAir = GreeAcFreshAir.OFF,
         modulation: int = 38000,
     ) -> None:
-        """Initialize the Onida AC IR command."""
+        """Initialize the Gree AC IR command."""
         super().__init__(modulation=modulation)
 
         if not MIN_TEMP <= temperature <= MAX_TEMP:
             raise ValueError(
                 f"temperature {temperature} out of range {MIN_TEMP}..{MAX_TEMP}"
             )
+        if timer_hours is not None:
+            if not MIN_TIMER_HOURS <= timer_hours <= MAX_TIMER_HOURS:
+                raise ValueError(
+                    f"timer_hours {timer_hours} out of range "
+                    f"{MIN_TIMER_HOURS}..{MAX_TIMER_HOURS}"
+                )
+            if (timer_hours * 2) % 1:
+                raise ValueError(f"timer_hours {timer_hours} is not a multiple of 0.5")
 
         self.power = power
         self.mode = mode
@@ -210,19 +302,27 @@ class OnidaAcCommand(Command):
         self.turbo = turbo
         self.display = display
         self.blow = blow
+        self.sleep = sleep
+        self.timer_hours = timer_hours
+        self.anion = anion
+        self.fresh_air = fresh_air
 
     @override
     def get_raw_timings(self) -> list[int]:
-        """Get raw timings for the Onida AC command."""
+        """Get raw timings for the Gree AC command."""
         frame_a = [0] * _FRAME_A_BITS
         _set_field(frame_a, *_A_MODE, self.mode.value)
         frame_a[_A_POWER] = int(self.power)
         _set_field(frame_a, *_A_FAN, self.fan.value)
         frame_a[_A_SWING] = int(self.swing_v or self.swing_h)
+        frame_a[_A_SLEEP] = int(self.sleep)
         _set_field(frame_a, *_A_TEMP, self.temperature - _TEMP_OFFSET)
+        _pack_timer(frame_a, self.timer_hours)
         frame_a[_A_TURBO] = int(self.turbo)
         frame_a[_A_DISPLAY] = int(self.display)
+        frame_a[_A_ANION] = int(self.anion)
         frame_a[_A_BLOW] = int(self.blow)
+        _set_field(frame_a, *_A_FRESH_AIR, self.fresh_air.value)
         for index in _A_TRAILER:
             frame_a[index] = 1
 
@@ -230,13 +330,7 @@ class OnidaAcCommand(Command):
         frame_b[_B_SWING_V] = int(self.swing_v)
         frame_b[_B_SWING_H] = int(self.swing_h)
         frame_b[_B_SIGNATURE] = 1
-        checksum = _checksum(
-            mode=self.mode.value,
-            power=self.power,
-            temp=self.temperature,
-            swing_h=self.swing_h,
-        )
-        _set_field(frame_b, *_B_CHECKSUM, checksum)
+        _set_field(frame_b, *_B_CHECKSUM, _checksum(frame_a, frame_b))
 
         timings = _encode_frame(frame_a, leader=True)
         timings.append(-_FRAME_GAP)
@@ -246,10 +340,10 @@ class OnidaAcCommand(Command):
 
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
-        """Decode raw IR timings into an OnidaAcCommand.
+        """Decode raw IR timings into a GreeAcCommand.
 
         Expects block A followed by block B, as ``get_raw_timings`` emits them.
-        Returns an OnidaAcCommand if the timings match, or None otherwise.
+        Returns a GreeAcCommand if the timings match, or None otherwise.
         """
         # Block A: leader (2) + 35 bit pairs (70) + end mark (1).
         frame_a_len = 2 + 2 * _FRAME_A_BITS + 1
@@ -287,9 +381,18 @@ class OnidaAcCommand(Command):
         if frame_b[_B_SIGNATURE] != 1:
             return None
 
+        # The checksum is computed over the frames as sent, so over block B's latched
+        # horizontal bit rather than the effective swing state.
+        if _get_field(frame_b, *_B_CHECKSUM) != _checksum(frame_a, frame_b):
+            return None
+
+        # The mode, fan, fresh-air and timer fields are wider than the values the
+        # protocol defines.
         try:
-            mode = OnidaAcMode(_get_field(frame_a, *_A_MODE))
-            fan = OnidaAcFanSpeed(_get_field(frame_a, *_A_FAN))
+            mode = GreeAcMode(_get_field(frame_a, *_A_MODE))
+            fan = GreeAcFanSpeed(_get_field(frame_a, *_A_FAN))
+            fresh_air = GreeAcFreshAir(_get_field(frame_a, *_A_FRESH_AIR))
+            timer_hours = _unpack_timer(frame_a)
         except ValueError:
             return None
 
@@ -302,16 +405,9 @@ class OnidaAcCommand(Command):
         # swing is switched off, so block A's bit is what says whether anything is
         # actually swinging. Turning one axis off while both ran sends block A's bit
         # clear with the other axis still set in block B.
-        latched_swing_h = bool(frame_b[_B_SWING_H])
         swinging = bool(frame_a[_A_SWING])
         swing_v = swinging and bool(frame_b[_B_SWING_V])
-        swing_h = swinging and latched_swing_h
-
-        # The checksum is computed over block B's latched bit, not the effective state.
-        if _get_field(frame_b, *_B_CHECKSUM) != _checksum(
-            mode=mode.value, power=power, temp=temperature, swing_h=latched_swing_h
-        ):
-            return None
+        swing_h = swinging and bool(frame_b[_B_SWING_H])
 
         return cls(
             power=power,
@@ -323,4 +419,8 @@ class OnidaAcCommand(Command):
             turbo=bool(frame_a[_A_TURBO]),
             display=bool(frame_a[_A_DISPLAY]),
             blow=bool(frame_a[_A_BLOW]),
+            sleep=bool(frame_a[_A_SLEEP]),
+            timer_hours=timer_hours,
+            anion=bool(frame_a[_A_ANION]),
+            fresh_air=fresh_air,
         )

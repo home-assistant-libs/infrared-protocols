@@ -108,7 +108,8 @@ class ProntoCommand(Command):
             result = value - 20
         else:
             result = -value + 20
-        return round((result + time_base / 2) / time_base)
+        # Saturate to a valid word: glitches round below 1, long gaps exceed 0xFFFF.
+        return min(max(round((result + time_base / 2) / time_base), 1), 0xFFFF)
 
     @override
     def get_raw_timings(self) -> list[int]:

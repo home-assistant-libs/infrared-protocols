@@ -1,6 +1,6 @@
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.5
+    rev: v0.17.2
     hooks:
       - id: ruff-check
         args: [--fix]
@@ -9,7 +9,7 @@ repos:
         files: ^(infrared_protocols|tests)/
 
   - repo: https://github.com/DetachHead/basedpyright-prek-mirror
-    rev: 1.39.10
+    rev: 1.40.2
     hooks:
       - id: basedpyright
         files: ^(infrared_protocols|tests)/
@@ -17,6 +17,6 @@ repos:
           - pytest
 
   - repo: https://github.com/zizmorcore/zizmor-pre-commit
-    rev: v1.30.0
+    rev: v1.31.1
     hooks:
       - id: zizmor
