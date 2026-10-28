@@ -3,18 +3,22 @@
 from enum import IntEnum
 
 from ...commands import Command
-from ...commands.symphony import SymphonyCommand
+from ...commands.symphony import SymphonyCommand, SymphonyKey
 
 
 class SilverCrestFanCode(IntEnum):
     """Command codes for SilverCrest fans."""
 
-    POWER = 0x581
-    SPEED = 0x582
-    MODE = 0x584
-    TIMER = 0x588
-    OSC = 0x590
+    POWER = SymphonyKey.K1
+    SPEED = SymphonyKey.K2
+    MODE = SymphonyKey.K3
+    TIMER = SymphonyKey.K4
+    OSC = SymphonyKey.K5
 
     def to_command(self) -> Command:
         """Build Symphony command."""
-        return SymphonyCommand.from_code(self.value)
+        return SymphonyCommand(
+            custom_code=3,
+            control_word=self.value,
+            frame_head=2,
+        )
