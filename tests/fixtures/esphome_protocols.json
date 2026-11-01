@@ -1,5 +1,5 @@
 {
-  "source": "ESPHome 27aa91bb9d4fc270d535e0e9ace4ff4582a13cef",
+  "source": "ESPHome encoder output",
   "kind": "Synthetic encoder outputs, not hardware captures",
   "signals": [
     {
