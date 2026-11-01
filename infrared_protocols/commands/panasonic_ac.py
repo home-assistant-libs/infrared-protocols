@@ -6,12 +6,12 @@ preamble frame followed by a 19-byte payload frame) separated by an inter-frame
 gap, so this module builds the state bytes and delegates the physical-layer
 encoding to :class:`~infrared_protocols.commands.kaseikyo.KaseikyoCommand`.
 
-The encoder is intentionally generic rather than tied to one regional model: it
-exposes the full field set (power, mode, temperature, fan, two swing axes and
-nanoeX) so callers can drive whichever combination their unit supports.
+Without a model, the encoder retains the original regional frame layout. Named
+models use the 216-bit layouts documented by ESPHome's Panasonic IR component:
+https://github.com/esphome/esphome/tree/dev/esphome/components/panasonic_ir
 """
 
-from enum import Enum, IntEnum
+from enum import Enum, IntEnum, StrEnum
 
 from .kaseikyo import KaseikyoCommand
 
@@ -29,6 +29,18 @@ _FEATURE_BASE = 0x02
 _SHORT_FRAME_MARKER = 0x80
 
 
+class PanasonicAcModel(StrEnum):
+    """Panasonic 216-bit protocol variants; PKE includes the CS-NE9PKE."""
+
+    DKE = "DKE"
+    JKE = "JKE"
+    LKE = "LKE"
+    NKE = "NKE"
+    CKP = "CKP"
+    RKR = "RKR"
+    PKE = "PKE"
+
+
 class PanasonicAcMode(IntEnum):
     """Operation mode, stored in the high nibble of byte 13."""
 
@@ -36,6 +48,7 @@ class PanasonicAcMode(IntEnum):
     DRY = 0x2
     COOL = 0x3
     HEAT = 0x4
+    FAN_ONLY = 0x6
 
 
 class PanasonicAcFanSpeed(IntEnum):
@@ -112,49 +125,125 @@ class PanasonicAcCommand(KaseikyoCommand):
         *,
         mode: PanasonicAcMode,
         temperature: float,
+        model: PanasonicAcModel | None = None,
         fan: PanasonicAcFanSpeed = PanasonicAcFanSpeed.AUTO,
-        power: bool = True,
+        power: bool | None = None,
+        power_toggle: bool | None = None,
         swing_axis1: PanasonicAcSwingAxis1 = PanasonicAcSwingAxis1.AUTO,
-        swing_axis2: PanasonicAcSwingAxis2 = PanasonicAcSwingAxis2.AUTO,
+        swing_axis2: PanasonicAcSwingAxis2 | None = None,
         nanoex: bool = False,
-        modulation: int = 38000,
+        frost_protection: bool = False,
+        modulation: int | None = None,
     ) -> None:
         """Build a full Panasonic A/C state command.
 
-        ``temperature`` is in degrees Celsius and is stored as ``round(°C × 2)``
-        in byte 14, preserving the protocol's 0.5 °C step. It must be within
-        :data:`MIN_TEMP`..:data:`MAX_TEMP`.
+        ``temperature`` must be 16..30 °C. Named models use whole degrees;
+        omitting ``model`` preserves the original half-degree encoding.
+
+        ``power`` defaults to on. CKP instead requires ``power_toggle``: True
+        toggles power, False leaves it unchanged. The caller tracks CKP state.
+
+        ``frost_protection`` requires a named model and HEAT mode, and sends
+        10 °C with maximum fan and automatic vane position. Fan-only sends
+        27 °C. Neither changes the caller's remembered temperature set point.
+
+        Named models default to 36.7 kHz with 432 us bit marks. Only DKE and RKR
+        expose axis 2; their default is middle. nanoeX belongs to the original
+        layout and is not supported for named models.
         """
         if not MIN_TEMP <= temperature <= MAX_TEMP:
             raise ValueError(
                 f"temperature {temperature} out of range {MIN_TEMP}..{MAX_TEMP}"
             )
 
+        if model is not None and temperature % 1:
+            raise ValueError("temperature must be a whole degree for named models")
+        if model == PanasonicAcModel.CKP:
+            if power is not None or power_toggle is None:
+                raise ValueError("CKP requires power_toggle instead of power")
+            power_bit = power_toggle
+        else:
+            if power_toggle is not None:
+                raise ValueError("power_toggle is only supported for CKP")
+            power_bit = True if power is None else power
+
+        if frost_protection:
+            if model is None or mode != PanasonicAcMode.HEAT:
+                raise ValueError(
+                    "frost_protection requires a named model and HEAT mode"
+                )
+            temperature = 10
+            fan = PanasonicAcFanSpeed.HIGH
+            swing_axis1 = PanasonicAcSwingAxis1.AUTO
+        elif mode == PanasonicAcMode.FAN_ONLY:
+            temperature = 27
+
+        axis2: int = PanasonicAcSwingAxis2.AUTO if swing_axis2 is None else swing_axis2
+        mode_flags = 0
+        byte21 = 0
+        byte23 = 0x81
+        byte25 = _FEATURE_BASE | (_NANOEX_MASK if nanoex else 0x00)
+        if model is not None:
+            if nanoex:
+                raise ValueError("nanoex is not supported for named models")
+            if model in (PanasonicAcModel.DKE, PanasonicAcModel.RKR):
+                axis2 = (
+                    PanasonicAcSwingAxis2.MIDDLE if swing_axis2 is None else swing_axis2
+                )
+            else:
+                if swing_axis2 is not None:
+                    raise ValueError(f"swing_axis2 is not supported for {model}")
+                axis2 = (
+                    0x06
+                    if model in (PanasonicAcModel.LKE, PanasonicAcModel.NKE)
+                    else 0x00
+                )
+            if model == PanasonicAcModel.LKE:
+                mode_flags = 0x02
+            elif model in (PanasonicAcModel.RKR, PanasonicAcModel.PKE):
+                mode_flags = 0x08
+            if model == PanasonicAcModel.CKP:
+                byte21 = 0x10
+            if model in (PanasonicAcModel.DKE, PanasonicAcModel.CKP):
+                byte23 = 0x01
+            elif model == PanasonicAcModel.RKR:
+                byte23 = 0x89
+            byte25 = 0x06 if model == PanasonicAcModel.DKE else 0x00
+
         state = [
             *_FRAME1,
             *_FRAME2_MAGIC,
             0x00,
-            (mode << 4) | (0x01 if power else 0x00),
+            (mode << 4) | mode_flags | int(power_bit),
             round(temperature * 2),
             0x80,
             (fan << 4) | swing_axis1,
-            swing_axis2,
+            axis2,
             0x00,
             0x0E,
             0xE0,
+            byte21,
             0x00,
+            byte23,
             0x00,
-            0x81,
-            0x00,
-            _FEATURE_BASE | (_NANOEX_MASK if nanoex else 0x00),
+            byte25,
         ]
         state.append(_checksum(state, 8, 25))
 
         super().__init__(
             address=PANASONIC_AC_ADDRESS,
             data=_to_frames(state),
-            modulation=modulation,
+            modulation=(
+                modulation
+                if modulation is not None
+                else 38000
+                if model is None
+                else 36700
+            ),
         )
+        if model is not None:
+            # The recorded pulse durations are independent of carrier frequency.
+            self.base_unit = 432
 
 
 class PanasonicAcToggleCommand(KaseikyoCommand):

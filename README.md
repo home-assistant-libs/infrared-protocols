@@ -14,3 +14,49 @@ library. An integration may use a separate, dedicated library instead, as long
 as that library depends on this one for the underlying types. This library's
 primary role is to provide the shared, foundational types that the Home
 Assistant ecosystem can build on.
+
+## Panasonic heat pumps
+
+`PanasonicAcCommand` supports the DKE, JKE, LKE, NKE, CKP, RKR, and PKE
+216-bit protocol variants. An HA climate integration can build a complete
+state command and send it through an infrared entity:
+
+```python
+from infrared_protocols.commands.panasonic_ac import (
+    PanasonicAcCommand,
+    PanasonicAcMode,
+    PanasonicAcModel,
+)
+
+command = PanasonicAcCommand(
+    model=PanasonicAcModel.PKE,
+    mode=PanasonicAcMode.HEAT,
+    temperature=21,
+    power=True,
+)
+timings = command.get_raw_timings()
+carrier_frequency = command.modulation
+```
+
+Named models support whole-degree set points from 16 to 30 °C, fan-only mode,
+five fan speeds plus auto, and five fixed vertical vane positions plus auto.
+The auto vane setting lets the unit choose its position; it does not guarantee
+continuous swinging. `frost_protection=True` with heat mode sends 10 °C,
+maximum fan, and automatic vane positioning while the integration retains the
+ordinary set point.
+
+CKP uses a power toggle. Pass `power_toggle=True` to change power or `False`
+to leave it unchanged, instead of `power`. The integration must track the
+current power state. DKE and RKR accept `swing_axis2`; the other named models
+use a fixed value for that field.
+
+Omitting `model` preserves the original regional encoding, including half-degree
+set points and nanoeX. The named models do not support nanoeX or the existing
+regional Quiet/Powerful toggle commands. This API generates commands only;
+receiving the physical remote and updating HA state requires a decoder.
+
+The model layouts and PKE recording fixtures come from
+[ESPHome's Panasonic IR component](https://github.com/esphome/esphome/pull/21631).
+PKE frames are checked against recordings from a CS-NE9PKE remote. The other
+variants are checked against the ESPHome encoding; hardware validation is still
+needed for an integration using this library.
