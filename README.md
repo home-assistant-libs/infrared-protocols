@@ -52,11 +52,19 @@ use a fixed value for that field.
 
 Omitting `model` preserves the original regional encoding, including half-degree
 set points and nanoeX. The named models do not support nanoeX or the existing
-regional Quiet/Powerful toggle commands. This API generates commands only;
-receiving the physical remote and updating HA state requires a decoder.
+regional Quiet/Powerful toggle commands. `from_raw_timings()` decodes complete
+state packets; pass the same `model` to interpret a named remote variant.
+`PanasonicAcToggleCommand.from_raw_timings()` handles regional toggle packets.
 
 The model layouts and PKE recording fixtures come from
 [ESPHome's Panasonic IR component](https://github.com/esphome/esphome/pull/21631).
 PKE frames are checked against recordings from a CS-NE9PKE remote. The other
 variants are checked against the ESPHome encoding; hardware validation is still
 needed for an integration using this library.
+
+## Additional infrared protocols
+
+The ESPHome coverage expansion adds native IR transports and climate command
+families while retaining this package's MIT license. See the
+[coverage and API guide](docs/infrared-coverage.md) for the device-category tables,
+model variants, new decoders, named button families and validation limits.

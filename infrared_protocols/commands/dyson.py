@@ -1,8 +1,9 @@
 """Commands for Dyson infrared protocol."""
 
-from typing import ClassVar, override
+from typing import ClassVar, Self, override
 
 from . import Command
+from ._timing import PulseTiming, Reader, number
 
 
 class _DysonFanCommand(Command):
@@ -63,6 +64,19 @@ class _DysonFanCommand(Command):
 
         return timings
 
+    @classmethod
+    def from_raw_timings(cls, timings: list[int]) -> Self | None:
+        """Decode this fan family, checking its fixed seven-bit preamble."""
+        reader = Reader(timings)
+        try:
+            reader.expect(2440, -870)
+            value = number(reader.read_bits(PulseTiming(850, 850, 1660), 15))
+            reader.expect(850)
+            reader.end()
+            return cls(code=value & 255) if value >> 8 == cls._PREAMBLE else None
+        except ValueError:
+            return None
+
 
 class DysonCoolCommand(_DysonFanCommand):
     """Dyson Cool infrared command."""
@@ -74,3 +88,39 @@ class DysonAm09Command(_DysonFanCommand):
     """Dyson AM09 (Hot+Cool) infrared command."""
 
     _PREAMBLE = 0b0011000
+
+
+class DysonCommand(Command):
+    """Generic 13-bit button code plus a two-bit rolling press index."""
+
+    def __init__(self, *, code: int, index: int = 0) -> None:
+        """Build a generic Dyson command at 36 kHz."""
+        if not 0 <= code < 8192 or not 0 <= index < 4:
+            raise ValueError("Dyson code must fit 13 bits and index two bits")
+        super().__init__(modulation=36000)
+        self.code, self.index = code, index
+
+    @override
+    def get_raw_timings(self) -> list[int]:
+        """Encode the code and rolling index most-significant bit first."""
+        from ._timing import bits
+
+        return [
+            2280,
+            -720,
+            *PulseTiming(780, 720, 1500).encode(bits(self.code << 2 | self.index, 15)),
+            780,
+        ]
+
+    @classmethod
+    def from_raw_timings(cls, timings: list[int]) -> Self | None:
+        """Decode the complete code and rolling index."""
+        reader = Reader(timings)
+        try:
+            reader.expect(2280, -720)
+            value = number(reader.read_bits(PulseTiming(780, 720, 1500), 15))
+            reader.expect(780)
+            reader.end()
+            return cls(code=value >> 2, index=value & 3)
+        except ValueError:
+            return None

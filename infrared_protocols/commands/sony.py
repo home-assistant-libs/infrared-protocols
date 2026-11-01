@@ -1,8 +1,9 @@
 """SONY SIRC IR command."""
 
-from typing import override
+from typing import Self, override
 
 from . import Command
+from ._timing import Reader, close, number
 
 
 class SonyCommand(Command):
@@ -69,3 +70,33 @@ class SonyCommand(Command):
         frame.append(-trailer_low)
 
         return frame
+
+    @classmethod
+    def from_raw_timings(cls, timings: list[int]) -> Self | None:
+        """Decode 12-, 15- or 20-bit SIRC with an optional trailing idle space."""
+        for count in (12, 15, 20):
+            reader = Reader(timings)
+            try:
+                reader.expect(2400)
+                values: list[int] = []
+                for _ in range(count):
+                    reader.expect(-600)
+                    if reader.pos >= len(timings):
+                        raise ValueError("missing SIRC mark")
+                    mark = timings[reader.pos]
+                    if close(mark, 600):
+                        values.append(0)
+                    elif close(mark, 1200):
+                        values.append(1)
+                    else:
+                        raise ValueError("invalid SIRC mark")
+                    reader.pos += 1
+                reader.end(min_gap=2000)
+                return cls(
+                    address=number(values[7:], lsb=True),
+                    address_bits=count - 7,
+                    command=number(values[:7], lsb=True),
+                )
+            except ValueError:
+                continue
+        return None

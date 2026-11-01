@@ -1,9 +1,10 @@
 """Kaseikyo format IR command."""
 
 from collections.abc import Callable
-from typing import override
+from typing import Self, override
 
 from . import Command
+from ._timing import PulseTiming, Reader, close, pack_bytes
 
 
 class KaseikyoCommand(Command):
@@ -106,3 +107,69 @@ class KaseikyoCommand(Command):
             gap = repeat_frame_gap  # Use standard frame gap for subsequent repeats
 
         return timings
+
+    @classmethod
+    def from_raw_timings(cls, timings: list[int]) -> Self | None:
+        """Decode address/parity, complete byte frames and trailing repeat codes.
+
+        Application checksums remain in data for the device-specific decoder.
+        Carrier frequency cannot be recovered from demodulated pulse timings.
+        """
+        if not timings or not 2800 <= timings[0] <= 4000:
+            return None
+        unit = round(timings[0] / 8)
+        reader = Reader(timings)
+        address: int | None = None
+        payloads: list[bytes] = []
+        repeats = 0
+        try:
+            while reader.pos < len(timings):
+                if payloads:
+                    if timings[reader.pos] > -8000:
+                        raise ValueError("missing Kaseikyo frame gap")
+                    reader.pos += 1
+                    if reader.pos == len(timings):
+                        break
+                reader.expect(8 * unit)
+                if reader.pos < len(timings) and close(timings[reader.pos], -8 * unit):
+                    reader.expect(-8 * unit, unit)
+                    if not payloads:
+                        raise ValueError("standalone repeat has no command")
+                    repeats += 1
+                    continue
+                if repeats:
+                    raise ValueError("data after a Kaseikyo repeat")
+                reader.expect(-4 * unit)
+                values: list[int] = []
+                while (
+                    reader.pos + 1 < len(timings)
+                    and timings[reader.pos + 1] > -5 * unit
+                ):
+                    values.extend(
+                        reader.read_bits(PulseTiming(unit, unit, 3 * unit), 1)
+                    )
+                reader.expect(unit)
+                data = pack_bytes(values)
+                if len(data) < 3:
+                    raise ValueError("Kaseikyo needs address and parity bytes")
+                frame_address = data[0] | data[1] << 8
+                parity = data[0] ^ data[1] ^ data[0] >> 4 ^ data[1] >> 4
+                if (
+                    data[2] & 15 != parity & 15
+                    or address is not None
+                    and frame_address != address
+                ):
+                    raise ValueError("invalid Kaseikyo address or parity")
+                address = frame_address
+                payloads.append(data[2:])
+            if address is None or not payloads:
+                return None
+            result = cls(
+                address=address,
+                data=payloads[0] if len(payloads) == 1 else payloads,
+                repeat_count=repeats,
+            )
+            result.base_unit = timings[0] / 8
+            return result
+        except ValueError:
+            return None

@@ -1,8 +1,10 @@
 """Pioneer IR command."""
 
-from typing import override
+from typing import Self, override
 
 from . import Command
+from ._decode import frames
+from ._timing import PulseTiming, Reader, pack_bytes
 from .nec import NECCommand
 
 # Pioneer carrier frequency in Hz. The frame is NEC-shaped, but Pioneer
@@ -99,3 +101,37 @@ class PioneerCommand(Command):
         period differ, and both are handled by the caller.
         """
         return NECCommand(address=address, command=command).get_raw_timings()
+
+    @classmethod
+    def from_raw_timings(cls, timings: list[int]) -> Self | None:
+        """Decode one-frame or two-part Pioneer commands and matching repeats."""
+        messages: list[tuple[int, int]] = []
+        try:
+            for frame in frames(timings, period=PIONEER_FRAME_PERIOD_US):
+                reader = Reader(frame)
+                reader.expect(9000, -4500)
+                data = pack_bytes(reader.read_bits(PulseTiming(560, 560, 1690), 32))
+                reader.expect(560)
+                reader.end()
+                if data[0] ^ data[1] != 255 or data[2] ^ data[3] != 255:
+                    return None
+                messages.append((data[0], data[2]))
+            first = messages[0]
+            if all(message == first for message in messages):
+                return cls(
+                    address=first[0], command=first[1], repeat_count=len(messages) - 1
+                )
+            if len(messages) % 2 or any(
+                message != messages[i % 2] for i, message in enumerate(messages)
+            ):
+                return None
+            second = messages[1]
+            return cls(
+                address=second[0],
+                command=second[1],
+                preamble_address=first[0],
+                preamble_command=first[1],
+                repeat_count=len(messages) // 2 - 1,
+            )
+        except ValueError:
+            return None

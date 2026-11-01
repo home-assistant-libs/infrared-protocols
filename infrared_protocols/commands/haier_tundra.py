@@ -1,0 +1,134 @@
+"""Haier Tundra 112-bit state and button commands."""
+
+from enum import IntEnum
+
+from ._climate import ClimatePacket
+from ._timing import PulseTiming
+from .climate import (
+    ClimateFan,
+    ClimateMode,
+    ClimateState,
+    decoded,
+    selection,
+    temperature_value,
+)
+
+_MODES = {
+    ClimateMode.AUTO: 0,
+    ClimateMode.COOL: 1,
+    ClimateMode.DRY: 2,
+    ClimateMode.HEAT: 4,
+    ClimateMode.FAN_ONLY: 6,
+}
+_FANS = {
+    ClimateFan.AUTO: 5,
+    ClimateFan.HIGH: 1,
+    ClimateFan.MEDIUM: 2,
+    ClimateFan.LOW: 3,
+}
+
+
+class HaierUnit(IntEnum):
+    """Unit identifiers for paired installations."""
+
+    A = 0xA6
+    B = 0x59
+
+
+class HaierButton(IntEnum):
+    """Button recorded in the full state packet."""
+
+    TEMPERATURE_UP = 0
+    TEMPERATURE_DOWN = 1
+    SWING_V = 2
+    SWING_H = 3
+    FAN = 4
+    POWER = 5
+    MODE = 6
+    HEALTH = 7
+    TURBO_QUIET = 8
+    SLEEP = 11
+    TIMER = 16
+    LIGHT_TOGGLE = 21
+    SELF_CLEAN = 25
+
+
+class HaierTundraCommand(ClimatePacket):
+    """Tundra state; LIGHT_TOGGLE changes the light without reporting its state."""
+
+    HEADER = (3100, -3100, 3100, -4400)
+    TIMING = PulseTiming(540, 580, 1650)
+    LENGTH = 14
+    LSB = False
+
+    def __init__(
+        self,
+        *,
+        mode: ClimateMode,
+        temperature: float,
+        power: bool = True,
+        fan: ClimateFan = ClimateFan.AUTO,
+        swing_v: bool = False,
+        swing_h: bool = False,
+        unit: HaierUnit = HaierUnit.A,
+        button: HaierButton = HaierButton.POWER,
+        health: bool = False,
+        quiet: bool = False,
+        turbo: bool = False,
+    ) -> None:
+        """Build a state for 16..30 °C with optional health, quiet or turbo."""
+        temp = temperature_value(temperature, 16, 30)
+        if (
+            quiet
+            and turbo
+            or (quiet or turbo)
+            and (not power or mode not in (ClimateMode.COOL, ClimateMode.HEAT))
+        ):
+            raise ValueError(
+                "quiet and turbo are exclusive and require cooling or heating"
+            )
+        vertical = 12 if swing_v else 10 if mode == ClimateMode.HEAT else 2
+        data = bytes(
+            [
+                HaierUnit(unit),
+                temp << 4 | (vertical if power else 0),
+                0xE0 if swing_h else 0,
+                2 if health else 0,
+                64 if power else 0,
+                selection(fan, _FANS) << 5,
+                (128 if quiet else 0) | (64 if turbo else 0),
+                selection(mode, _MODES) << 5 if power else 0,
+                0,
+                0,
+                16 if button == HaierButton.SELF_CLEAN else 0,
+                0,
+                HaierButton(button),
+            ]
+        )
+        super().__init__(data=data + bytes([self.checksum(data)]))
+
+    @property
+    def button(self) -> HaierButton:
+        """Return the transmitted button."""
+        return HaierButton(self.data[12])
+
+    @property
+    def unit(self) -> HaierUnit:
+        """Return the unit identifier."""
+        return HaierUnit(self.data[0])
+
+    @classmethod
+    def parse(cls, data: bytes) -> ClimateState:
+        """Read common state after checksum and identifier validation."""
+        super().parse(data)
+        HaierUnit(data[0])
+        temperature = (data[1] >> 4) + 16
+        temperature_value(temperature, 16, 30)
+        return ClimateState(
+            power=bool(data[4] & 64),
+            mode=decoded(data[7] >> 5, _MODES),
+            temperature=temperature,
+            fan=decoded(data[5] >> 5, _FANS),
+            swing_v=data[1] & 15 == 12,
+            swing_h=data[2] >> 5 == 7,
+        )

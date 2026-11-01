@@ -1,0 +1,356 @@
+"""Toshiba variable-length climate packets and native remote variants."""
+
+from enum import IntEnum, StrEnum
+from functools import reduce
+from operator import xor
+from typing import ClassVar, Self, override
+
+from . import Command
+from ._timing import PulseTiming, Reader, byte_bits, pack_bytes
+from .climate import (
+    ClimateFan,
+    ClimateMode,
+    ClimateState,
+    decoded,
+    selection,
+    temperature_value,
+)
+
+_MODES = {
+    ClimateMode.AUTO: 0,
+    ClimateMode.COOL: 1,
+    ClimateMode.DRY: 2,
+    ClimateMode.HEAT: 3,
+    ClimateMode.FAN_ONLY: 4,
+}
+_FANS = {
+    ClimateFan.AUTO: 0,
+    ClimateFan.QUIET: 1,
+    ClimateFan.LOW: 2,
+    ClimateFan.MEDIUM: 4,
+    ClimateFan.HIGH: 6,
+}
+
+
+class ToshibaMotion(IntEnum):
+    """Short WH-TA15PE actions; swing is a toggle."""
+
+    VANE_STEP = 0
+    SWING_TOGGLE = 4
+
+
+class ToshibaPreset(StrEnum):
+    """WH-TA15PE operating presets."""
+
+    NONE = "none"
+    BOOST = "boost"
+    ECO = "eco"
+    FIREPLACE_1 = "fireplace_1"
+    FIREPLACE_2 = "fireplace_2"
+    FROST_PROTECTION = "frost_protection"
+    HADA_CARE = "hada_care"
+    SLEEP_1H = "sleep_1h"
+    SLEEP_3H = "sleep_3h"
+    SLEEP_5H = "sleep_5h"
+    SLEEP_9H = "sleep_9h"
+
+
+class ToshibaPowerSelection(IntEnum):
+    """Compressor power selection, distinct from the on/off state."""
+
+    PERCENT_100 = 0
+    PERCENT_75 = 1
+    PERCENT_50 = 2
+    SILENT_1 = 3
+    SILENT_2 = 4
+
+
+class ToshibaSeiyaSwing(IntEnum):
+    """Momentary swing requests; UNCHANGED carries no new swing state."""
+
+    BOTH = 1
+    OMNI = 2
+    VERTICAL = 8
+    HORIZONTAL = 9
+    UNCHANGED = 0x17
+
+
+def _packet(payload: bytes) -> bytes:
+    length = len(payload) - 1
+    return (
+        bytes([0xF2, 0x0D, length, length ^ 255])
+        + payload
+        + bytes([reduce(xor, payload, 0)])
+    )
+
+
+class ToshibaCommand(Command):
+    """Toshiba packets retain all bytes; climate() builds a generic state."""
+
+    HEADER: ClassVar[tuple[int, ...]] = (4380, -4370)
+    TIMING: ClassVar[PulseTiming] = PulseTiming(540, 540, 1620)
+    GAP: ClassVar[int] = 5480
+    FINAL_GAP: ClassVar[bool] = True
+    LENGTHS: ClassVar[tuple[int, ...]] = (9,)
+
+    def __init__(self, *, data: bytes) -> None:
+        """Validate a complete packet, including length complement and checksum."""
+        if (
+            len(data) not in self.LENGTHS
+            or data[:2] != b"\xf2\x0d"
+            or data[2] != len(data) - 6
+            or data[2] ^ data[3] != 255
+            or reduce(xor, data[4:], 0)
+        ):
+            raise ValueError("invalid Toshiba packet header, size or checksum")
+        super().__init__(modulation=38000)
+        self.data = bytes(data)
+        _ = self.state
+
+    @classmethod
+    def climate(
+        cls,
+        *,
+        mode: ClimateMode,
+        temperature: int,
+        power: bool = True,
+        fan: ClimateFan = ClimateFan.AUTO,
+    ) -> Self:
+        """Build a generic whole-degree 17..30 °C state."""
+        temp = temperature_value(temperature, 17, 30)
+        payload = bytes(
+            [
+                1,
+                temp << 4,
+                (selection(mode, _MODES) if power else 7) | selection(fan, _FANS) << 5,
+                0,
+            ]
+        )
+        return cls(data=_packet(payload))
+
+    @property
+    def state(self) -> ClimateState:
+        """Decode basic mode, fan and temperature; motion packets carry no state."""
+        if len(self.data) == 7:
+            if self.data[4] != 0x21:
+                raise ValueError("unknown Toshiba motion format")
+            ToshibaMotion(self.data[5])
+            return ClimateState()
+        mode_code = self.data[6] & 15
+        power = mode_code != 7
+        mode = decoded(mode_code, _MODES) if power else None
+        frost = len(self.data) == 10 and self.data[4] == 9 and self.data[8] == 4
+        temp = (self.data[5] >> 4) + (1 if frost else 17)
+        temperature_value(temp, 5 if frost else 17, 13 if frost else 30)
+        fan_code = self.data[6] >> 5
+        if fan_code > 6 or self.data[6] & 16 or self.data[5] & 15:
+            raise ValueError("invalid Toshiba fan or temperature field")
+        fan = {3: ClimateFan.LOW, 5: ClimateFan.MEDIUM}.get(fan_code)
+        if fan is None:
+            fan = decoded(fan_code, _FANS)
+        return ClimateState(power=power, mode=mode, temperature=temp, fan=fan)
+
+    @override
+    def get_raw_timings(self) -> list[int]:
+        """Transmit the protocol's two identical packet copies."""
+        frame = [
+            *self.HEADER,
+            *self.TIMING.encode(byte_bits(self.data, lsb=False)),
+            self.TIMING.mark,
+        ]
+        return frame + [-self.GAP] + frame + ([-self.GAP] if self.FINAL_GAP else [])
+
+    @classmethod
+    def _read(cls, reader: Reader) -> bytes:
+        reader.expect(*cls.HEADER)
+        header = pack_bytes(reader.read_bits(cls.TIMING, 32), lsb=False)
+        length = header[2] + 6
+        if length not in cls.LENGTHS or header[2] ^ header[3] != 255:
+            raise ValueError("invalid Toshiba length field")
+        data = header + pack_bytes(
+            reader.read_bits(cls.TIMING, (length - 4) * 8), lsb=False
+        )
+        reader.expect(cls.TIMING.mark)
+        return data
+
+    @classmethod
+    def from_raw_timings(cls, timings: list[int]) -> Self | None:
+        """Decode one complete packet or two identical protocol copies."""
+        reader = Reader(timings)
+        try:
+            data = cls._read(reader)
+            if len(timings) - reader.pos > 1:
+                reader.expect(-cls.GAP)
+                if cls._read(reader) != data:
+                    raise ValueError("Toshiba copies differ")
+            reader.end()
+            return cls(data=data)
+        except ValueError:
+            return None
+
+
+class ToshibaRasB10n3kv2Command(ToshibaCommand):
+    """RAS-B13 remote family uses distinct timings for the generic state."""
+
+    HEADER = (4400, -4300)
+    TIMING = PulseTiming(580, 490, 1600)
+    GAP = 7400
+
+
+class ToshibaSeiyaCommand(ToshibaCommand):
+    """Seiya 88-bit state with a momentary swing request."""
+
+    HEADER = (4630, -4450)
+    TIMING = PulseTiming(625, 490, 1570)
+    GAP = 5830
+    FINAL_GAP = False
+    LENGTHS = (11,)
+
+    @classmethod
+    def climate(
+        cls,
+        *,
+        mode: ClimateMode,
+        temperature: int,
+        power: bool = True,
+        fan: ClimateFan = ClimateFan.AUTO,
+        swing: ToshibaSeiyaSwing = ToshibaSeiyaSwing.UNCHANGED,
+    ) -> Self:
+        """Build a Seiya state; send swing requests only when a change is intended."""
+        temp = temperature_value(temperature, 17, 30)
+        code = selection(mode, _MODES) | selection(fan, _FANS) << 5 if power else 7
+        return cls(
+            data=_packet(bytes([1, temp << 4, code, 0, 0x21, ToshibaSeiyaSwing(swing)]))
+        )
+
+    @property
+    def state(self) -> ClimateState:
+        """Validate Seiya auxiliary fields before extracting common settings."""
+        if self.data[4] != 1 or self.data[7:9] != b"\x00\x21":
+            raise ValueError("invalid Seiya feature fields")
+        ToshibaSeiyaSwing(self.data[9])
+        return super().state
+
+    @property
+    def swing(self) -> ToshibaSeiyaSwing:
+        """Return the momentary swing request."""
+        return ToshibaSeiyaSwing(self.data[9])
+
+
+class ToshibaRas25j2kvsgNdCommand(ToshibaCommand):
+    """WH-TA15PE packets with presets, power selection and separate motion actions."""
+
+    LENGTHS = (7, 9, 10, 11, 12)
+
+    @property
+    def state(self) -> ClimateState:
+        """Validate the selected extended packet layout and decode basic state."""
+        data = self.data
+        if len(data) == 7:
+            return super().state
+        if data[7] & 0x3C or data[7] >> 6 == 3 or data[7] & 3 == 1:
+            raise ValueError("invalid Toshiba power or fireplace field")
+        if len(data) == 9:
+            valid = data[4] == 1
+        elif len(data) == 10:
+            valid = data[4] == 9 and data[8] in (1, 2, 3, 4, 10)
+        elif len(data) == 11:
+            valid = data[4] == 1 and data[8:10] == b"\x21\x17"
+        else:
+            valid = (
+                data[4] == 11
+                and data[8] in (4, 12, 20, 36)
+                and data[9:11] == b"\x7f\x03"
+                and data[6] >> 5 == 0
+            )
+        if not valid:
+            raise ValueError("invalid Toshiba preset packet")
+        if len(data) != 9 and data[7] & 3:
+            raise ValueError("fireplace cannot be combined with another preset")
+        state = super().state
+        if (data[7] & 3 or len(data) == 10 and data[8] == 4) and (
+            state.mode != ClimateMode.HEAT or not state.power
+        ):
+            raise ValueError("heating preset outside heat mode")
+        return state
+
+    @classmethod
+    def climate(
+        cls,
+        *,
+        mode: ClimateMode,
+        temperature: int,
+        power: bool = True,
+        fan: ClimateFan = ClimateFan.AUTO,
+        preset: ToshibaPreset = ToshibaPreset.NONE,
+        power_selection: ToshibaPowerSelection = ToshibaPowerSelection.PERCENT_100,
+        intermediate_fan: int | None = None,
+    ) -> Self:
+        """Build a state; intermediate_fan accepts native Low+ (3) or Medium+ (5).
+
+        Frost protection accepts 5..13 °C in heat mode. Fireplace presets also
+        require heat. Sleep uses automatic fan; silent power excludes presets.
+        """
+        preset, power_selection = (
+            ToshibaPreset(preset),
+            ToshibaPowerSelection(power_selection),
+        )
+        frost = preset == ToshibaPreset.FROST_PROTECTION
+        temperature_value(temperature, 5 if frost else 17, 13 if frost else 30)
+        if preset in (
+            ToshibaPreset.FROST_PROTECTION,
+            ToshibaPreset.FIREPLACE_1,
+            ToshibaPreset.FIREPLACE_2,
+        ) and (mode != ClimateMode.HEAT or not power):
+            raise ValueError("heating presets require heat mode and power on")
+        if power_selection >= 3 and preset != ToshibaPreset.NONE:
+            raise ValueError("silent power selection cannot be combined with a preset")
+        fan_code = selection(fan, _FANS)
+        if intermediate_fan is not None:
+            if intermediate_fan not in (3, 5):
+                raise ValueError("intermediate_fan must be 3 or 5")
+            fan_code = intermediate_fan
+        sleep_hours = {
+            ToshibaPreset.SLEEP_1H: 1,
+            ToshibaPreset.SLEEP_3H: 3,
+            ToshibaPreset.SLEEP_5H: 5,
+            ToshibaPreset.SLEEP_9H: 9,
+        }.get(preset)
+        if sleep_hours is not None and fan_code:
+            raise ValueError("sleep presets require automatic fan")
+        flags = int(power_selection) << 6 if power_selection < 3 else 0
+        flags |= {ToshibaPreset.FIREPLACE_1: 2, ToshibaPreset.FIREPLACE_2: 3}.get(
+            preset, 0
+        )
+        payload = bytearray(
+            [
+                1,
+                (temperature - (1 if frost else 17)) << 4,
+                (selection(mode, _MODES) if power else 7) | fan_code << 5,
+                flags,
+            ]
+        )
+        if sleep_hours is not None:
+            payload[0] = 11
+            payload.extend((sleep_hours << 2, 0x7F, 3))
+        elif preset == ToshibaPreset.HADA_CARE:
+            payload.extend((0x21, 0x17))
+        elif (
+            preset
+            in (ToshibaPreset.BOOST, ToshibaPreset.ECO, ToshibaPreset.FROST_PROTECTION)
+            or power_selection >= 3
+        ):
+            payload[0] = 9
+            payload.append(
+                {
+                    ToshibaPreset.BOOST: 1,
+                    ToshibaPreset.ECO: 3,
+                    ToshibaPreset.FROST_PROTECTION: 4,
+                }.get(preset, 2 if power_selection == 3 else 10)
+            )
+        return cls(data=_packet(bytes(payload)))
+
+    @classmethod
+    def motion(cls, *, action: ToshibaMotion) -> Self:
+        """Build a separate vane-step or swing-toggle command."""
+        return cls(data=_packet(bytes([0x21, ToshibaMotion(action)])))

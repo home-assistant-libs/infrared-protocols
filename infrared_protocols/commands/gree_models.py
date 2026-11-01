@@ -1,0 +1,264 @@
+"""Gree remote-model variants, alongside the original GreeAcCommand API."""
+
+from dataclasses import dataclass
+from enum import IntFlag, StrEnum
+from typing import Self, override
+
+from . import Command
+from ._timing import PulseTiming, Reader, byte_bits, pack_bytes
+from .climate import (
+    ClimateFan,
+    ClimateMode,
+    ClimateState,
+    decoded,
+    selection,
+    temperature_value,
+)
+
+
+class GreeModel(StrEnum):
+    """Named remote layouts; a capture alone does not identify the model."""
+
+    GENERIC = "generic"
+    YAN = "yan"
+    YAA = "yaa"
+    YAC = "yac"
+    YAC1FB9 = "yac1fb9"
+    YB1FA = "yb1fa"
+    YX1FF = "yx1ff"
+    YAG = "yag"
+    YAW1F = "yaw1f"
+
+
+class GreeFeature(IntFlag):
+    """Independent features where supported by the remote model."""
+
+    NONE = 0
+    TURBO = 16
+    LIGHT = 32
+    HEALTH = 64
+    XFAN = 128
+
+
+@dataclass(frozen=True)
+class _Layout:
+    features: int
+    byte2: int = 0
+    byte3: int = 0x50
+    byte5: int = 0x20
+    byte6: int = 0
+    header_space: int = 4000
+    gap: int = 19000
+
+
+_LAYOUTS = {
+    GreeModel.GENERIC: _Layout(0, byte3=0),
+    GreeModel.YAN: _Layout(0xF0),
+    GreeModel.YAA: _Layout(0xF0, byte6=32),
+    GreeModel.YAC: _Layout(0xF0, byte6=32),
+    GreeModel.YAC1FB9: _Layout(0xF0, byte6=32, header_space=4500, gap=19980),
+    GreeModel.YB1FA: _Layout(0xB0),
+    GreeModel.YX1FF: _Layout(0x20),
+    GreeModel.YAG: _Layout(0, byte2=0x60, byte5=0x40),
+    GreeModel.YAW1F: _Layout(0, byte2=0x60, byte5=0x80, header_space=4500, gap=19980),
+}
+_MODES = {
+    ClimateMode.AUTO: 0,
+    ClimateMode.COOL: 1,
+    ClimateMode.DRY: 2,
+    ClimateMode.FAN_ONLY: 3,
+    ClimateMode.HEAT: 4,
+}
+_FANS = {
+    ClimateFan.AUTO: 0,
+    ClimateFan.LOW: 1,
+    ClimateFan.MEDIUM: 2,
+    ClimateFan.HIGH: 3,
+}
+_TIMING = PulseTiming(620, 540, 1600)
+_FOLLOWUP = bytes([0, 0, 0, 0xA0, 0, 0, 0, 0xA0])
+
+
+def _checksum(data: bytes | bytearray) -> int:
+    return (
+        (
+            10
+            + sum(value & 15 for value in data[:4])
+            + sum(value >> 4 for value in data[4:7])
+        )
+        & 15
+    ) << 4
+
+
+class GreeModelCommand(Command):
+    """Model-specific climate state with validated features and complete framing."""
+
+    def __init__(
+        self,
+        *,
+        model: GreeModel,
+        mode: ClimateMode,
+        temperature: float,
+        power: bool = True,
+        fan: ClimateFan = ClimateFan.AUTO,
+        swing_v: bool = False,
+        swing_h: bool = False,
+        features: GreeFeature | None = None,
+        sleep: bool = False,
+        fahrenheit: bool = False,
+    ) -> None:
+        """Build a 16..30 °C state; Fahrenheit display enables half-degree encoding.
+
+        YX1FF couples the swing axes. YAC, YAG and YAW1F expose both axes.
+        Feature defaults enable the display light where supported.
+        """
+        model = GreeModel(model)
+        layout = _LAYOUTS[model]
+        temperature_value(temperature, 16, 30, 0.5 if fahrenheit else 1)
+        both_axes = model in (GreeModel.YAC, GreeModel.YAG, GreeModel.YAW1F)
+        if swing_h and not both_axes and model != GreeModel.YX1FF:
+            raise ValueError("horizontal swing is unavailable on this model")
+        if model == GreeModel.GENERIC and (swing_v or swing_h):
+            raise ValueError("the generic transmitter has no swing field")
+        if model == GreeModel.YX1FF and swing_h != swing_v:
+            raise ValueError("YX1FF swing axes must be enabled together")
+        if sleep and model not in (GreeModel.YX1FF, GreeModel.YAC1FB9):
+            raise ValueError("sleep is unavailable on this model")
+        feature_bits = layout.features & 32 if features is None else int(features)
+        if feature_bits & ~layout.features:
+            raise ValueError("unsupported Gree feature for this model")
+        if model == GreeModel.YB1FA and feature_bits & GreeFeature.TURBO:
+            fan = ClimateFan.HIGH
+        fans = (
+            {
+                ClimateFan.AUTO: 0,
+                ClimateFan.QUIET: 1,
+                ClimateFan.LOW: 2,
+                ClimateFan.MEDIUM: 3,
+                ClimateFan.HIGH: 3,
+            }
+            if model == GreeModel.YX1FF
+            else _FANS
+        )
+        data = bytearray(
+            [
+                selection(fan, fans) << 4
+                | (selection(mode, _MODES) | 8 if power else 0),
+                int(temperature) - 16,
+                feature_bits | layout.byte2,
+                layout.byte3,
+                0,
+                layout.byte5,
+                layout.byte6,
+                0,
+            ]
+        )
+        if model in (GreeModel.YB1FA, GreeModel.YX1FF) and power:
+            data[2] |= 64
+        if model == GreeModel.YX1FF and fan == ClimateFan.HIGH:
+            data[2] |= 16
+        if both_axes:
+            data[4] = int(swing_v) | int(swing_h) << 4
+        elif model in (GreeModel.YAN, GreeModel.YB1FA):
+            data[4] = int(swing_v)
+        elif model == GreeModel.YX1FF:
+            data[4] = 0x11 if swing_v else 0
+        if model not in (GreeModel.GENERIC, GreeModel.YAN) and (
+            swing_v or (swing_h and model in (GreeModel.YAG, GreeModel.YAW1F))
+        ):
+            data[0] |= 64
+        data[0] |= 128 if sleep else 0
+        data[3] |= (8 if fahrenheit else 0) | (4 if temperature % 1 else 0)
+        data[7] = _checksum(data)
+        super().__init__(modulation=38000)
+        self.model, self.data = model, bytes(data)
+
+    @property
+    def state(self) -> ClimateState:
+        """Read common settings without discarding received auxiliary fields."""
+        data, model = self.data, self.model
+        if len(data) != 8 or data[7] & 0xF0 != _checksum(data):
+            raise ValueError("invalid Gree checksum")
+        temperature = 16 + (data[1] & 15) + (0.5 if data[3] & 4 else 0)
+        temperature_value(temperature, 16, 30, 0.5)
+        code = data[0] >> 4 & 3
+        fan = decoded(code, _FANS)
+        if model == GreeModel.YX1FF:
+            fan = (
+                ClimateFan.HIGH
+                if data[2] & 16
+                else (
+                    ClimateFan.AUTO,
+                    ClimateFan.QUIET,
+                    ClimateFan.LOW,
+                    ClimateFan.MEDIUM,
+                )[code]
+            )
+        vertical = data[4] & 15
+        swing_v = vertical in (1, 7, 9, 11)
+        swing_h: bool | None = None
+        if model in (GreeModel.YAC, GreeModel.YAG, GreeModel.YAW1F, GreeModel.YX1FF):
+            swing_h = data[4] >> 4 & 7 == 1
+        else:
+            swing_v |= bool(data[0] & 64)
+        return ClimateState(
+            power=bool(data[0] & 8),
+            mode=decoded(data[0] & 7, _MODES),
+            temperature=temperature,
+            fan=fan,
+            swing_v=swing_v,
+            swing_h=swing_h,
+        )
+
+    def _encode(self, data: bytes) -> list[int]:
+        layout = _LAYOUTS[self.model]
+        return [
+            9000,
+            -layout.header_space,
+            *_TIMING.encode(byte_bits(data[:4])),
+            *_TIMING.encode((0, 1, 0)),
+            620,
+            -layout.gap,
+            *_TIMING.encode(byte_bits(data[4:])),
+            620,
+        ]
+
+    @override
+    def get_raw_timings(self) -> list[int]:
+        """Encode the state and the YAW1F mandatory follow-up when applicable."""
+        result = self._encode(self.data)
+        if self.model == GreeModel.YAW1F:
+            result.extend((-40000, *self._encode(_FOLLOWUP)))
+        return result
+
+    @staticmethod
+    def _read(reader: Reader, model: GreeModel) -> bytes:
+        layout = _LAYOUTS[model]
+        reader.expect(9000, -layout.header_space)
+        first = reader.read_bits(_TIMING, 32)
+        if reader.read_bits(_TIMING, 3) != [0, 1, 0]:
+            raise ValueError("invalid Gree divider")
+        reader.expect(620, -layout.gap)
+        data = pack_bytes(first + reader.read_bits(_TIMING, 32))
+        reader.expect(620)
+        return data
+
+    @classmethod
+    def from_raw_timings(cls, timings: list[int], *, model: GreeModel) -> Self | None:
+        """Decode using an explicit remote model; validate any YAW1F follow-up."""
+        model = GreeModel(model)
+        reader = Reader(timings)
+        try:
+            data = cls._read(reader, model)
+            if model == GreeModel.YAW1F and len(timings) - reader.pos > 1:
+                reader.expect(-40000)
+                if cls._read(reader, model) != _FOLLOWUP:
+                    raise ValueError("invalid YAW1F follow-up")
+            reader.end()
+            result = cls.__new__(cls)
+            Command.__init__(result, modulation=38000)
+            result.data, result.model = data, model
+            _ = result.state
+            return result
+        except ValueError:
+            return None

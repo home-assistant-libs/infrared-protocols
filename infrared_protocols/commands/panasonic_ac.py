@@ -12,6 +12,7 @@ https://github.com/esphome/esphome/tree/dev/esphome/components/panasonic_ir
 """
 
 from enum import Enum, IntEnum, StrEnum
+from typing import Self
 
 from .kaseikyo import KaseikyoCommand
 
@@ -245,6 +246,65 @@ class PanasonicAcCommand(KaseikyoCommand):
             # The recorded pulse durations are independent of carrier frequency.
             self.base_unit = 432
 
+    @classmethod
+    def from_raw_timings(
+        cls, timings: list[int], *, model: PanasonicAcModel | None = None
+    ) -> Self | None:
+        """Decode both Panasonic state frames, validating signatures and checksums.
+
+        Supply the configured model to interpret variant fields. CKP's power bit
+        remains a toggle; a receiver cannot recover absolute power from it.
+        The received payloads are retained so reserved bytes survive re-encoding.
+        """
+        decoded = KaseikyoCommand.from_raw_timings(timings)
+        if (
+            decoded is None
+            or decoded.address != PANASONIC_AC_ADDRESS
+            or not isinstance(decoded.data, list)
+            or len(decoded.data) != 2
+        ):
+            return None
+        first, second = (bytes([2, 32]) + frame for frame in decoded.data)
+        if (
+            first != bytes(_FRAME1)
+            or len(second) != 19
+            or second[:5] != bytes([2, 32, 0xE0, 4, 0])
+            or sum(second[:-1]) & 255 != second[-1]
+        ):
+            return None
+        try:
+            mode = PanasonicAcMode(second[5] >> 4)
+            fan = PanasonicAcFanSpeed(second[8] >> 4)
+            swing = PanasonicAcSwingAxis1(second[8] & 15)
+            temperature = second[6] / 2
+            frost = (
+                temperature == 10 and model is not None and mode == PanasonicAcMode.HEAT
+            )
+            if not frost and not MIN_TEMP <= temperature <= MAX_TEMP:
+                return None
+            power_bit = bool(second[5] & 1)
+            result = cls(
+                mode=mode,
+                temperature=16 if frost else temperature,
+                model=model,
+                fan=fan,
+                power=None if model == PanasonicAcModel.CKP else power_bit,
+                power_toggle=power_bit if model == PanasonicAcModel.CKP else None,
+                swing_axis1=swing,
+                swing_axis2=PanasonicAcSwingAxis2(second[9] & 15)
+                if model is None
+                or model in (PanasonicAcModel.DKE, PanasonicAcModel.RKR)
+                else None,
+                nanoex=bool(second[17] & 4) if model is None else False,
+                frost_protection=frost,
+            )
+            result.data = decoded.data
+            result.base_unit = decoded.base_unit
+            result.repeat_count = decoded.repeat_count
+            return result
+        except ValueError:
+            return None
+
 
 class PanasonicAcToggleCommand(KaseikyoCommand):
     """Panasonic air-conditioner short toggle command (Quiet / Powerful)."""
@@ -273,3 +333,31 @@ class PanasonicAcToggleCommand(KaseikyoCommand):
             data=_to_frames(state),
             modulation=modulation,
         )
+
+    @classmethod
+    def from_raw_timings(cls, timings: list[int]) -> Self | None:
+        """Decode a complete Quiet/Powerful short command and both checksums."""
+        decoded = KaseikyoCommand.from_raw_timings(timings)
+        if (
+            decoded is None
+            or decoded.address != PANASONIC_AC_ADDRESS
+            or not isinstance(decoded.data, list)
+            or len(decoded.data) != 2
+        ):
+            return None
+        first, second = (bytes([2, 32]) + frame for frame in decoded.data)
+        if (
+            first != bytes(_FRAME1)
+            or len(second) != 8
+            or second[:5] != bytes([2, 32, 0xE0, 4, 128])
+            or sum(second[:-1]) & 255 != second[-1]
+        ):
+            return None
+        try:
+            toggle = PanasonicAcToggle((second[5], second[6]))
+        except ValueError:
+            return None
+        result = cls(toggle=toggle)
+        result.data, result.base_unit = decoded.data, decoded.base_unit
+        result.repeat_count = decoded.repeat_count
+        return result

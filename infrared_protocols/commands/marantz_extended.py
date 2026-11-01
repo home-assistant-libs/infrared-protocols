@@ -1,8 +1,10 @@
 """Marantz extended IR command."""
 
-from typing import override
+from typing import Self, override
 
 from . import Command
+from ._decode import frames, rc5_bits
+from ._timing import number
 from .rc5 import (
     RC5_HALF_BIT_US,
     RC5_MODULATION_HZ,
@@ -86,3 +88,24 @@ class MarantzExtendedCommand(Command):
                 timings.extend(frame)
 
         return timings
+
+    @classmethod
+    def from_raw_timings(cls, timings: list[int]) -> Self | None:
+        """Decode the 20-bit RC5X layout and its mandatory address/command pause."""
+        try:
+            decoded = [
+                rc5_bits(frame, extended=True)
+                for frame in frames(timings, period=RC5_REPEAT_PERIOD_US)
+            ]
+            first = decoded[0]
+            if any(value != first for value in decoded[1:]):
+                return None
+            return cls(
+                address=number(first[3:8]),
+                command=number(first[8:14]) | ((1 - first[1]) << 6),
+                extension=number(first[14:]),
+                toggle=first[2],
+                repeat_count=len(decoded) - 1,
+            )
+        except ValueError:
+            return None

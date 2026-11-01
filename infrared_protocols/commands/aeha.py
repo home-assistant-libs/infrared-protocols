@@ -16,7 +16,7 @@ constants derived from T.
 """
 
 from dataclasses import dataclass
-from typing import ClassVar, override
+from typing import ClassVar, Self, override
 
 from . import Command
 
@@ -168,3 +168,13 @@ class AehaCommand(Command):
         if abs(space - timing.one_space) <= timing.bit_space_tolerance:
             return 1
         return None
+
+    @classmethod
+    def from_raw_timings(cls, timings: list[int]) -> Self | None:
+        """Decode a complete AEHA byte payload with correct pulse polarity."""
+        if any(value <= 0 for value in timings[::2]) or any(
+            value >= 0 for value in timings[1::2]
+        ):
+            return None
+        data = cls._decode_data(timings)
+        return cls(data=data) if data is not None else None
