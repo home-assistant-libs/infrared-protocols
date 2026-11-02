@@ -14,6 +14,7 @@ LG_HOME_THEATER_ADDRESS = 0x2C
 class LGHomeTheaterCode(IntEnum):
     """LG home theater IR command codes."""
 
+    ASTERISK = 0x30
     AUDIO = 0x36
     BACK = 0xA2
     BLUE = 0x6F
@@ -54,7 +55,6 @@ class LGHomeTheaterCode(IntEnum):
     SLEEP = 0xC2
     SOUND_EFFECT = 0x2F
     SPEAKER_LEVEL = 0x66
-    STAR = 0x30
     STOP = 0x05
     SUBTITLE = 0xAB
     TITLE_POPUP = 0xAF
