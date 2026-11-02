@@ -42,7 +42,7 @@ class LGHomeTheaterCode(IntEnum):
     OK = 0xAA
     OPEN_CLOSE = 0x9A
     OPTICAL_TV_SOUND = 0xB6
-    PAUSE_STEP = 0x4F
+    PAUSE = 0x4F
     PLAY = 0x04
     POWER = 0x1E
     RECORD = 0x83
