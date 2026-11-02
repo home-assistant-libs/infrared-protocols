@@ -50,8 +50,8 @@ class LGHomeTheaterCode(IntEnum):
     REPEAT = 0x4E
     SCAN_BACKWARD = 0x53
     SCAN_FORWARD = 0x52
-    SKIP_NEXT = 0x07
-    SKIP_PREVIOUS = 0x06
+    SKIP_BACKWARD = 0x06
+    SKIP_FORWARD = 0x07
     SLEEP = 0xC2
     SOUND_EFFECT = 0x2F
     SPEAKER_LEVEL = 0x66
