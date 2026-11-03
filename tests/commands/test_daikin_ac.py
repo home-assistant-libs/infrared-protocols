@@ -670,6 +670,31 @@ def test_decode_esphome_state_frame() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("frame", "expected"),
+    [
+        pytest.param(
+            "11 da 27 00 c5 00 10 e7",
+            DaikinAcComfort(comfort=True, brightness=None),
+            id="comfort_on",
+        ),
+        pytest.param(
+            "11 da 27 00 c5 00 00 d7",
+            DaikinAcComfort(comfort=False, brightness=None),
+            id="comfort_off",
+        ),
+    ],
+)
+def test_esphome_comfort_frame(frame: str, expected: DaikinAcComfort) -> None:
+    """ESPHome's comfort frame gives no brightness, but its comfort bit still counts."""
+    result = DaikinAcCommand.from_raw_timings(_frame_timings(frame))
+
+    assert _parts(result) == (None, expected, None)
+
+    command = DaikinAcCommand(state=_COOL_25, comfort=expected, clock=_CLOCK_UNSET)
+    assert _extract_frames(command.get_raw_timings())[0] == frame
+
+
 def test_default_modulation() -> None:
     """The command defaults to 38 kHz and sends a single transmission."""
     cmd = DaikinAcCommand(state=_COOL_25, comfort=_BRIGHT, clock=_CLOCK_UNSET)
@@ -819,7 +844,6 @@ def test_corrupted_frame_decodes_once_its_checksum_is_fixed() -> None:
             _with_checksum("11 da 27 00 00 3d 32 00 a0 00 00 06 5a 00 00 c1 80 00"),
             id="off_timer_past_midnight",
         ),
-        pytest.param(_with_checksum("11 da 27 00 c5 00 00"), id="brightness_zero"),
         pytest.param(_with_checksum("11 da 27 00 42 49 05"), id="clock_day_zero"),
         pytest.param(_with_checksum("11 da 27 00 42 a0 15"), id="clock_past_midnight"),
     ],

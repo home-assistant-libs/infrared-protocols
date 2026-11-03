@@ -200,10 +200,14 @@ class DaikinAcState:
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class DaikinAcComfort:
-    """The settings carried by frame 1: comfort airflow and display brightness."""
+    """The settings carried by frame 1: comfort airflow and display brightness.
+
+    ``brightness`` is None when the frame does not give one or is invalid so we
+    dont' drop the frame in the case we see an unexpected value here.
+    """
 
     comfort: bool = False
-    brightness: DaikinAcBrightness = DaikinAcBrightness.BRIGHT
+    brightness: DaikinAcBrightness | None = DaikinAcBrightness.BRIGHT
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -229,7 +233,8 @@ def _frame(frame_type: int, length: int) -> list[int]:
 def _comfort_message(comfort: DaikinAcComfort) -> bytes:
     """Build frame 1 from the comfort settings."""
     message = _frame(_COMFORT_TYPE, _COMFORT_LENGTH)
-    message[_BRIGHTNESS_BYTE] = comfort.brightness << 4
+    if comfort.brightness is not None:
+        message[_BRIGHTNESS_BYTE] = comfort.brightness << 4
     message[_COMFORT_BYTE] = comfort.comfort << 4
     message[-1] = _checksum(message)
     return bytes(message)
@@ -283,14 +288,12 @@ def _state_message(state: DaikinAcState) -> bytes:
     return bytes(message)
 
 
-def _decode_comfort(message: list[int]) -> DaikinAcComfort | None:
-    """Decode frame 1, or None if it carries a brightness no remote sends."""
-    try:
-        brightness = DaikinAcBrightness(message[_BRIGHTNESS_BYTE] >> 4 & 0x3)
-    except ValueError:
-        return None
+def _decode_comfort(message: list[int]) -> DaikinAcComfort:
+    """Decode frame 1."""
+    brightness = message[_BRIGHTNESS_BYTE] >> 4 & 0x3
     return DaikinAcComfort(
-        comfort=bool(message[_COMFORT_BYTE] >> 4 & 1), brightness=brightness
+        comfort=bool(message[_COMFORT_BYTE] >> 4 & 1),
+        brightness=DaikinAcBrightness(brightness) if brightness else None,
     )
 
 
