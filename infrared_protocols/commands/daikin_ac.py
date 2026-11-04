@@ -36,7 +36,7 @@ frames from encoders that clear byte 5 bit 3 or send 0xC0 in byte 15 still decod
 
 The gap between frames, around 30 ms, is longer than many receivers wait before ending
 a capture (ESPHome waits 10 ms by default), so each frame often arrives as a signal of
-its own. :meth:`DaikinAcCommand.from_raw_timings` decodes whatever frames a signal
+its own. :meth:`DaikinAcFrames.from_raw_timings` decodes whatever frames a signal
 holds, leaving the parts it did not carry as None.
 """
 
@@ -81,8 +81,8 @@ class DaikinAcBrightness(IntEnum):
 
 
 # Setpoint limits in degrees Celsius
-MIN_TEMPERATURE = 10.0
-MAX_TEMPERATURE = 32.0
+MIN_TEMP = 10.0
+MAX_TEMP = 32.0
 
 _FIXED_TEMPERATURE: dict[DaikinAcMode, int] = {
     DaikinAcMode.DRY: 0xC0,
@@ -185,10 +185,10 @@ class DaikinAcState:
         else:
             if self.temperature is None:
                 raise ValueError(f"{self.mode.name} mode needs a temperature")
-            if not MIN_TEMPERATURE <= self.temperature <= MAX_TEMPERATURE:
+            if not MIN_TEMP <= self.temperature <= MAX_TEMP:
                 raise ValueError(
                     f"temperature {self.temperature} out of range "
-                    f"{MIN_TEMPERATURE}..{MAX_TEMPERATURE}"
+                    f"{MIN_TEMP}..{MAX_TEMP}"
                 )
             if (self.temperature * 2) % 1:
                 raise ValueError(
@@ -202,8 +202,7 @@ class DaikinAcState:
 class DaikinAcComfort:
     """The settings carried by frame 1: comfort airflow and display brightness.
 
-    ``brightness`` is None when the frame does not give one or is invalid so we
-    dont' drop the frame in the case we see an unexpected value here.
+    ``brightness`` is None when the frame carries 0 there, as ESPHome sends.
     """
 
     comfort: bool = False
@@ -220,6 +219,11 @@ class DaikinAcClock:
 
     time_of_day: time = time(0, 0)
     weekday: Day = Day.MONDAY
+
+
+# What a remote sends out of the box
+_DEFAULT_COMFORT = DaikinAcComfort()
+_DEFAULT_CLOCK = DaikinAcClock()
 
 
 def _frame(frame_type: int, length: int) -> list[int]:
@@ -421,22 +425,22 @@ class DaikinAcCommand(Command):
 
     Every transmission carries the whole state, so a command changing one setting has
     to resend every other one as the unit last had it. The unit ignores a transmission
-    missing any frame, so sending needs ``state``, ``comfort`` and ``clock`` all set.
+    missing any frame, so every command sends all three.
 
-    A part is None when a decoded signal did not carry its frame, as happens when the
-    receiver delivers each frame on its own.
+    The unit's frames often reach a receiver as separate signals, so decoding is done
+    by :class:`DaikinAcFrames` rather than by this command.
     """
 
-    state: DaikinAcState | None
-    comfort: DaikinAcComfort | None
-    clock: DaikinAcClock | None
+    state: DaikinAcState
+    comfort: DaikinAcComfort
+    clock: DaikinAcClock
 
     def __init__(
         self,
         *,
-        state: DaikinAcState | None,
-        comfort: DaikinAcComfort | None,
-        clock: DaikinAcClock | None,
+        state: DaikinAcState,
+        comfort: DaikinAcComfort = _DEFAULT_COMFORT,
+        clock: DaikinAcClock = _DEFAULT_CLOCK,
         modulation: int = 38000,
     ) -> None:
         """Initialize the Daikin AC IR command."""
@@ -447,24 +451,7 @@ class DaikinAcCommand(Command):
 
     @override
     def get_raw_timings(self) -> list[int]:
-        """Get raw timings for the Daikin AC command.
-
-        Raises ValueError unless state, comfort and clock are all set.
-        """
-        if self.state is None or self.comfort is None or self.clock is None:
-            missing = [
-                name
-                for name, part in (
-                    ("state", self.state),
-                    ("comfort", self.comfort),
-                    ("clock", self.clock),
-                )
-                if part is None
-            ]
-            raise ValueError(
-                "a transmission needs state, comfort and clock; "
-                f"missing: {', '.join(missing)}"
-            )
+        """Get raw timings for the Daikin AC command."""
         timings = _DaikinAcFrame.wake_up_timings()
         for message in (
             _comfort_message(self.comfort),
@@ -474,14 +461,26 @@ class DaikinAcCommand(Command):
             timings.extend(_DaikinAcFrame(data=message).get_raw_timings())
         return timings
 
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class DaikinAcFrames:
+    """The frames a received signal carried, each part None when its frame was absent.
+
+    Unlike :class:`DaikinAcCommand`, this cannot be sent: the unit ignores a
+    transmission missing any frame.
+    """
+
+    state: DaikinAcState | None = None
+    comfort: DaikinAcComfort | None = None
+    clock: DaikinAcClock | None = None
+
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
-        """Decode raw IR timings into a DaikinAcCommand holding the frames they carry.
+        """Decode raw IR timings into the frames they carry.
 
         Accepts a single frame or a whole transmission, skipping the wake-up burst and
-        anything that is not a Daikin frame. A part whose frame is missing is None; when
-        a frame appears more than once, the last one is kept. Returns None when no
-        frame decodes.
+        anything that is not a Daikin frame. When a frame appears more than once, the
+        last one is kept. Returns None when no frame decodes.
         """
         state: DaikinAcState | None = None
         comfort: DaikinAcComfort | None = None

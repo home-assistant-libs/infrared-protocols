@@ -1,20 +1,22 @@
 """Tests for the Daikin air-conditioner IR command."""
 
 from calendar import Day
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import time
-from typing import Any
+from functools import partial
 
 import pytest
 
 from infrared_protocols.commands.daikin_ac import (
-    MAX_TEMPERATURE,
-    MIN_TEMPERATURE,
+    MAX_TEMP,
+    MIN_TEMP,
     DaikinAcBrightness,
     DaikinAcClock,
     DaikinAcComfort,
     DaikinAcCommand,
     DaikinAcFanSpeed,
+    DaikinAcFrames,
     DaikinAcMode,
     DaikinAcState,
 )
@@ -433,6 +435,17 @@ _TIMERS_STATE = [
     -403, 462, -1268, 463, -404, 462, -404, 462, -1268, 463, -403, 462, -10000,
 ]  # fmt: skip
 
+_TIMERS = DaikinAcFrames(
+    state=DaikinAcState(
+        mode=DaikinAcMode.COOL,
+        temperature=25,
+        on_timer=time(6, 40),
+        off_timer=time(22, 40),
+    ),
+    comfort=DaikinAcComfort(brightness=DaikinAcBrightness.OFF),
+    clock=_THURSDAY_0407,
+)
+
 
 def _frame_timings(frame: str) -> list[int]:
     """Build one frame's raw timings from its bytes, bypassing the encoder."""
@@ -474,18 +487,16 @@ def _extract_frames(timings: list[int]) -> list[str]:
     return frames
 
 
-def _parts(
-    command: DaikinAcCommand | None,
-) -> tuple[DaikinAcState | None, DaikinAcComfort | None, DaikinAcClock | None] | None:
-    """Return a decoded command's state, comfort and clock, for comparing at once."""
-    if command is None:
-        return None
-    return (command.state, command.comfort, command.clock)
+def _frames_of(command: DaikinAcCommand) -> DaikinAcFrames:
+    """Return the frames a command's transmission carries, as decoding gives them."""
+    return DaikinAcFrames(
+        state=command.state, comfort=command.comfort, clock=command.clock
+    )
 
 
 def _decode_state(frame: str) -> DaikinAcState | None:
     """Decode a lone state frame given as hex bytes."""
-    result = DaikinAcCommand.from_raw_timings(_frame_timings(frame))
+    result = DaikinAcFrames.from_raw_timings(_frame_timings(frame))
     return None if result is None else result.state
 
 
@@ -497,9 +508,7 @@ def _with_checksum(frame: str) -> str:
 
 def test_encode_timing_values() -> None:
     """Pin the physical layer: wake-up burst, leader, bit timings and frame gaps."""
-    timings = DaikinAcCommand(
-        state=_COOL_25, comfort=_BRIGHT, clock=_CLOCK_UNSET
-    ).get_raw_timings()
+    timings = DaikinAcCommand(state=_COOL_25).get_raw_timings()
 
     assert timings[: len(_WAKE_UP)] == _WAKE_UP
     assert timings[len(_WAKE_UP) : len(_WAKE_UP) + 2] == [3400, -1700]
@@ -523,78 +532,93 @@ def test_decode_captured_transmission(label: str) -> None:
     """A captured transmission decodes back to the command it was sent for."""
     frames, expected = _CAPTURED[label]
 
-    result = DaikinAcCommand.from_raw_timings(_transmission_timings(frames))
+    result = DaikinAcFrames.from_raw_timings(_transmission_timings(frames))
 
-    assert result is not None
-    assert result.state == expected.state
-    assert result.comfort == expected.comfort
-    assert result.clock == expected.clock
+    assert result == _frames_of(expected)
 
 
 @pytest.mark.parametrize("label", list(_CAPTURED))
 def test_decode_captured_frames_one_at_a_time(label: str) -> None:
-    """Each captured frame decodes on its own into a command holding just its part."""
+    """Each captured frame decodes on its own, into just its part."""
     (comfort, clock, state), expected = _CAPTURED[label]
 
     assert [
-        _parts(DaikinAcCommand.from_raw_timings(_frame_timings(frame)))
+        DaikinAcFrames.from_raw_timings(_frame_timings(frame))
         for frame in (comfort, clock, state)
     ] == [
-        (None, expected.comfort, None),
-        (None, None, expected.clock),
-        (expected.state, None, None),
+        DaikinAcFrames(comfort=expected.comfort),
+        DaikinAcFrames(clock=expected.clock),
+        DaikinAcFrames(state=expected.state),
     ]
 
 
 def test_decode_receiver_capture() -> None:
     """Decode the signals a receiver delivered, with their real timing jitter."""
-    expected_state = DaikinAcState(
-        mode=DaikinAcMode.COOL,
-        temperature=25,
-        on_timer=time(6, 40),
-        off_timer=time(22, 40),
-    )
-    expected_comfort = DaikinAcComfort(brightness=DaikinAcBrightness.OFF)
-
     assert [
-        _parts(DaikinAcCommand.from_raw_timings(signal))
+        DaikinAcFrames.from_raw_timings(signal)
         for signal in (_TIMERS_WAKE_UP, _TIMERS_COMFORT, _TIMERS_CLOCK, _TIMERS_STATE)
     ] == [
         None,
-        (None, expected_comfort, None),
-        (None, None, _THURSDAY_0407),
-        (expected_state, None, None),
+        DaikinAcFrames(comfort=_TIMERS.comfort),
+        DaikinAcFrames(clock=_TIMERS.clock),
+        DaikinAcFrames(state=_TIMERS.state),
     ]
 
     # The same signals as one capture, as a receiver waiting out the gaps delivers them
-    assert _parts(
-        DaikinAcCommand.from_raw_timings(
+    assert (
+        DaikinAcFrames.from_raw_timings(
             _TIMERS_WAKE_UP + _TIMERS_COMFORT + _TIMERS_CLOCK + _TIMERS_STATE
         )
-    ) == (expected_state, expected_comfort, _THURSDAY_0407)
+        == _TIMERS
+    )
+
+
+@pytest.mark.parametrize(
+    ("timings", "expected"),
+    [
+        pytest.param(
+            _TIMERS_STATE[:-1], DaikinAcFrames(state=_TIMERS.state), id="lone_frame"
+        ),
+        pytest.param(
+            _TIMERS_WAKE_UP + _TIMERS_COMFORT + _TIMERS_CLOCK + _TIMERS_STATE[:-1],
+            _TIMERS,
+            id="transmission",
+        ),
+    ],
+)
+def test_decode_without_trailing_gap(
+    timings: list[int], expected: DaikinAcFrames
+) -> None:
+    """A capture may end at the last mark, as ESPHome delivers it, without the gap."""
+    assert DaikinAcFrames.from_raw_timings(timings) == expected
 
 
 @pytest.mark.parametrize(
     ("frames", "expected"),
     [
-        pytest.param((0, 1), (None, _DISPLAY_OFF, _CLOCK_UNSET), id="state_missing"),
         pytest.param(
-            (1, 0, 2), (_COOL_32, _DISPLAY_OFF, _CLOCK_UNSET), id="out_of_order"
+            (0, 1),
+            DaikinAcFrames(comfort=_DISPLAY_OFF, clock=_CLOCK_UNSET),
+            id="state_missing",
+        ),
+        pytest.param(
+            (1, 0, 2),
+            DaikinAcFrames(state=_COOL_32, comfort=_DISPLAY_OFF, clock=_CLOCK_UNSET),
+            id="out_of_order",
         ),
     ],
 )
 def test_decode_partial_transmission(
-    frames: tuple[int, ...],
-    expected: tuple[DaikinAcState | None, DaikinAcComfort | None, DaikinAcClock | None],
+    frames: tuple[int, ...], expected: DaikinAcFrames
 ) -> None:
     """A capture decodes into the parts it carries, whatever their order."""
     captured, _ = _CAPTURED["cool_32"]
 
-    result = DaikinAcCommand.from_raw_timings(
+    result = DaikinAcFrames.from_raw_timings(
         _transmission_timings(tuple(captured[i] for i in frames))
     )
 
-    assert _parts(result) == expected
+    assert result == expected
 
 
 def test_decode_keeps_last_of_repeated_frame() -> None:
@@ -602,46 +626,18 @@ def test_decode_keeps_last_of_repeated_frame() -> None:
     (_, _, cool_32), _ = _CAPTURED["cool_32"]
     (_, _, cool_18), expected = _CAPTURED["cool_18"]
 
-    result = DaikinAcCommand.from_raw_timings(_transmission_timings((cool_32, cool_18)))
+    result = DaikinAcFrames.from_raw_timings(_transmission_timings((cool_32, cool_18)))
 
     assert result is not None
     assert result.state == expected.state
-
-
-@pytest.mark.parametrize(
-    ("command", "missing"),
-    [
-        pytest.param(
-            DaikinAcCommand(state=None, comfort=_BRIGHT, clock=_CLOCK_UNSET),
-            "state",
-            id="state",
-        ),
-        pytest.param(
-            DaikinAcCommand(state=_COOL_25, comfort=None, clock=_CLOCK_UNSET),
-            "comfort",
-            id="comfort",
-        ),
-        pytest.param(
-            DaikinAcCommand(state=_COOL_25, comfort=None, clock=None),
-            "comfort, clock",
-            id="comfort_and_clock",
-        ),
-    ],
-)
-def test_encode_needs_every_part(command: DaikinAcCommand, missing: str) -> None:
-    """The unit ignores a transmission missing a frame, so sending one is refused."""
-    with pytest.raises(ValueError, match=f"missing: {missing}$"):
-        command.get_raw_timings()
 
 
 def test_roundtrip_half_degree() -> None:
     """The frame carries half degrees, though the remotes captured step whole ones."""
     state = DaikinAcState(mode=DaikinAcMode.HEAT, temperature=21.5)
 
-    result = DaikinAcCommand.from_raw_timings(
-        DaikinAcCommand(
-            state=state, comfort=_BRIGHT, clock=_CLOCK_UNSET
-        ).get_raw_timings()
+    result = DaikinAcFrames.from_raw_timings(
+        DaikinAcCommand(state=state).get_raw_timings()
     )
 
     assert result is not None
@@ -653,8 +649,8 @@ def test_roundtrip_weekday(weekday: Day) -> None:
     """Every day of the week survives the frame's Sunday-first numbering."""
     clock = DaikinAcClock(time_of_day=time(23, 59), weekday=weekday)
 
-    result = DaikinAcCommand.from_raw_timings(
-        DaikinAcCommand(state=_COOL_25, clock=clock, comfort=_BRIGHT).get_raw_timings()
+    result = DaikinAcFrames.from_raw_timings(
+        DaikinAcCommand(state=_COOL_25, clock=clock).get_raw_timings()
     )
 
     assert result is not None
@@ -687,25 +683,27 @@ def test_decode_esphome_state_frame() -> None:
 )
 def test_esphome_comfort_frame(frame: str, expected: DaikinAcComfort) -> None:
     """ESPHome's comfort frame gives no brightness, but its comfort bit still counts."""
-    result = DaikinAcCommand.from_raw_timings(_frame_timings(frame))
+    result = DaikinAcFrames.from_raw_timings(_frame_timings(frame))
 
-    assert _parts(result) == (None, expected, None)
+    assert result == DaikinAcFrames(comfort=expected)
 
     command = DaikinAcCommand(state=_COOL_25, comfort=expected, clock=_CLOCK_UNSET)
     assert _extract_frames(command.get_raw_timings())[0] == frame
 
 
-def test_default_modulation() -> None:
-    """The command defaults to 38 kHz and sends a single transmission."""
-    cmd = DaikinAcCommand(state=_COOL_25, comfort=_BRIGHT, clock=_CLOCK_UNSET)
+def test_defaults() -> None:
+    """The command defaults to a remote out of the box, at 38 kHz, sent once."""
+    cmd = DaikinAcCommand(state=_COOL_25)
 
+    assert cmd.comfort == _BRIGHT
+    assert cmd.clock == _CLOCK_UNSET
     assert cmd.modulation == 38000
     assert cmd.repeat_count == 0
 
 
 def test_temperature_limits() -> None:
     """Pin the setpoint limits, the lowest and highest any remote captured sends."""
-    assert (MIN_TEMPERATURE, MAX_TEMPERATURE) == (10, 32)
+    assert (MIN_TEMP, MAX_TEMP) == (10, 32)
 
 
 @pytest.mark.parametrize(
@@ -721,76 +719,74 @@ def test_temperature_limits() -> None:
 )
 def test_limits_apply_to_every_mode(state: DaikinAcState) -> None:
     """Any mode encodes the whole range: narrowing it per mode is up to the caller."""
-    frames = _extract_frames(
-        DaikinAcCommand(
-            state=state, comfort=_BRIGHT, clock=_CLOCK_UNSET
-        ).get_raw_timings()
-    )
+    frames = _extract_frames(DaikinAcCommand(state=state).get_raw_timings())
 
     assert _decode_state(frames[2]) == state
 
 
 @pytest.mark.parametrize(
-    ("kwargs", "match"),
+    ("build", "match"),
     [
         pytest.param(
-            {"mode": DaikinAcMode.HEAT, "temperature": 9.5},
+            partial(DaikinAcState, mode=DaikinAcMode.HEAT, temperature=9.5),
             "out of range",
             id="below_minimum",
         ),
         pytest.param(
-            {"mode": DaikinAcMode.COOL, "temperature": 32.5},
+            partial(DaikinAcState, mode=DaikinAcMode.COOL, temperature=32.5),
             "out of range",
             id="above_maximum",
         ),
         pytest.param(
-            {"mode": DaikinAcMode.COOL, "temperature": 24.25},
+            partial(DaikinAcState, mode=DaikinAcMode.COOL, temperature=24.25),
             "not a multiple",
             id="quarter_degree",
         ),
         pytest.param(
-            {"mode": DaikinAcMode.COOL, "temperature": None},
+            partial(DaikinAcState, mode=DaikinAcMode.COOL, temperature=None),
             "needs a temperature",
             id="cool_without_temperature",
         ),
         pytest.param(
-            {"mode": DaikinAcMode.DRY, "temperature": 24},
+            partial(DaikinAcState, mode=DaikinAcMode.DRY, temperature=24),
             "takes no temperature",
             id="dry_with_temperature",
         ),
         pytest.param(
-            {"mode": DaikinAcMode.FAN_ONLY, "temperature": 25},
+            partial(DaikinAcState, mode=DaikinAcMode.FAN_ONLY, temperature=25),
             "takes no temperature",
             id="fan_only_with_temperature",
         ),
         pytest.param(
-            {
-                "mode": DaikinAcMode.COOL,
-                "temperature": 24,
-                "powerful": True,
-                "econo": True,
-            },
+            partial(
+                DaikinAcState,
+                mode=DaikinAcMode.COOL,
+                temperature=24,
+                powerful=True,
+                econo=True,
+            ),
             "powerful cannot",
             id="powerful_econo",
         ),
         pytest.param(
-            {
-                "mode": DaikinAcMode.COOL,
-                "temperature": 24,
-                "powerful": True,
-                "quiet": True,
-            },
+            partial(
+                DaikinAcState,
+                mode=DaikinAcMode.COOL,
+                temperature=24,
+                powerful=True,
+                quiet=True,
+            ),
             "powerful cannot",
             id="powerful_quiet",
         ),
     ],
 )
 def test_state_rejects_what_the_remote_cannot_send(
-    kwargs: dict[str, Any], match: str
+    build: Callable[[], DaikinAcState], match: str
 ) -> None:
     """A state the remote cannot produce is rejected at construction."""
     with pytest.raises(ValueError, match=match):
-        DaikinAcState(**kwargs)
+        build()
 
 
 def test_corrupted_frame_decodes_once_its_checksum_is_fixed() -> None:
@@ -850,4 +846,4 @@ def test_corrupted_frame_decodes_once_its_checksum_is_fixed() -> None:
 )
 def test_decode_returns_none_for_invalid_frame(frame: str) -> None:
     """A broken checksum or header, or a value no remote sends, is rejected."""
-    assert DaikinAcCommand.from_raw_timings(_frame_timings(frame)) is None
+    assert DaikinAcFrames.from_raw_timings(_frame_timings(frame)) is None
