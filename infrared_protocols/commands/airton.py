@@ -107,10 +107,14 @@ class AirtonCommand(ClimatePacket):
         direction = AirtonDirection(data[4] & 15)
         fan_code = (data[2] >> 4) & 7
         fan_code = {2: 1, 4: 5}.get(fan_code, fan_code)
+        power = bool(data[2] & 8)
+        mode = decoded(data[2] & 7, _MODES)
         return ClimateState(
-            power=bool(data[2] & 8),
-            mode=decoded(data[2] & 7, _MODES),
-            temperature=(data[3] & 15) + 16,
+            power=power,
+            mode=mode,
+            temperature=None
+            if power and mode == ClimateMode.AUTO
+            else (data[3] & 15) + 16,
             fan=decoded(fan_code, _FANS),
             swing_v=direction == AirtonDirection.SWING,
         )

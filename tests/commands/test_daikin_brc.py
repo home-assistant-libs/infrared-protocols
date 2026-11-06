@@ -79,3 +79,6 @@ def test_native_temperature(
     assert received.fahrenheit is fahrenheit
     assert received.temperature == temperature
     assert received.state.temperature == celsius
+    assert isinstance(received.temperature, int)
+    rebuilt = cls(mode=ClimateMode.COOL, temperature=received.temperature)
+    assert rebuilt.get_raw_timings() == command.get_raw_timings()

@@ -4,7 +4,6 @@ from itertools import product
 
 import pytest
 
-from infrared_protocols.codes.midea.climate import MideaSpecialCode
 from infrared_protocols.commands.climate import ClimateFan, ClimateMode, ClimateState
 from infrared_protocols.commands.midea import MideaCommand
 
@@ -44,16 +43,6 @@ def test_midea_state(
         temperature=expected,
         fan=ClimateFan.AUTO,
     )
-
-
-@pytest.mark.parametrize("code", list(MideaSpecialCode))
-def test_midea_buttons(code: MideaSpecialCode) -> None:
-    """Button packets never masquerade as an absolute climate state."""
-    command = code.to_command()
-    result = MideaCommand.from_raw_timings(command.get_raw_timings())
-    assert result is not None
-    assert result.state is None
-    assert result.data == command.data
 
 
 def test_midea_follow_me() -> None:

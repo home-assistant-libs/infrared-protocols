@@ -2,6 +2,7 @@
 
 from enum import IntEnum
 
+from ...commands import Command
 from ...commands.coolix import CoolixCommand
 
 
@@ -13,6 +14,6 @@ class CoolixCode(IntEnum):
     LIGHT_TOGGLE = 0xB5F5A5
     SILENCE_FROST_PROTECTION = 0xB5F5B6
 
-    def to_command(self) -> CoolixCommand:
+    def to_command(self) -> Command:
         """Build the infrared command."""
         return CoolixCommand(first=self.value, second=self.value)

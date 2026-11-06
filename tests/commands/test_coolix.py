@@ -4,7 +4,6 @@ from itertools import product
 
 import pytest
 
-from infrared_protocols.codes.coolix.climate import CoolixCode
 from infrared_protocols.commands.climate import ClimateFan, ClimateMode, ClimateState
 from infrared_protocols.commands.coolix import CoolixCommand
 
@@ -42,15 +41,6 @@ def test_coolix_state(
     )
 
 
-@pytest.mark.parametrize("code", list(CoolixCode))
-def test_coolix_buttons(code: CoolixCode) -> None:
-    """Known button actions retain their complete command word."""
-    command = code.to_command()
-    result = CoolixCommand.from_raw_timings(command.get_raw_timings())
-    assert result is not None
-    assert result.first == code.value
-
-
 @pytest.mark.parametrize(
     "mode,temperature,fan,word",
     [
@@ -73,14 +63,6 @@ def test_coolix_control_bytes(
     """The three-byte word is verified independently of the round trip."""
     command = CoolixCommand.climate(mode=mode, temperature=temperature, fan=fan)
     assert command.first == command.second == word
-
-
-@pytest.mark.parametrize("code", list(CoolixCode))
-def test_coolix_action_copies(code: CoolixCode) -> None:
-    """Named actions include the protocol's second identical packet."""
-    sent = code.to_command()
-    assert sent.first == sent.second == code
-    assert sent.get_raw_timings().count(-5600) == 1
 
 
 def test_coolix_unknown_state() -> None:

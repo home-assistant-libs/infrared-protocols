@@ -436,9 +436,10 @@ def test_panasonic_received_frost_state_section(temperature: int) -> None:
     received = PanasonicAcCommand.from_raw_timings(raw, model=PanasonicAcModel.PKE)
     assert received is not None
     assert received.state.frost_protection
-    assert received.state.temperature == temperature
+    assert received.state.temperature is None
     assert received.state.fan == PanasonicAcFanSpeed.HIGH
     assert isinstance(received.data, list)
+    assert received.data[1] == bytes(second)
     assert len(received.get_raw_timings()) == 439
 
 

@@ -196,8 +196,6 @@ def test_pioneer_clipped_final_repeat(
 @pytest.mark.parametrize("repeat_count", [0, 2])
 def test_pioneer_single_frame(repeat_count: int) -> None:
     """Pioneer commands without a preamble decode independently of two-part commands."""
-    from infrared_protocols.commands.pioneer import PioneerCommand
-
     sent = PioneerCommand(address=0xA5, command=0x80, repeat_count=repeat_count)
     received = PioneerCommand.from_raw_timings(sent.get_raw_timings())
     assert received is not None

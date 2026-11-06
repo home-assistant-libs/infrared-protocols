@@ -92,11 +92,11 @@ class DaikinBrcCommand(ClimatePacket):
         return self.FAHRENHEIT
 
     @property
-    def temperature(self) -> float | None:
+    def temperature(self) -> int | None:
         """Return the native set point, excluding dry/fan-only placeholders."""
         if self.state.temperature is None:
             return None
-        return self.data[17] if self.fahrenheit else self.data[17] / 2 + 9
+        return self.data[17] if self.fahrenheit else self.data[17] // 2 + 9
 
     @property
     def sub_unit(self) -> int:

@@ -48,3 +48,19 @@ def test_invalid_replaced_payload_rejects_state() -> None:
     command.data = command.data[:-1] + bytes([command.data[-1] ^ 1])
     with pytest.raises(ValueError, match="checksum"):
         _ = command.state
+
+
+@pytest.mark.parametrize(
+    "power,expected",
+    [
+        pytest.param(True, None, id="auto-placeholder"),
+        pytest.param(False, 18, id="off-retains-target"),
+    ],
+)
+def test_auto_temperature(power: bool, expected: int | None) -> None:
+    """Only powered-on auto replaces the requested temperature with a fixed value."""
+    sent = AirtonCommand(mode=ClimateMode.AUTO, temperature=18, power=power)
+    received = AirtonCommand.from_raw_timings(sent.get_raw_timings())
+    assert received is not None
+    assert received.state.power is power
+    assert received.state.temperature == expected

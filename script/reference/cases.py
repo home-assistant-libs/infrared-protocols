@@ -554,7 +554,7 @@ def expected_state(factory, args):
         state["mode"] = mode
     if factory == "AirtonCommand":
         state.update(
-            temperature=25 if power and mode == "auto" else temp,
+            temperature=None if power and mode == "auto" else temp,
             swing_v=args.get("direction", 0) == 1,
         )
     if factory == "DaikinArcCommand" and power and mode in ("auto", "dry", "fan_only"):

@@ -270,10 +270,13 @@ class PanasonicAcCommand(KaseikyoCommand):
         frame = bytes([2, 32]) + payload
         mode = PanasonicAcMode(frame[5] >> 4)
         temperature = frame[6] / 2
+        frost = mode == PanasonicAcMode.HEAT and temperature in (8, 10)
         ckp = self.model == PanasonicAcModel.CKP
         return PanasonicAcState(
             mode=mode,
-            temperature=None if mode == PanasonicAcMode.FAN_ONLY else temperature,
+            temperature=None
+            if frost or mode == PanasonicAcMode.FAN_ONLY
+            else temperature,
             fan=PanasonicAcFanSpeed(frame[8] >> 4),
             power=None if ckp else bool(frame[5] & 1),
             power_toggle=bool(frame[5] & 1) if ckp else None,
@@ -281,7 +284,7 @@ class PanasonicAcCommand(KaseikyoCommand):
             swing_axis2=PanasonicAcSwingAxis2(frame[9] & 15)
             if self.model in (None, PanasonicAcModel.DKE, PanasonicAcModel.RKR)
             else None,
-            frost_protection=mode == PanasonicAcMode.HEAT and temperature in (8, 10),
+            frost_protection=frost,
             nanoex=bool(frame[17] & 4) if self.model is None else None,
         )
 

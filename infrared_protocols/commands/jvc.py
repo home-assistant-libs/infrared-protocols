@@ -2,7 +2,7 @@
 
 from typing import Self, override
 
-from ._timing import PulseTiming, Reader, bits, number
+from ._timing import PulseTiming, Reader, bits, close, number
 from ._word import WordCommand
 
 
@@ -44,7 +44,10 @@ class JvcCommand(WordCommand):
             scale = (timings[0] - timings[1]) / sum(abs(t) for t in cls.HEADER)
             previous_duration = sum(abs(t) for t in timings[: reader.pos])
             while len(timings) - reader.pos > 1:
-                reader.expect(-round(60000 * scale - previous_duration))
+                gap = -round(60000 * scale - previous_duration)
+                if close(timings[reader.pos], -23625 * scale):
+                    gap = -round(23625 * scale)
+                reader.expect(gap)
                 start = reader.pos
                 remaining = len(timings) - reader.pos
                 if remaining < 2 * cls.WIDTH + 1:

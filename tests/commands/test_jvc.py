@@ -53,3 +53,21 @@ def test_repeat_cadence(gap: int) -> None:
     raw = JvcCommand(data=0xC2D0, repeat_count=1).get_raw_timings()
     raw[raw.index(-22875)] = gap
     assert JvcCommand.from_raw_timings(raw) is None
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        pytest.param(0xC2D0, id="mixed"),
+        pytest.param(0x0000, id="zeros"),
+        pytest.param(0xFFFF, id="ones"),
+    ],
+)
+@pytest.mark.parametrize("scale", [0.9, 1.0, 1.1], ids=["fast", "nominal", "slow"])
+def test_fixed_repeat_gap(data: int, scale: float) -> None:
+    """Fixed 45-unit spaces also identify matching headerless repeats."""
+    first = JvcCommand(data=data).get_raw_timings()
+    raw = first + [-23625, *first[2:]] * 3
+    received = JvcCommand.from_raw_timings([round(t * scale) for t in raw])
+    assert received is not None
+    assert (received.data, received.repeat_count) == (data, 3)

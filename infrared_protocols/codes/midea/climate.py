@@ -2,6 +2,7 @@
 
 from enum import IntEnum
 
+from ...commands import Command
 from ...commands.midea import MideaCommand
 
 
@@ -12,6 +13,6 @@ class MideaSpecialCode(IntEnum):
     SWING_TOGGLE = 0x2
     TURBO_TOGGLE = 0x9
 
-    def to_command(self) -> MideaCommand:
+    def to_command(self) -> Command:
         """Build the infrared command."""
         return MideaCommand(data=bytes([0xA2, self.value, 255, 255, 255]))
