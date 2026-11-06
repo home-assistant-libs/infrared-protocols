@@ -1,14 +1,12 @@
 """Parker Davis/Pioneer climate state in paired odd and even bursts."""
 
 from ._climate import ClimatePacket, FramePart
+from ._climate_fields import decoded, selection, temperature_value
 from ._timing import PulseTiming
 from .climate import (
     ClimateFan,
     ClimateMode,
     ClimateState,
-    decoded,
-    selection,
-    temperature_value,
 )
 
 _MODES = {
@@ -33,7 +31,12 @@ _ODD_FANS = {
 
 
 class PdPioneerClimateCommand(ClimatePacket):
-    """Both bursts are needed to recover horizontal and vertical swing."""
+    """Both bursts are needed to recover horizontal and vertical swing.
+
+    Decoding requires all sections in one capture. Configure the receiver idle
+    timeout above 10.01 ms, or join captures with their measured intervening gaps.
+    A default 10 ms ESPHome receiver splits this packet.
+    """
 
     HEADER = (3120, -1560)
     TIMING = PulseTiming(520, 312, 1066)

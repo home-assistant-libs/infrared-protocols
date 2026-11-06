@@ -12,7 +12,8 @@ class Hob2HoodCommand(Command):
 
     def __init__(self, *, command: int, modulation: int = 38000) -> None:
         """Initialize the command byte."""
-        bits(command, 8)
+        if command not in (0xD5, 0xD2, 0xD8, 0x6C, 0x6F, 0xE1, 0x72):
+            raise ValueError("unknown Hob2Hood command")
         super().__init__(modulation=modulation)
         self.command = command
 
@@ -33,10 +34,17 @@ class Hob2HoodCommand(Command):
         for command in (0xD5, 0xD2, 0xD8, 0x6C, 0x6F, 0xE1, 0x72):
             candidate = cls(command=command)
             expected = candidate.get_raw_timings()
-            if expected[-1] < 0 and len(timings) == len(expected) - 1:
+            actual = timings.copy()
+            if actual and actual[-1] <= -3000:
+                actual.pop()
+                if actual and actual[-1] < 0:
+                    actual.pop()
+            if expected[-1] < 0:
+                if len(actual) == len(expected) and actual[-1] <= expected[-1] + 350:
+                    actual.pop()
                 expected = expected[:-1]
-            if len(timings) == len(expected) and all(
-                close(a, b) for a, b in zip(timings, expected, strict=True)
+            if len(actual) == len(expected) and all(
+                close(a, b, absolute=350) for a, b in zip(actual, expected, strict=True)
             ):
                 return candidate
         return None

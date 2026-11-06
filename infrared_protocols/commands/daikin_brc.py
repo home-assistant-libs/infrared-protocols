@@ -3,16 +3,14 @@
 from typing import ClassVar
 
 from ._climate import ClimatePacket, FramePart
+from ._climate_fields import decoded, selection, temperature_value
+from ._daikin import checked, validate_sections
 from ._timing import PulseTiming
 from .climate import (
     ClimateFan,
     ClimateMode,
     ClimateState,
-    decoded,
-    selection,
-    temperature_value,
 )
-from .daikin import checked, validate_sections
 
 _MODES = {
     ClimateMode.AUTO: 3,
@@ -25,7 +23,12 @@ _FANS = {ClimateFan.LOW: 1, ClimateFan.MEDIUM: 3, ClimateFan.HIGH: 5}
 
 
 class DaikinBrcCommand(ClimatePacket):
-    """BRC Celsius remote; fan has three fixed speeds and swing drives both axes."""
+    """BRC Celsius remote; fan has three fixed speeds and swing drives both axes.
+
+    Decoding requires all sections in one capture. Configure the receiver idle
+    timeout above 29.41 ms, or join captures with their measured intervening gaps.
+    A default 10 ms ESPHome receiver splits this packet.
+    """
 
     HEADER = (5070, -2140)
     TIMING = PulseTiming(370, 710, 1780)
@@ -45,6 +48,7 @@ class DaikinBrcCommand(ClimatePacket):
         mode_button: bool = False,
     ) -> None:
         """Build a state in 16..32 °C, or 60..90 °F for the Fahrenheit subclass."""
+        selection(mode, _MODES)
         temperature_value(
             temperature, 60 if self.FAHRENHEIT else 16, 90 if self.FAHRENHEIT else 32
         )
@@ -86,6 +90,11 @@ class DaikinBrcCommand(ClimatePacket):
         """Return the addressed indoor unit."""
         return self.data[3] & 7
 
+    @property
+    def mode_button(self) -> bool:
+        """Return whether the mode button triggered this packet."""
+        return bool(self.data[13] & 4)
+
     @classmethod
     def parse(cls, data: bytes) -> ClimateState:
         """Validate both sections and interpret temperature for this remote variant."""
@@ -98,8 +107,8 @@ class DaikinBrcCommand(ClimatePacket):
             or data[11] != 0
         ):
             raise ValueError("invalid BRC sub-unit or frame type")
-        mode = decoded(data[14] >> 4, _MODES)
         power = bool(data[14] & 1)
+        mode = decoded(data[14] >> 4, _MODES) if power else None
         temperature = (data[17] - 32) * 5 / 9 if cls.FAHRENHEIT else data[17] / 2 + 9
         return ClimateState(
             power=power,
@@ -114,6 +123,10 @@ class DaikinBrcCommand(ClimatePacket):
 
 
 class DaikinBrcFahrenheitCommand(DaikinBrcCommand):
-    """BRC Fahrenheit remote; the unit is configuration, not a transmitted flag."""
+    """BRC with native Fahrenheit input and Celsius decoded state.
+
+    The constructor takes whole degrees Fahrenheit; state.temperature is the
+    exact Celsius conversion. The remote variant is configuration, not a flag.
+    """
 
     FAHRENHEIT = True

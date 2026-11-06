@@ -1,11 +1,11 @@
 """Hob2Hood extractor fan and light commands."""
 
-from enum import Enum
+from enum import IntEnum
 
 from ...commands.hob2hood import Hob2HoodCommand
 
 
-class Hob2HoodCode(Enum):
+class Hob2HoodCode(IntEnum):
     """Commands shared by compatible Hob2Hood extractors."""
 
     LIGHT_OFF = 0xD5

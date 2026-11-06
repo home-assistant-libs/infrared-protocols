@@ -1,22 +1,30 @@
 """Internal helpers for repeated and Manchester-encoded captures."""
 
+from statistics import median
+
 from ._timing import close
 
 
 def frames(
-    timings: list[int], *, min_gap: int = 10000, period: int | None = None
+    timings: list[int],
+    *,
+    min_gap: int = 10000,
+    period: int | None = None,
+    tolerance: float = 0.25,
 ) -> list[list[int]]:
     """Split at long idle spaces, checking full-frame repeat periods when given."""
     result: list[list[int]] = []
     current: list[int] = []
     for i, duration in enumerate(timings):
-        if duration <= -min_gap:
+        if duration <= -min_gap or (i == len(timings) - 1 and duration <= -3000):
             if not current:
                 raise ValueError("empty frame")
             if (
                 period is not None
                 and i < len(timings) - 1
-                and not close(sum(abs(t) for t in current) - duration, period)
+                and not close(
+                    sum(abs(t) for t in current) - duration, period, tolerance
+                )
             ):
                 raise ValueError("incorrect repeat period")
             result.append(current)
@@ -30,12 +38,23 @@ def frames(
     return result
 
 
-def levels(timings: list[int], unit: int, *, maximum: int = 3) -> list[int]:
+def levels(timings: list[int], unit: float, *, maximum: int = 3) -> list[int]:
     """Expand mark/space runs, rejecting zero, oversized or off-grid durations."""
+    short = [
+        abs(t) / round(abs(t) / unit)
+        for t in timings
+        if 0.6 * unit <= abs(t) <= 2.4 * unit
+    ]
+    measured_unit = median(short) if short else unit
+    if not close(round(measured_unit), unit, 0.3):
+        raise ValueError("invalid Manchester clock")
+    unit = measured_unit
     result: list[int] = []
     for duration in timings:
         count = round(abs(duration) / unit)
-        if not 1 <= count <= maximum or not close(abs(duration), count * unit, 0.2):
+        if not 1 <= count <= maximum or not close(
+            abs(duration), count * unit, 0, absolute=unit * 0.4
+        ):
             raise ValueError("invalid Manchester run")
         result.extend([int(duration > 0)] * count)
     return result

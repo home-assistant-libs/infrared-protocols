@@ -1,7 +1,15 @@
-"""Shared vocabulary for climate commands; temperatures are degrees Celsius."""
+"""Decoded climate vocabulary; state temperatures are degrees Celsius.
+
+Constructor units are protocol-specific and documented by each command. Native
+This is an opt-in projection for the new state-packet families, not a replacement
+for existing per-module IntEnum APIs. Integrations must select a remote model
+and map its supported capabilities; protocols with toggles cannot be treated as
+absolute state setters. Existing native APIs retain their wire-valued enums.
+Native fan enums preserve levels that have no unambiguous common-speed equivalent.
+"""
 
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 
 
 class ClimateMode(StrEnum):
@@ -22,6 +30,7 @@ class ClimateFan(StrEnum):
     MEDIUM = "medium"
     HIGH = "high"
     QUIET = "quiet"
+    MAXIMUM = "maximum"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -31,31 +40,6 @@ class ClimateState:
     power: bool | None = None
     mode: ClimateMode | None = None
     temperature: float | None = None
-    fan: ClimateFan | None = None
+    fan: ClimateFan | IntEnum | None = None
     swing_v: bool | None = None
     swing_h: bool | None = None
-
-
-def temperature_value(
-    value: float, minimum: float, maximum: float, step: float = 1
-) -> int:
-    """Validate a temperature and return its offset in steps."""
-    if not minimum <= value <= maximum or (value - minimum) % step:
-        raise ValueError(f"temperature must be {minimum}..{maximum} in steps of {step}")
-    return round((value - minimum) / step)
-
-
-def selection[T](value: T, choices: dict[T, int]) -> int:
-    """Look up a supported setting with a descriptive public error."""
-    try:
-        return choices[value]
-    except KeyError:
-        raise ValueError(f"unsupported setting: {value}") from None
-
-
-def decoded[T](value: int, choices: dict[T, int]) -> T:
-    """Look up a wire value, rejecting unknown encodings."""
-    for key, candidate in choices.items():
-        if candidate == value:
-            return key
-    raise ValueError(f"unknown wire value: {value}")

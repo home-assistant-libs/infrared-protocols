@@ -24,6 +24,7 @@ class KaseikyoCommand(Command):
         modulation: int = 38000,
         burst_pulse: int = 16,
         repeat_count: int = 0,
+        full_frame_repeat: bool = False,
     ) -> None:
         """Initialize the Kaseikyo IR command.
 
@@ -33,6 +34,8 @@ class KaseikyoCommand(Command):
         message separated by an inter-frame gap.
         """
         super().__init__(modulation=modulation, repeat_count=repeat_count)
+        self.full_frame_repeat = full_frame_repeat
+        self._frame_gaps: list[int] = []
         self.address = address
         self.data = data
         self.error_correction = error_correction
@@ -78,7 +81,9 @@ class KaseikyoCommand(Command):
         for i, frame in enumerate(frames):
             if i != 0:
                 # Inter-frame gap for multi-frame commands
-                timings.append(-multi_frame_gap)
+                timings.append(
+                    -(self._frame_gaps[i - 1] if self._frame_gaps else multi_frame_gap)
+                )
             timings.extend([leader_high, -leader_low])
 
             data_bytes = [
@@ -102,6 +107,11 @@ class KaseikyoCommand(Command):
 
         # Add repeat codes if requested
         gap = max(frame_time - sum(abs(t) for t in timings), trailer_min)
+        if self.full_frame_repeat:
+            frame = timings.copy()
+            for _ in range(self.repeat_count):
+                timings.extend([-gap, *frame])
+            return timings
         for _ in range(self.repeat_count):
             timings.extend([-gap, leader_high, -repeat_low, bit_high])
             gap = repeat_frame_gap  # Use standard frame gap for subsequent repeats
@@ -115,21 +125,26 @@ class KaseikyoCommand(Command):
         Application checksums remain in data for the device-specific decoder.
         Carrier frequency cannot be recovered from demodulated pulse timings.
         """
-        if not timings or not 2800 <= timings[0] <= 4000:
+        if len(timings) < 2 or not 2600 <= timings[0] <= 4400:
             return None
-        unit = round(timings[0] / 8)
+        unit = round((timings[0] - timings[1]) / 12)
         reader = Reader(timings)
         address: int | None = None
         payloads: list[bytes] = []
         repeats = 0
+        gaps: list[int] = []
+        starts: list[int] = []
         try:
             while reader.pos < len(timings):
                 if payloads:
-                    if timings[reader.pos] > -8000:
-                        raise ValueError("missing Kaseikyo frame gap")
-                    reader.pos += 1
-                    if reader.pos == len(timings):
+                    if len(timings) - reader.pos == 1:
+                        reader.end()
                         break
+                    if timings[reader.pos] > -3000:
+                        raise ValueError("missing Kaseikyo frame gap")
+                    gaps.append(-timings[reader.pos])
+                    reader.pos += 1
+                start = reader.pos
                 reader.expect(8 * unit)
                 if reader.pos < len(timings) and close(timings[reader.pos], -8 * unit):
                     reader.expect(-8 * unit, unit)
@@ -162,14 +177,30 @@ class KaseikyoCommand(Command):
                     raise ValueError("invalid Kaseikyo address or parity")
                 address = frame_address
                 payloads.append(data[2:])
+                starts.append(start)
             if address is None or not payloads:
                 return None
+            full_repeat = (
+                len(payloads) > 1
+                and all(value == payloads[0] for value in payloads)
+                and all(
+                    close(sum(abs(t) for t in timings[a:b]), 130000)
+                    for a, b in zip(starts, starts[1:], strict=False)
+                )
+            )
+            if full_repeat:
+                if repeats:
+                    return None
+                repeats = len(payloads) - 1
+                payloads = payloads[:1]
             result = cls(
                 address=address,
                 data=payloads[0] if len(payloads) == 1 else payloads,
                 repeat_count=repeats,
+                full_frame_repeat=full_repeat,
             )
-            result.base_unit = timings[0] / 8
+            result.base_unit = (timings[0] - timings[1]) / 12
+            result._frame_gaps = gaps[: len(payloads) - 1]
             return result
         except ValueError:
             return None

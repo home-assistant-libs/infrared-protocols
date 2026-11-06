@@ -1,5 +1,7 @@
 """State semantics, variant actions, and malformed climate packets."""
 
+from itertools import product
+
 import pytest
 
 from infrared_protocols.codes.coolix.climate import CoolixCode
@@ -24,18 +26,36 @@ from infrared_protocols.commands.toshiba import (
 from infrared_protocols.commands.whirlpool import HisenseArgCommand, WhirlpoolCommand
 
 
-@pytest.mark.parametrize("mode", list(ClimateMode))
-@pytest.mark.parametrize("temperature", [17, 24, 30])
-def test_coolix_state(mode: ClimateMode, temperature: int) -> None:
+@pytest.mark.parametrize(
+    "mode,temperature,expected,fan",
+    [
+        pytest.param(
+            mode,
+            temp,
+            None if mode == ClimateMode.FAN_ONLY else temp,
+            fan,
+            id=f"{mode}-{temp}-{fan}",
+        )
+        for mode, temp, fan in product(
+            ClimateMode,
+            [17, 24, 30],
+            [ClimateFan.AUTO, ClimateFan.LOW, ClimateFan.MEDIUM, ClimateFan.HIGH],
+        )
+        if fan == ClimateFan.AUTO or mode not in (ClimateMode.AUTO, ClimateMode.DRY)
+    ],
+)
+def test_coolix_state(
+    mode: ClimateMode, temperature: int, expected: int | None, fan: ClimateFan
+) -> None:
     """Fan-only has no set point; other modes recover the requested state."""
-    command = CoolixCommand.climate(mode=mode, temperature=temperature)
+    command = CoolixCommand.climate(mode=mode, temperature=temperature, fan=fan)
     result = CoolixCommand.from_raw_timings(command.get_raw_timings())
     assert result is not None
     assert result.state == ClimateState(
         power=True,
         mode=mode,
-        fan=ClimateFan.AUTO,
-        temperature=None if mode == ClimateMode.FAN_ONLY else temperature,
+        fan=fan,
+        temperature=expected,
     )
 
 
@@ -48,13 +68,28 @@ def test_coolix_buttons(code: CoolixCode) -> None:
     assert result.first == code.value
 
 
-@pytest.mark.parametrize("mode", list(ClimateMode))
 @pytest.mark.parametrize("power", [False, True])
 @pytest.mark.parametrize(
-    "fahrenheit,temperature,expected", [(False, 21, 21), (True, 68, 20)]
+    "mode,fahrenheit,temperature,expected",
+    [
+        pytest.param(
+            mode,
+            fahrenheit,
+            temp,
+            None if mode == ClimateMode.FAN_ONLY else expected,
+            id=f"{mode}-{temp}-fahrenheit{fahrenheit}",
+        )
+        for mode, (fahrenheit, temp, expected) in product(
+            ClimateMode, [(False, 21, 21), (True, 68, 20)]
+        )
+    ],
 )
 def test_midea_state(
-    mode: ClimateMode, power: bool, fahrenheit: bool, temperature: int, expected: float
+    mode: ClimateMode,
+    power: bool,
+    fahrenheit: bool,
+    temperature: int,
+    expected: float | None,
 ) -> None:
     """Native Fahrenheit codes decode to Celsius and off remains explicit."""
     command = MideaCommand.climate(
@@ -63,7 +98,7 @@ def test_midea_state(
     assert command.state == ClimateState(
         power=power,
         mode=mode,
-        temperature=None if mode == ClimateMode.FAN_ONLY else expected,
+        temperature=expected,
         fan=ClimateFan.AUTO,
     )
 
@@ -85,12 +120,22 @@ def test_midea_follow_me() -> None:
     assert command.state is None
 
 
-@pytest.mark.parametrize("preset", list(ToshibaPreset))
-def test_toshiba_presets(preset: ToshibaPreset) -> None:
+@pytest.mark.parametrize(
+    "preset,temperature",
+    [
+        pytest.param(
+            preset,
+            10 if preset == ToshibaPreset.FROST_PROTECTION else 24,
+            id=preset.value,
+        )
+        for preset in ToshibaPreset
+    ],
+)
+def test_toshiba_presets(preset: ToshibaPreset, temperature: int) -> None:
     """Every preset selects a validated packet layout that decodes losslessly."""
     command = ToshibaRas25j2kvsgNdCommand.climate(
         mode=ClimateMode.HEAT,
-        temperature=10 if preset == ToshibaPreset.FROST_PROTECTION else 24,
+        temperature=temperature,
         preset=preset,
     )
     result = ToshibaRas25j2kvsgNdCommand.from_raw_timings(command.get_raw_timings())

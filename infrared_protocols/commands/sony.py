@@ -3,6 +3,7 @@
 from typing import Self, override
 
 from . import Command
+from ._decode import frames
 from ._timing import Reader, close, number
 
 
@@ -20,6 +21,7 @@ class SonyCommand(Command):
         address_bits: int,
         command: int,
         modulation: int = 40000,
+        repeat_count: int = 0,
     ) -> None:
         """Initialize the SONY SIRC IR command."""
         if address_bits not in (5, 8, 13):
@@ -28,7 +30,7 @@ class SonyCommand(Command):
             raise ValueError("SONY SIRC address is out of range for address_bits")
         if not 0 <= command <= 0x7F:
             raise ValueError("SONY SIRC command must be in range 0x00..0x7F")
-        super().__init__(modulation=modulation)
+        super().__init__(modulation=modulation, repeat_count=repeat_count)
         self.address = address
         self.address_bits = address_bits
         self.command = command
@@ -69,11 +71,29 @@ class SonyCommand(Command):
         trailer_low = frame_period - sum(abs(timing) for timing in frame)
         frame.append(-trailer_low)
 
-        return frame
+        return frame * (self.repeat_count + 1)
 
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
         """Decode 12-, 15- or 20-bit SIRC with an optional trailing idle space."""
+        try:
+            captured = frames(timings, min_gap=2000, period=45000)
+        except ValueError:
+            return None
+        decoded_frames = [cls._decode_frame(frame) for frame in captured]
+        first = decoded_frames[0]
+        if first is None or any(
+            value is None
+            or (value.address, value.address_bits, value.command)
+            != (first.address, first.address_bits, first.command)
+            for value in decoded_frames[1:]
+        ):
+            return None
+        first.repeat_count = len(captured) - 1
+        return first
+
+    @classmethod
+    def _decode_frame(cls, timings: list[int]) -> Self | None:
         for count in (12, 15, 20):
             reader = Reader(timings)
             try:
@@ -84,9 +104,9 @@ class SonyCommand(Command):
                     if reader.pos >= len(timings):
                         raise ValueError("missing SIRC mark")
                     mark = timings[reader.pos]
-                    if close(mark, 600):
+                    if close(mark, 600, absolute=200):
                         values.append(0)
-                    elif close(mark, 1200):
+                    elif close(mark, 1200, absolute=200):
                         values.append(1)
                     else:
                         raise ValueError("invalid SIRC mark")

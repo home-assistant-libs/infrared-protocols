@@ -1,14 +1,12 @@
 """Ballu YKR-K/002E state commands."""
 
 from ._climate import ClimatePacket
+from ._climate_fields import decoded, selection, temperature_value
 from ._timing import PulseTiming
 from .climate import (
     ClimateFan,
     ClimateMode,
     ClimateState,
-    decoded,
-    selection,
-    temperature_value,
 )
 
 _MODES = {
@@ -44,6 +42,7 @@ class BalluCommand(ClimatePacket):
         swing_h: bool = False,
     ) -> None:
         """Build a state for 16..32 °C in whole degrees."""
+        selection(mode, _MODES)
         temp = temperature_value(temperature, 16, 32) + 8
         data = bytes(
             [
@@ -73,7 +72,7 @@ class BalluCommand(ClimatePacket):
         temperature_value(temperature, 16, 32)
         return ClimateState(
             power=bool(data[9] & 32),
-            mode=decoded(data[6] >> 5, _MODES),
+            mode=decoded(data[6] >> 5, _MODES) if bool(data[9] & 32) else None,
             temperature=temperature,
             fan=decoded(data[4] >> 5, _FANS),
             swing_v=data[1] & 7 == 0,

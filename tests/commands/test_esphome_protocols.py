@@ -155,9 +155,12 @@ def test_invalid_polarity(name: str, command: Command, decode: Decoder) -> None:
 
 
 @pytest.mark.parametrize("name,command,decode", CASES, ids=[case[0] for case in CASES])
-def test_receiver_jitter(name: str, command: Command, decode: Decoder) -> None:
+@pytest.mark.parametrize("scale", [0.92, 1.08])
+def test_receiver_jitter(
+    name: str, command: Command, decode: Decoder, scale: float
+) -> None:
     """Small timing distortion should not change the decoded message."""
-    raw = [round(value * 1.08) for value in command.get_raw_timings()]
+    raw = [round(value * scale) for value in command.get_raw_timings()]
     decoded = decode(raw)
     assert decoded is not None
     assert decoded.get_raw_timings() == command.get_raw_timings()

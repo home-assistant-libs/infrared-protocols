@@ -1,21 +1,16 @@
 """Toshiba RAC-PT1411HWRU and RAS-2819T complementary 48-bit packets."""
 
-from typing import Self, override
+from typing import Self
 
-from . import Command
-from ._timing import PulseTiming, Reader, byte_bits, pack_bytes
+from ._climate_fields import decoded, selection, temperature_value
+from ._timing import PulseTiming
 from .climate import (
     ClimateFan,
     ClimateMode,
     ClimateState,
-    decoded,
-    selection,
-    temperature_value,
 )
+from .toshiba_ac import ToshibaAcPacketCommand
 
-_TIMING = PulseTiming(540, 540, 1620)
-_HEADER = (4380, -4370)
-_GAP = 5480
 _TEMPS_C = (0x10, 0, 1, 3, 2, 6, 7, 5, 4, 12, 13, 9, 8, 10, 11)
 _TEMPS_F = (
     0x10,
@@ -66,10 +61,16 @@ def _paired(values: tuple[int, int, int]) -> bytes:
     return bytes(byte for value in values for byte in (value, value ^ 255))
 
 
-class Toshiba48Command(Command):
+class Toshiba48Command(ToshibaAcPacketCommand):
     """One complementary packet sent twice, followed by an optional extension."""
 
-    def __init__(self, *, first: bytes, second: bytes | None = None) -> None:
+    HEADER = (4380, -4370)
+    TIMING = PulseTiming(540, 540, 1620)
+    GAP = 5480
+
+    def __init__(
+        self, *, first: bytes, second: bytes | None = None, modulation: int = 38000
+    ) -> None:
         """Validate packet sizes and the three complement pairs."""
         if (
             len(first) != 6
@@ -78,7 +79,11 @@ class Toshiba48Command(Command):
             and len(second) != 6
         ):
             raise ValueError("invalid Toshiba 48-bit packet")
-        super().__init__(modulation=38000)
+        super().__init__(
+            rc_code_1=int.from_bytes(first),
+            rc_code_2=int.from_bytes(second) if second is not None else None,
+            modulation=modulation,
+        )
         self.first, self.second = (
             bytes(first),
             bytes(second) if second is not None else None,
@@ -88,44 +93,18 @@ class Toshiba48Command(Command):
     @property
     def state(self) -> ClimateState:
         """Interpret a device-specific command."""
-        raise NotImplementedError
-
-    @override
-    def get_raw_timings(self) -> list[int]:
-        """Encode the two mandatory copies and optional extension."""
-        packets = (
-            (self.first, self.first)
-            if self.second is None
-            else (self.first, self.first, self.second)
-        )
-        return [
-            duration
-            for packet in packets
-            for duration in (
-                *_HEADER,
-                *_TIMING.encode(byte_bits(packet, lsb=False)),
-                _TIMING.mark,
-                -_GAP,
-            )
-        ]
+        return ClimateState()
 
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
-        """Require matching repeated packets and validate the optional extension."""
-        reader = Reader(timings)
-        packets: list[bytes] = []
+        """Use the shared 48-bit transport, then validate the model's packets."""
+        words = cls._read_words(timings)
+        if words is None:
+            return None
         try:
-            while len(timings) - reader.pos > 1 and len(packets) < 3:
-                if packets:
-                    reader.expect(-_GAP)
-                reader.expect(*_HEADER)
-                packets.append(pack_bytes(reader.read_bits(_TIMING, 48), lsb=False))
-                reader.expect(_TIMING.mark)
-            reader.end()
-            if len(packets) < 2 or packets[0] != packets[1]:
-                return None
             return cls(
-                first=packets[0], second=packets[2] if len(packets) == 3 else None
+                first=words[0].to_bytes(6),
+                second=words[2].to_bytes(6) if len(words) == 3 else None,
             )
         except ValueError:
             return None
@@ -322,7 +301,7 @@ class ToshibaRas2819Command(Toshiba48Command):
     def temperature_candidates(self) -> tuple[int, ...]:
         """Return all set points matching the code; dry mode has collisions."""
         code = self.first[4]
-        if code == 0xE4 or self.second is None:
+        if code == 0xE4 and self.first[2] != 0x1F or self.second is None:
             return ()
         extra = 0x24 if code & 15 == 4 else code & 15
         return tuple(
@@ -346,12 +325,9 @@ class ToshibaRas2819Command(Toshiba48Command):
             if first[4] == 0xE4 and first[2] != 0x1F
             else decoded(first[4] & 15, _MODES)
         )
-        fan = (
-            ClimateFan.AUTO
-            if mode in (ClimateMode.AUTO, ClimateMode.DRY)
-            else decoded(first[2], _FANS)
-        )
-        if second != self._extension(mode, fan):
+        fan = ClimateFan.AUTO if first[2] == 0x1F else decoded(first[2], _FANS)
+        expected = self._extension(ClimateMode.AUTO if first[2] == 0x1F else mode, fan)
+        if second != expected:
             raise ValueError("inconsistent RAS-2819T extension")
         candidates = self.temperature_candidates
         if mode != ClimateMode.FAN_ONLY and not candidates:

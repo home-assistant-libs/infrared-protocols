@@ -2,15 +2,13 @@
 
 from enum import IntEnum
 
-from ._climate import ClimatePacket
+from ._aeha_climate import AehaClimatePacket
+from ._climate_fields import decoded, selection, temperature_value
 from ._timing import PulseTiming, bits, number
 from .climate import (
     ClimateFan,
     ClimateMode,
     ClimateState,
-    decoded,
-    selection,
-    temperature_value,
 )
 
 _MODES = {
@@ -33,7 +31,7 @@ def _reverse(value: int, width: int = 8) -> int:
     return number(bits(value & ((1 << width) - 1), width), lsb=True)
 
 
-class FriedrichCommand(ClimatePacket):
+class FriedrichCommand(AehaClimatePacket):
     """Power-on state with a native Fahrenheit set point."""
 
     HEADER = (3400, -1700)
@@ -83,6 +81,11 @@ class FriedrichCommand(ClimatePacket):
         """Return the native Fahrenheit set point."""
         return 60 + _reverse(self.data[8] & 15, 4) * 2
 
+    @property
+    def economy(self) -> bool:
+        """Return the decoded economy flag."""
+        return not bool(self.data[14] & 4)
+
     @classmethod
     def parse(cls, data: bytes) -> ClimateState:
         """Validate signature, checksum and settings."""
@@ -107,12 +110,11 @@ class FriedrichCommand(ClimatePacket):
 class FriedrichButton(IntEnum):
     """Utility commands that do not carry a full climate state."""
 
-    MOVE_LOUVER = 0x36
     POWER_OFF = 0x40
 
 
-class FriedrichUtilityCommand(ClimatePacket):
-    """Short power-off or louver-step packet."""
+class FriedrichUtilityCommand(AehaClimatePacket):
+    """Short power-off packet."""
 
     HEADER = FriedrichCommand.HEADER
     TIMING = FriedrichCommand.TIMING

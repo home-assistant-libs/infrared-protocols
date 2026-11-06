@@ -102,7 +102,33 @@ CASES: list[tuple[Command, Decoder]] = [
 ]
 
 
-@pytest.mark.parametrize("command,decode", CASES)
+@pytest.mark.parametrize(
+    "command,decode",
+    CASES,
+    ids=[
+        type(command).__name__
+        + "-"
+        + "-".join(
+            f"{key}={value}"
+            for key, value in vars(command).items()
+            if key
+            in (
+                "address",
+                "command",
+                "extension",
+                "toggle",
+                "mode",
+                "data",
+                "code",
+                "repeat_count",
+                "address_bits",
+                "preamble_address",
+                "preamble_command",
+            )
+        )
+        for command, _ in CASES
+    ],
+)
 def test_decode_existing_encoder(command: Command, decode: Decoder) -> None:
     """Recover edge-valued fields, extensions, toggles and full-frame repeats."""
     raw = command.get_raw_timings()
@@ -111,7 +137,33 @@ def test_decode_existing_encoder(command: Command, decode: Decoder) -> None:
     assert result.get_raw_timings() == raw
 
 
-@pytest.mark.parametrize("command,decode", CASES)
+@pytest.mark.parametrize(
+    "command,decode",
+    CASES,
+    ids=[
+        type(command).__name__
+        + "-"
+        + "-".join(
+            f"{key}={value}"
+            for key, value in vars(command).items()
+            if key
+            in (
+                "address",
+                "command",
+                "extension",
+                "toggle",
+                "mode",
+                "data",
+                "code",
+                "repeat_count",
+                "address_bits",
+                "preamble_address",
+                "preamble_command",
+            )
+        )
+        for command, _ in CASES
+    ],
+)
 @pytest.mark.parametrize("prefix", [0, 1, 5])
 def test_truncated(command: Command, decode: Decoder, prefix: int) -> None:
     """A partial leader or payload cannot be a complete command."""
@@ -160,6 +212,7 @@ def test_panasonic_power_toggle() -> None:
             Samsung32Command.from_raw_timings,
         ),
     ],
+    ids=["rc5", "rc6", "samsung32"],
 )
 def test_invalid_repeat_period(factory: Callable[[], Command], decode: Decoder) -> None:
     """An unrelated frame after a long pause is not a held-key repeat."""

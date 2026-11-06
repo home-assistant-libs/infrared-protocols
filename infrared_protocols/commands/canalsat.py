@@ -49,7 +49,13 @@ class CanalSatCommand(Command):
 
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
-        """Decode either CanalSat timing variant."""
+        """Decode this timing variant.
+
+        The first one-unit mark identifies the nominal clock. Captures with
+        enough clock distortion to cross variants require a configured model.
+        """
+        if not timings or not close(timings[0], cls.UNIT, 0.12):
+            return None
         levels: list[int] = []
         for duration in timings:
             if duration < -4 * cls.UNIT and len(levels) == 48:

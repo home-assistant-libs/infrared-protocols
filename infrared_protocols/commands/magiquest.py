@@ -70,3 +70,17 @@ class MagiQuestLegacyCommand(Command):
             *_TIMING.encode([0, 0] + bits(self.wand_id, 32) + bits(self.magnitude, 16)),
             288,
         ]
+
+    @classmethod
+    def from_raw_timings(cls, timings: list[int]) -> Self | None:
+        """Decode the legacy layout, including its two start bits and stop mark."""
+        reader = Reader(timings)
+        try:
+            values = reader.read_bits(_TIMING, 50)
+            reader.expect(288)
+            reader.end()
+            if values[:2] != [0, 0]:
+                return None
+            return cls(wand_id=number(values[2:34]), magnitude=number(values[34:]))
+        except ValueError:
+            return None

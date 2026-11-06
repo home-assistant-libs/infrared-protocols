@@ -3,14 +3,12 @@
 from typing import Self, override
 
 from . import Command
+from ._climate_fields import decoded, selection, temperature_value
 from ._timing import PulseTiming, Reader, bits, byte_bits, pack_bytes
 from .climate import (
     ClimateFan,
     ClimateMode,
     ClimateState,
-    decoded,
-    selection,
-    temperature_value,
 )
 
 _TIMING = PulseTiming(560, 560, 1680)
@@ -84,7 +82,8 @@ class CoolixCommand(Command):
         else:
             fan_code = selection(fan, _FANS)
         temp_code = 14 if mode == ClimateMode.FAN_ONLY else _TEMPERATURES[temp]
-        return cls(first=0xB20F00 | fan_code << 12 | temp_code << 4 | mode_code)
+        word = 0xB20F00 | fan_code << 12 | temp_code << 4 | mode_code
+        return cls(first=word, second=word)
 
     @property
     def state(self) -> ClimateState | None:
@@ -101,6 +100,12 @@ class CoolixCommand(Command):
             if mode_code == 4 and temp_code == 14
             else decoded(mode_code, _MODES)
         )
+        if (
+            temp_code not in _TEMPERATURES
+            and mode != ClimateMode.FAN_ONLY
+            or fan_code not in (*_FANS.values(), 1)
+        ):
+            return None
         temperature = (
             None
             if mode == ClimateMode.FAN_ONLY

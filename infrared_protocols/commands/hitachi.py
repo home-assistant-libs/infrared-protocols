@@ -4,14 +4,12 @@ from enum import IntEnum
 from typing import ClassVar
 
 from ._climate import ClimatePacket
+from ._climate_fields import decoded, selection, temperature_value
 from ._timing import PulseTiming
 from .climate import (
     ClimateFan,
     ClimateMode,
     ClimateState,
-    decoded,
-    selection,
-    temperature_value,
 )
 
 _MODES = {
@@ -126,13 +124,18 @@ class HitachiAc344Command(ClimatePacket):
             raise ValueError("invalid Hitachi packet or byte complement")
         if data[27] not in (0xE1, 0xF1):
             raise ValueError("invalid Hitachi power byte")
+        HitachiButton(data[11])
         temperature = data[13] >> 2
         temperature_value(temperature, 16, 32)
         return ClimateState(
             power=data[27] == 0xF1,
-            mode=decoded(data[25] & 15, _MODES),
+            mode=ClimateMode.AUTO
+            if data[25] & 15 == (14 if cls.EXTENDED else 7)
+            else decoded(data[25] & 15, _MODES),
             temperature=temperature,
-            fan=decoded(data[25] >> 4, _FANS),
+            fan=ClimateFan.MAXIMUM
+            if data[25] >> 4 == 6
+            else decoded(data[25] >> 4, _FANS),
             swing_v=bool(data[37] & 32),
             swing_h=data[35] & 7 == 0,
         )

@@ -111,7 +111,9 @@ class Ira211Command(Command):
             levels: list[int] = []
             for duration in body[:-1]:
                 count = round(abs(duration) / unit)
-                if not 1 <= count <= 9 or not close(abs(duration), count * unit, 0.15):
+                if not 1 <= count <= 9 or not close(
+                    abs(duration), count * unit, 0, absolute=unit * 0.4
+                ):
                     return None
                 levels.extend([int(duration > 0)] * count)
             if len(levels) not in (40, 50, 70):

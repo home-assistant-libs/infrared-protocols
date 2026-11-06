@@ -41,7 +41,8 @@
         525,
         -525,
         525
-      ]
+      ],
+      "input": "JVCProtocol().encode(&d,JVCData{0xA55A});"
     },
     {
       "protocol": "dish",
@@ -185,7 +186,8 @@
         -2800,
         400,
         -6100
-      ]
+      ],
+      "input": "DishProtocol().encode(&d,DishData{.address=4,.command=37});"
     },
     {
       "protocol": "samsung36",
@@ -269,7 +271,8 @@
         -500,
         500,
         -59000
-      ]
+      ],
+      "input": "Samsung36Protocol().encode(&d,Samsung36Data{.address=0x1234,.command=0xABCDE});"
     },
     {
       "protocol": "toto",
@@ -355,8 +358,173 @@
         -550,
         550,
         -550,
+        550,
+        -36000,
+        6200,
+        -2800,
+        550,
+        -550,
+        550,
+        -1700,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -1700,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -1700,
+        550,
+        -1700,
+        550,
+        -1700,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -1700,
+        550,
+        -1700,
+        550,
+        -1700,
+        550,
+        -1700,
+        550,
+        -550,
+        550,
+        -1700,
+        550,
+        -1700,
+        550,
+        -550,
+        550,
+        -1700,
+        550,
+        -1700,
+        550,
+        -1700,
+        550,
+        -550,
+        550,
+        -1700,
+        550,
+        -550,
+        550,
+        -1700,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -36000,
+        6200,
+        -2800,
+        550,
+        -550,
+        550,
+        -1700,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -1700,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -1700,
+        550,
+        -1700,
+        550,
+        -1700,
+        550,
+        -550,
+        550,
+        -550,
+        550,
+        -1700,
+        550,
+        -1700,
+        550,
+        -1700,
+        550,
+        -1700,
+        550,
+        -550,
+        550,
+        -1700,
+        550,
+        -1700,
+        550,
+        -550,
+        550,
+        -1700,
+        550,
+        -1700,
+        550,
+        -1700,
+        550,
+        -550,
+        550,
+        -1700,
+        550,
+        -550,
+        550,
+        -1700,
+        550,
+        -550,
+        550,
+        -550,
         550
-      ]
+      ],
+      "input": "TotoProtocol().encode(&d,TotoData{.rc_code_1=3,.rc_code_2=9,.command=0xED});"
     },
     {
       "protocol": "roomba",
@@ -378,7 +546,8 @@
         -3000,
         3000,
         -1000
-      ]
+      ],
+      "input": "RoombaProtocol().encode(&d,RoombaData{0xA5});"
     },
     {
       "protocol": "hob2hood",
@@ -394,7 +563,8 @@
         -1900,
         2400,
         -500
-      ]
+      ],
+      "input": "Hob2HoodProtocol().encode(&d,Hob2HoodData{HOB2HOOD_COMMAND_FAN_MEDIUM});"
     },
     {
       "protocol": "magiquest_legacy",
@@ -501,7 +671,8 @@
         576,
         -576,
         288
-      ]
+      ],
+      "input": "MagiQuestProtocol().encode(&d,MagiQuestData{.magnitude=0xABCD,.wand_id=0x12345678});"
     },
     {
       "protocol": "gobox",
@@ -573,7 +744,8 @@
         -1640,
         580,
         -2000
-      ]
+      ],
+      "input": "GoboxProtocol().encode(&d,GoboxData{GOBOX_MENU});"
     },
     {
       "protocol": "beo4",
@@ -622,7 +794,8 @@
         200,
         -12300,
         200
-      ]
+      ],
+      "input": "Beo4Protocol().encode(&d,Beo4Data{.source=0x12,.command=0xA5,.repeats=0});"
     },
     {
       "protocol": "canalsat",
@@ -661,7 +834,8 @@
         250,
         -250,
         250
-      ]
+      ],
+      "input": "CanalSatProtocol().encode(&d,CanalSatData{.device=0x12,.address=0x23,.repeat=0,.command=0x56});"
     },
     {
       "protocol": "canalsatld",
@@ -700,7 +874,8 @@
         320,
         -320,
         320
-      ]
+      ],
+      "input": "CanalSatLDProtocol().encode(&d,CanalSatData{.device=0x12,.address=0x23,.repeat=0,.command=0x56});"
     },
     {
       "protocol": "haier",
@@ -855,7 +1030,8 @@
         540,
         -1650,
         540
-      ]
+      ],
+      "input": "const uint8_t data[]={0xA5,1,2,3,4,5,6,7}; HaierProtocol().encode(&d,data,8);"
     },
     {
       "protocol": "mirage",
@@ -1104,7 +1280,8 @@
         554,
         -545,
         554
-      ]
+      ],
+      "input": "const uint8_t data[]={0xA5,1,2,3,4,5,6,7,8,9,10,11,12,13}; MirageProtocol().encode(&d,data,14);"
     },
     {
       "protocol": "midea",
@@ -1309,7 +1486,8 @@
         560,
         -560,
         560
-      ]
+      ],
+      "input": "MideaData data{0xA1,0x81,0x48,0xFF,0xFF,0}; data.finalize(); MideaProtocol().encode(&d,data);"
     },
     {
       "protocol": "coolix",
@@ -1514,7 +1692,8 @@
         560,
         -1680,
         560
-      ]
+      ],
+      "input": "CoolixProtocol().encode(&d,CoolixData(0xB21FC8,0xB2BFE4));"
     },
     {
       "protocol": "pd_pioneer",
@@ -1748,7 +1927,8 @@
         -1066,
         520,
         -10010
-      ]
+      ],
+      "input": "PDPioneerData data{0x23,0xCB,0x26,1,0,0x24,3,7,5,0x80,0,0,0,0}; data.finalize(); PDPioneerProtocol().encode(&d,data);"
     },
     {
       "protocol": "pioneer_wyt",
@@ -1981,7 +2161,8 @@
         500,
         -1100,
         500
-      ]
+      ],
+      "input": "PioneerWytData data{0x23,0xCB,0x26,2,0,0x24,3,7,5,0x80,0,0,0,0}; data.finalize(); PioneerWytProtocol().encode(&d,data);"
     },
     {
       "protocol": "toshiba_ac",
@@ -2287,7 +2468,8 @@
         -1690,
         560,
         -4500
-      ]
+      ],
+      "input": "ToshibaAcProtocol().encode(&d,ToshibaAcData{0x123456789ABC,0xABCDEF012345});"
     },
     {
       "protocol": "ira211_1",
@@ -2329,7 +2511,13 @@
         -1600,
         800,
         -7600
-      ]
+      ],
+      "input": {
+        "command": 1,
+        "half_degrees": 43,
+        "mode": "TIMER",
+        "fan": "HIGH"
+      }
     },
     {
       "protocol": "ira211_2",
@@ -2371,7 +2559,13 @@
         -1600,
         800,
         -7600
-      ]
+      ],
+      "input": {
+        "command": 2,
+        "half_degrees": 43,
+        "mode": "TIMER",
+        "fan": "HIGH"
+      }
     },
     {
       "protocol": "ira211_4",
@@ -2407,7 +2601,13 @@
         -4000,
         800,
         -7600
-      ]
+      ],
+      "input": {
+        "command": 4,
+        "half_degrees": 43,
+        "mode": "TIMER",
+        "fan": "HIGH"
+      }
     },
     {
       "protocol": "ira211_5",
@@ -2441,7 +2641,13 @@
         -800,
         800,
         -7600
-      ]
+      ],
+      "input": {
+        "command": 5,
+        "half_degrees": 43,
+        "mode": "TIMER",
+        "fan": "HIGH"
+      }
     },
     {
       "protocol": "ira211_6",
@@ -2495,7 +2701,13 @@
         -2400,
         800,
         -7600
-      ]
+      ],
+      "input": {
+        "command": 6,
+        "half_degrees": 43,
+        "mode": "TIMER",
+        "fan": "HIGH"
+      }
     },
     {
       "protocol": "ira211_7",
@@ -2547,7 +2759,13 @@
         -2400,
         800,
         -7600
-      ]
+      ],
+      "input": {
+        "command": 7,
+        "half_degrees": 43,
+        "mode": "TIMER",
+        "fan": "HIGH"
+      }
     },
     {
       "protocol": "dyson",
@@ -2586,7 +2804,11 @@
         780,
         -720,
         780
-      ]
+      ],
+      "input": {
+        "code": 4660,
+        "index": 2
+      }
     },
     {
       "protocol": "lg28",
@@ -2651,7 +2873,11 @@
         600,
         -550,
         600
-      ]
+      ],
+      "input": {
+        "data": 180150010,
+        "nbits": 28
+      }
     },
     {
       "protocol": "lg32",
@@ -2724,7 +2950,11 @@
         600,
         -1600,
         600
-      ]
+      ],
+      "input": {
+        "data": 2882400171,
+        "nbits": 32
+      }
     }
   ]
 }

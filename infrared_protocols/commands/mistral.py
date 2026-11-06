@@ -1,14 +1,12 @@
 """Mistral MHFE1126A / MR112C AEHA climate commands."""
 
-from ._climate import ClimatePacket
+from ._aeha_climate import AehaClimatePacket
+from ._climate_fields import decoded, selection, temperature_value
 from ._timing import PulseTiming, bits, number
 from .climate import (
     ClimateFan,
     ClimateMode,
     ClimateState,
-    decoded,
-    selection,
-    temperature_value,
 )
 
 _MODES = {
@@ -30,7 +28,7 @@ def _reverse(value: int) -> int:
     return number(bits(value & 255, 8), lsb=True)
 
 
-class MistralCommand(ClimatePacket):
+class MistralCommand(AehaClimatePacket):
     """Mistral full state; data includes the AEHA address bytes in wire order."""
 
     HEADER = (3400, -1700)
@@ -47,6 +45,7 @@ class MistralCommand(ClimatePacket):
         fan: ClimateFan = ClimateFan.AUTO,
     ) -> None:
         """Build a whole-degree 16..30 °C state."""
+        selection(mode, _MODES)
         temperature_value(temperature, 16, 30)
         fan_code = selection(fan, _FANS)
         data = bytes(
@@ -88,7 +87,7 @@ class MistralCommand(ClimatePacket):
         temperature_value(temperature, 16, 30)
         return ClimateState(
             power=bool(data[5]),
-            mode=decoded(data[6], _MODES),
+            mode=decoded(data[6], _MODES) if bool(data[5]) else None,
             temperature=temperature,
             fan=decoded(data[3] << 8 | data[8], _FANS),
         )

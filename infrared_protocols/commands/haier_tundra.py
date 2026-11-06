@@ -3,15 +3,13 @@
 from enum import IntEnum
 
 from ._climate import ClimatePacket
-from ._timing import PulseTiming
+from ._climate_fields import decoded, selection, temperature_value
 from .climate import (
     ClimateFan,
     ClimateMode,
     ClimateState,
-    decoded,
-    selection,
-    temperature_value,
 )
+from .haier import HaierCommand
 
 _MODES = {
     ClimateMode.AUTO: 0,
@@ -56,8 +54,8 @@ class HaierButton(IntEnum):
 class HaierTundraCommand(ClimatePacket):
     """Tundra state; LIGHT_TOGGLE changes the light without reporting its state."""
 
-    HEADER = (3100, -3100, 3100, -4400)
-    TIMING = PulseTiming(540, 580, 1650)
+    HEADER = HaierCommand.HEADER
+    TIMING = HaierCommand.TIMING
     LENGTH = 14
     LSB = False
 
@@ -77,6 +75,7 @@ class HaierTundraCommand(ClimatePacket):
         turbo: bool = False,
     ) -> None:
         """Build a state for 16..30 °C with optional health, quiet or turbo."""
+        selection(mode, _MODES)
         temp = temperature_value(temperature, 16, 30)
         if (
             quiet
@@ -122,13 +121,14 @@ class HaierTundraCommand(ClimatePacket):
         """Read common state after checksum and identifier validation."""
         super().parse(data)
         HaierUnit(data[0])
+        HaierButton(data[12])
         temperature = (data[1] >> 4) + 16
         temperature_value(temperature, 16, 30)
         return ClimateState(
             power=bool(data[4] & 64),
-            mode=decoded(data[7] >> 5, _MODES),
+            mode=decoded(data[7] >> 5, _MODES) if bool(data[4] & 64) else None,
             temperature=temperature,
             fan=decoded(data[5] >> 5, _FANS),
-            swing_v=data[1] & 15 == 12,
+            swing_v=(data[1] & 15 == 12) if data[4] & 64 else None,
             swing_h=data[2] >> 5 == 7,
         )

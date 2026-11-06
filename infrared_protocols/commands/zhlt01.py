@@ -1,14 +1,12 @@
 """ZH/LT-01 remote commands used by Chigo, Eurom and related units."""
 
 from ._climate import ClimatePacket
+from ._climate_fields import decoded, selection, temperature_value
 from ._timing import PulseTiming
 from .climate import (
     ClimateFan,
     ClimateMode,
     ClimateState,
-    decoded,
-    selection,
-    temperature_value,
 )
 
 _MODES = {
@@ -46,6 +44,7 @@ class Zhlt01Command(ClimatePacket):
         boost: bool = False,
     ) -> None:
         """Build a state for 16..32 °C; QUIET selects the sleep fan setting."""
+        selection(mode, _MODES)
         temp = temperature_value(temperature, 16, 32)
         control = (2 if power else 0) | (4 if swing_v else 8) | (0 if swing_h else 16)
         control |= selection(ClimateFan.HIGH if boost else fan, _FANS)
@@ -80,7 +79,7 @@ class Zhlt01Command(ClimatePacket):
         temperature_value(temperature, 16, 32)
         return ClimateState(
             power=bool(data[7] & 2),
-            mode=decoded(data[9] >> 5, _MODES),
+            mode=decoded(data[9] >> 5, _MODES) if bool(data[7] & 2) else None,
             temperature=temperature,
             fan=decoded(data[7] & 0xE1, _FANS),
             swing_v=data[7] & 12 == 4,

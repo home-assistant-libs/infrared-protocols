@@ -1,14 +1,12 @@
 """DeLonghi ARC43xxx portable air-conditioner state commands."""
 
 from ._climate import ClimatePacket
+from ._climate_fields import decoded, selection, temperature_value
 from ._timing import PulseTiming
 from .climate import (
     ClimateFan,
     ClimateMode,
     ClimateState,
-    decoded,
-    selection,
-    temperature_value,
 )
 
 _MODES = {
@@ -46,6 +44,7 @@ class DelonghiCommand(ClimatePacket):
         The four-bit heat field uses a 12 °C offset. An off command has no
         retained operating-mode field, so its temperature uses the cool offset.
         """
+        selection(mode, _MODES)
         heat = power and mode == ClimateMode.HEAT
         temperature_value(temperature, 13 if heat else 17, 27 if heat else 32)
         temp = int(temperature) - (12 if heat else 17)
@@ -69,7 +68,7 @@ class DelonghiCommand(ClimatePacket):
         if data[0] != 0x53:
             raise ValueError("invalid DeLonghi address")
         power = bool(data[2] & 1)
-        mode = decoded(data[2] & 14, _MODES)
+        mode = decoded(data[2] & 14, _MODES) if power else None
         heat = power and mode == ClimateMode.HEAT
         temperature = (data[1] & 15) + (12 if heat else 17)
         temperature_value(temperature, 13 if heat else 17, 27 if heat else 32)

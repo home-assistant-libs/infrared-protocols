@@ -105,7 +105,7 @@ class ClimatePacket(Command):
                 reader.expect(-cls.REPEAT_GAP)
                 if cls._read_packet(reader) != data:
                     raise ValueError("repeated climate state differs")
-            reader.end(min_gap=cls._parts()[-1].gap or 3000)
+            reader.end(min_gap=min(3000, round(cls._parts()[-1].gap * 0.6)) or 3000)
             command = cls.__new__(cls)
             ClimatePacket.__init__(command, data=data)
             return command

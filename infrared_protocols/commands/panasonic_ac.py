@@ -11,6 +11,7 @@ models use the 216-bit layouts documented by ESPHome's Panasonic IR component:
 https://github.com/esphome/esphome/tree/dev/esphome/components/panasonic_ir
 """
 
+from dataclasses import dataclass
 from enum import Enum, IntEnum, StrEnum
 from typing import Self
 
@@ -101,6 +102,21 @@ class PanasonicAcToggle(Enum):
 
     QUIET = (0x81, 0x33)
     POWERFUL = (0x86, 0x35)
+
+
+@dataclass(frozen=True, kw_only=True)
+class PanasonicAcState:
+    """Decoded native Panasonic settings; CKP carries a power toggle."""
+
+    mode: PanasonicAcMode
+    temperature: float | None
+    fan: PanasonicAcFanSpeed
+    power: bool | None
+    power_toggle: bool | None
+    swing_axis1: PanasonicAcSwingAxis1
+    swing_axis2: PanasonicAcSwingAxis2 | None
+    frost_protection: bool
+    nanoex: bool | None
 
 
 def _checksum(state: list[int], start: int, end: int) -> int:
@@ -242,29 +258,52 @@ class PanasonicAcCommand(KaseikyoCommand):
                 else 36700
             ),
         )
+        self.model = model
         if model is not None:
             # The recorded pulse durations are independent of carrier frequency.
             self.base_unit = 432
+
+    @property
+    def state(self) -> PanasonicAcState:
+        """Recover settings without replacing the retained received bytes."""
+        payload = self.data[-1] if isinstance(self.data, list) else self.data
+        frame = bytes([2, 32]) + payload
+        mode = PanasonicAcMode(frame[5] >> 4)
+        temperature = frame[6] / 2
+        ckp = self.model == PanasonicAcModel.CKP
+        return PanasonicAcState(
+            mode=mode,
+            temperature=None if mode == PanasonicAcMode.FAN_ONLY else temperature,
+            fan=PanasonicAcFanSpeed(frame[8] >> 4),
+            power=None if ckp else bool(frame[5] & 1),
+            power_toggle=bool(frame[5] & 1) if ckp else None,
+            swing_axis1=PanasonicAcSwingAxis1(frame[8] & 15),
+            swing_axis2=PanasonicAcSwingAxis2(frame[9] & 15)
+            if self.model in (None, PanasonicAcModel.DKE, PanasonicAcModel.RKR)
+            else None,
+            frost_protection=mode == PanasonicAcMode.HEAT and temperature in (8, 10),
+            nanoex=bool(frame[17] & 4) if self.model is None else None,
+        )
 
     @classmethod
     def from_raw_timings(
         cls, timings: list[int], *, model: PanasonicAcModel | None = None
     ) -> Self | None:
-        """Decode both Panasonic state frames, validating signatures and checksums.
+        """Decode the state section alone or both frames, checking their checksums.
 
         Supply the configured model to interpret variant fields. CKP's power bit
         remains a toggle; a receiver cannot recover absolute power from it.
         The received payloads are retained so reserved bytes survive re-encoding.
         """
         decoded = KaseikyoCommand.from_raw_timings(timings)
-        if (
-            decoded is None
-            or decoded.address != PANASONIC_AC_ADDRESS
-            or not isinstance(decoded.data, list)
-            or len(decoded.data) != 2
-        ):
+        if decoded is None or decoded.address != PANASONIC_AC_ADDRESS:
             return None
-        first, second = (bytes([2, 32]) + frame for frame in decoded.data)
+        if isinstance(decoded.data, bytes):
+            first, second = bytes(_FRAME1), bytes([2, 32]) + decoded.data
+        elif len(decoded.data) == 2:
+            first, second = (bytes([2, 32]) + frame for frame in decoded.data)
+        else:
+            return None
         if (
             first != bytes(_FRAME1)
             or len(second) != 19
@@ -278,7 +317,9 @@ class PanasonicAcCommand(KaseikyoCommand):
             swing = PanasonicAcSwingAxis1(second[8] & 15)
             temperature = second[6] / 2
             frost = (
-                temperature == 10 and model is not None and mode == PanasonicAcMode.HEAT
+                temperature in (8, 10)
+                and model is not None
+                and mode == PanasonicAcMode.HEAT
             )
             if not frost and not MIN_TEMP <= temperature <= MAX_TEMP:
                 return None
@@ -301,6 +342,8 @@ class PanasonicAcCommand(KaseikyoCommand):
             result.data = decoded.data
             result.base_unit = decoded.base_unit
             result.repeat_count = decoded.repeat_count
+            result.full_frame_repeat = decoded.full_frame_repeat
+            result._frame_gaps = decoded._frame_gaps
             return result
         except ValueError:
             return None
@@ -360,4 +403,6 @@ class PanasonicAcToggleCommand(KaseikyoCommand):
         result = cls(toggle=toggle)
         result.data, result.base_unit = decoded.data, decoded.base_unit
         result.repeat_count = decoded.repeat_count
+        result.full_frame_repeat = decoded.full_frame_repeat
+        result._frame_gaps = decoded._frame_gaps
         return result

@@ -1,14 +1,12 @@
 """TCL 112-bit air-conditioner state commands."""
 
 from ._climate import ClimatePacket
+from ._climate_fields import decoded, selection, temperature_value
 from ._timing import PulseTiming
 from .climate import (
     ClimateFan,
     ClimateMode,
     ClimateState,
-    decoded,
-    selection,
-    temperature_value,
 )
 
 _MODES = {
@@ -19,6 +17,7 @@ _MODES = {
     ClimateMode.AUTO: 8,
 }
 _FANS = {
+    ClimateFan.QUIET: 1,
     ClimateFan.AUTO: 0,
     ClimateFan.LOW: 2,
     ClimateFan.MEDIUM: 3,

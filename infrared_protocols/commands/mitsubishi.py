@@ -3,14 +3,12 @@
 from enum import IntEnum, StrEnum
 
 from ._climate import ClimatePacket
+from ._climate_fields import decoded, selection, temperature_value
 from ._timing import PulseTiming
 from .climate import (
     ClimateFan,
     ClimateMode,
     ClimateState,
-    decoded,
-    selection,
-    temperature_value,
 )
 
 _MODES = {
@@ -138,6 +136,32 @@ class MitsubishiCommand(ClimatePacket):
         """Return the native fan level without assuming a unit's speed count."""
         return MitsubishiFan(self.data[9] & 7)
 
+    @property
+    def preset(self) -> MitsubishiPreset:
+        """Return the native operating preset."""
+        if self.data[14] == 0xC1:
+            return MitsubishiPreset.NIGHT
+        if self.data[14] & 32:
+            return MitsubishiPreset.ECONO_COOL
+        if self.data[15] & 8:
+            return MitsubishiPreset.POWERFUL
+        return MitsubishiPreset.NONE
+
+    @property
+    def vertical_position(self) -> int:
+        """Return the native vertical position, including 7 for swing."""
+        return self.data[9] >> 3 & 7
+
+    @property
+    def horizontal_position(self) -> int:
+        """Return the native horizontal position, including 12 for swing."""
+        return self.data[8] >> 4
+
+    @property
+    def dual_vanes(self) -> bool:
+        """Return whether the packet commands the second vertical vane."""
+        return bool(self.data[16] & 0x38)
+
     @classmethod
     def parse(cls, data: bytes) -> ClimateState:
         """Check packet identity and recover common state fields."""
@@ -151,7 +175,7 @@ class MitsubishiCommand(ClimatePacket):
             MitsubishiFan.AUTO: ClimateFan.AUTO,
             MitsubishiFan.LEVEL_1: ClimateFan.LOW,
             MitsubishiFan.QUIET: ClimateFan.QUIET,
-        }.get(fan)
+        }.get(fan, fan)
         return ClimateState(
             power=bool(data[5] & 32),
             mode=decoded(data[6] & 0x38, _MODES),

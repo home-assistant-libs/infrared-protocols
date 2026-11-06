@@ -1,11 +1,11 @@
 """Coolix climate button commands."""
 
-from enum import Enum
+from enum import IntEnum
 
 from ...commands.coolix import CoolixCommand
 
 
-class CoolixCode(Enum):
+class CoolixCode(IntEnum):
     """Dedicated commands; toggle actions require caller-maintained state."""
 
     POWER_OFF = 0xB27BE0
@@ -15,4 +15,4 @@ class CoolixCode(Enum):
 
     def to_command(self) -> CoolixCommand:
         """Build the infrared command."""
-        return CoolixCommand(first=self.value)
+        return CoolixCommand(first=self.value, second=self.value)

@@ -1,14 +1,12 @@
 """Islandaire PTAC commands with native Fahrenheit set points."""
 
 from ._climate import ClimatePacket
+from ._climate_fields import decoded, selection, temperature_value
 from ._timing import PulseTiming
 from .climate import (
     ClimateFan,
     ClimateMode,
     ClimateState,
-    decoded,
-    selection,
-    temperature_value,
 )
 
 _MODES = {ClimateMode.HEAT: 1, ClimateMode.COOL: 3, ClimateMode.FAN_ONLY: 4}
@@ -31,6 +29,7 @@ class IslandaireCommand(ClimatePacket):
         fan: ClimateFan = ClimateFan.AUTO,
     ) -> None:
         """Build a state with a whole-degree 61..88 °F set point."""
+        selection(mode, _MODES)
         temperature_value(temperature_f, 61, 88)
         data = bytes(
             [
@@ -62,7 +61,7 @@ class IslandaireCommand(ClimatePacket):
         fan_code = data[8] & ~0x40
         return ClimateState(
             power=bool(data[5] & 4),
-            mode=decoded(data[6], _MODES),
+            mode=decoded(data[6], _MODES) if bool(data[5] & 4) else None,
             temperature=(data[7] - 32) * 5 / 9,
             fan=decoded(2 if fan_code == 1 else fan_code, _FANS),
         )

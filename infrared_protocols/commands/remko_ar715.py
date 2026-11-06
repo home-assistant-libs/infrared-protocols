@@ -2,15 +2,13 @@
 
 from typing import Self
 
+from ._climate_fields import decoded, selection, temperature_value
 from ._timing import PulseTiming, Reader, number
 from ._word import WordCommand
 from .climate import (
     ClimateFan,
     ClimateMode,
     ClimateState,
-    decoded,
-    selection,
-    temperature_value,
 )
 
 _FANS = {

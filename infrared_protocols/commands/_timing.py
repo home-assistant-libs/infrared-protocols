@@ -30,9 +30,15 @@ def pack_bytes(values: list[int], *, lsb: bool = True) -> bytes:
     return bytes(number(values[i : i + 8], lsb=lsb) for i in range(0, len(values), 8))
 
 
-def close(actual: int, expected: float, tolerance: float = 0.25) -> bool:
+def close(
+    actual: int, expected: float, tolerance: float = 0.25, *, absolute: float = 0
+) -> bool:
     """Match a duration including its polarity."""
-    return abs(actual - expected) <= abs(expected) * tolerance
+    return (
+        (actual > 0) == (expected > 0)
+        and actual != 0
+        and abs(actual - expected) <= max(abs(expected) * tolerance, absolute)
+    )
 
 
 def runs(levels: Iterable[int], unit: int) -> list[int]:
@@ -71,16 +77,17 @@ class PulseTiming:
 class Reader:
     """Consume a capture; malformed or truncated input raises ValueError."""
 
-    def __init__(self, timings: list[int]) -> None:
+    def __init__(self, timings: list[int], *, tolerance: float = 0.25) -> None:
         """Retain the capture and a cursor into it."""
         self.timings = timings
         self.pos = 0
+        self.tolerance = tolerance
 
     def expect(self, *durations: int) -> None:
         """Consume a fixed sequence with receiver tolerance."""
         for expected in durations:
             if self.pos >= len(self.timings) or not close(
-                self.timings[self.pos], expected
+                self.timings[self.pos], expected, self.tolerance, absolute=225
             ):
                 raise ValueError("unexpected or missing pulse")
             self.pos += 1
@@ -94,20 +101,47 @@ class Reader:
             if self.pos >= len(self.timings):
                 raise ValueError("truncated field")
             mark = self.timings[self.pos]
+            one_mark = timing.one_mark or timing.mark
+            mark_window = (
+                min(225, abs(one_mark - timing.mark) / 2 - 1)
+                if one_mark != timing.mark
+                else 225
+            )
             candidates = [
                 bit
                 for bit in (0, 1)
-                if close(mark, (timing.one_mark or timing.mark) if bit else timing.mark)
+                if close(
+                    mark,
+                    one_mark if bit else timing.mark,
+                    self.tolerance,
+                    absolute=mark_window,
+                )
             ]
+            final = last_space_optional and i == count - 1
             if self.pos + 1 < len(self.timings):
                 space = self.timings[self.pos + 1]
-                candidates = [
-                    bit
-                    for bit in candidates
-                    if close(space, -(timing.one if bit else timing.zero))
-                ]
+                if final and self.pos + 2 == len(self.timings) and len(candidates) == 1:
+                    expected = timing.one if candidates[0] else timing.zero
+                    if space > -expected * (1 - self.tolerance):
+                        raise ValueError("short final bit space")
+                else:
+                    space_window = (
+                        min(350, abs(timing.one - timing.zero) / 2 - 1)
+                        if timing.one != timing.zero
+                        else 350
+                    )
+                    candidates = [
+                        bit
+                        for bit in candidates
+                        if close(
+                            space,
+                            -(timing.one if bit else timing.zero),
+                            self.tolerance,
+                            absolute=space_window,
+                        )
+                    ]
                 self.pos += 2
-            elif last_space_optional and i == count - 1:
+            elif final:
                 self.pos += 1
             else:
                 raise ValueError("missing bit space")

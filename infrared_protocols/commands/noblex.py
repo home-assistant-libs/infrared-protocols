@@ -1,14 +1,12 @@
 """Noblex split-frame climate commands with a four-bit checksum."""
 
+from ._climate_fields import decoded, selection, temperature_value
 from ._split_climate import SplitClimateCommand
 from ._timing import PulseTiming, bits, byte_bits, number, pack_bytes
 from .climate import (
     ClimateFan,
     ClimateMode,
     ClimateState,
-    decoded,
-    selection,
-    temperature_value,
 )
 
 _MODES = {
@@ -35,7 +33,12 @@ def _checksum(data: bytes) -> int:
 
 
 class NoblexCommand(SplitClimateCommand):
-    """Noblex absolute state; the divider replaces a fixed one bit."""
+    """Noblex absolute state; the divider replaces a fixed one bit.
+
+    Decoding requires all sections in one capture. Configure the receiver idle
+    timeout above 20 ms, or join captures with their measured intervening gaps.
+    A default 10 ms ESPHome receiver splits this packet.
+    """
 
     HEADER = (9000, -4500)
     TIMING = PulseTiming(660, 520, 1640)

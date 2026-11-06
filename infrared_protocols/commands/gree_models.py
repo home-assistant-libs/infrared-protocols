@@ -5,14 +5,12 @@ from enum import IntFlag, StrEnum
 from typing import Self, override
 
 from . import Command
+from ._climate_fields import decoded, selection, temperature_value
 from ._timing import PulseTiming, Reader, byte_bits, pack_bytes
 from .climate import (
     ClimateFan,
     ClimateMode,
     ClimateState,
-    decoded,
-    selection,
-    temperature_value,
 )
 
 
@@ -91,7 +89,13 @@ def _checksum(data: bytes | bytearray) -> int:
 
 
 class GreeModelCommand(Command):
-    """Model-specific climate state with validated features and complete framing."""
+    """Named remote variants, separate from GreeAcCommand's captured layout.
+
+    YAN uses the vane nibble as an absolute swing flag; other named models
+    gate latched positions with the primary swing bit. Select the configured
+    remote model rather than inferring it from an overlapping capture. The
+    existing GreeAcCommand retains its captured layout and native enum API.
+    """
 
     def __init__(
         self,
@@ -106,6 +110,7 @@ class GreeModelCommand(Command):
         features: GreeFeature | None = None,
         sleep: bool = False,
         fahrenheit: bool = False,
+        modulation: int = 38000,
     ) -> None:
         """Build a 16..30 °C state; Fahrenheit display enables half-degree encoding.
 
@@ -120,8 +125,8 @@ class GreeModelCommand(Command):
             raise ValueError("horizontal swing is unavailable on this model")
         if model == GreeModel.GENERIC and (swing_v or swing_h):
             raise ValueError("the generic transmitter has no swing field")
-        if model == GreeModel.YX1FF and swing_h != swing_v:
-            raise ValueError("YX1FF swing axes must be enabled together")
+        if model == GreeModel.YX1FF and swing_h and not swing_v:
+            raise ValueError("YX1FF offers vertical swing only")
         if sleep and model not in (GreeModel.YX1FF, GreeModel.YAC1FB9):
             raise ValueError("sleep is unavailable on this model")
         feature_bits = layout.features & 32 if features is None else int(features)
@@ -170,7 +175,7 @@ class GreeModelCommand(Command):
         data[0] |= 128 if sleep else 0
         data[3] |= (8 if fahrenheit else 0) | (4 if temperature % 1 else 0)
         data[7] = _checksum(data)
-        super().__init__(modulation=38000)
+        super().__init__(modulation=modulation)
         self.model, self.data = model, bytes(data)
 
     @property
@@ -179,6 +184,8 @@ class GreeModelCommand(Command):
         data, model = self.data, self.model
         if len(data) != 8 or data[7] & 0xF0 != _checksum(data):
             raise ValueError("invalid Gree checksum")
+        if model == GreeModel.YAC and data[3] & 0xF0 == 0x70:
+            raise ValueError("YAC follow-up carries no climate state")
         temperature = 16 + (data[1] & 15) + (0.5 if data[3] & 4 else 0)
         temperature_value(temperature, 16, 30, 0.5)
         code = data[0] >> 4 & 3
@@ -195,15 +202,17 @@ class GreeModelCommand(Command):
                 )[code]
             )
         vertical = data[4] & 15
-        swing_v = vertical in (1, 7, 9, 11)
+        swinging = bool(data[0] & 64)
+        swing_v = vertical in (1, 7, 9, 11) if model == GreeModel.YAN else swinging
         swing_h: bool | None = None
-        if model in (GreeModel.YAC, GreeModel.YAG, GreeModel.YAW1F, GreeModel.YX1FF):
-            swing_h = data[4] >> 4 & 7 == 1
-        else:
-            swing_v |= bool(data[0] & 64)
+        if model in (GreeModel.YAC, GreeModel.YAG, GreeModel.YAW1F):
+            swing_v = swinging and vertical in (1, 7, 9, 11)
+            swing_h = swinging and data[4] >> 4 & 7 == 1
+        elif model == GreeModel.GENERIC:
+            swing_v = swinging and bool(vertical)
         return ClimateState(
             power=bool(data[0] & 8),
-            mode=decoded(data[0] & 7, _MODES),
+            mode=decoded(data[0] & 7, _MODES) if data[0] & 8 else None,
             temperature=temperature,
             fan=fan,
             swing_v=swing_v,

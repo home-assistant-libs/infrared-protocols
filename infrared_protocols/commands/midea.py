@@ -3,14 +3,12 @@
 from typing import Self, override
 
 from . import Command
+from ._climate_fields import decoded, selection, temperature_value
 from ._timing import PulseTiming, Reader, byte_bits, pack_bytes
 from .climate import (
     ClimateFan,
     ClimateMode,
     ClimateState,
-    decoded,
-    selection,
-    temperature_value,
 )
 
 _TIMING = PulseTiming(560, 560, 1680)
@@ -108,16 +106,24 @@ class MideaCommand(Command):
         )
 
     @property
+    def sleep(self) -> bool | None:
+        """Return the sleep flag only for control packets."""
+        return bool(self.data[1] & 64) if self.data[0] == 0xA1 else None
+
+    @property
     def state(self) -> ClimateState | None:
         """Read control state; special and sensor packets have no climate state."""
         if self.data[0] != 0xA1:
+            return None
+        if self.data[1] & 7 not in _MODES.values():
             return None
         mode = decoded(self.data[1] & 7, _MODES)
         temp = self.data[2] & 31
         fahrenheit = bool(self.data[2] & 32)
         temperature = (temp + 62 - 32) * 5 / 9 if fahrenheit else temp + 17
         if mode != ClimateMode.FAN_ONLY:
-            temperature_value(temp, 0, 24 if fahrenheit else 13)
+            if temp > (24 if fahrenheit else 13):
+                return None
         return ClimateState(
             power=bool(self.data[1] & 128),
             mode=mode,

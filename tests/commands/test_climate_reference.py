@@ -1,6 +1,5 @@
-"""Compare independent climate encoders against recorded upstream output hashes."""
+"""Compare independent climate encoders against recorded reference waveforms."""
 
-import hashlib
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -14,7 +13,6 @@ from infrared_protocols.commands import Command
 from infrared_protocols.commands.airton import AirtonCommand
 from infrared_protocols.commands.ballu import BalluCommand
 from infrared_protocols.commands.climate import ClimateFan, ClimateMode
-from infrared_protocols.commands.daikin import DaikinCommand
 from infrared_protocols.commands.daikin_arc import DaikinArcCommand, DaikinHumidity
 from infrared_protocols.commands.daikin_brc import DaikinBrcCommand
 from infrared_protocols.commands.delonghi import DelonghiCommand
@@ -146,17 +144,6 @@ _FACTORIES: dict[str, _Factory] = {
             mode=a.mode, temperature=a.temperature, power=a.power, fan=a.fan
         ),
         MistralCommand.from_raw_timings,
-    ),
-    "DaikinCommand": _Factory(
-        lambda a: DaikinCommand(
-            mode=a.mode,
-            temperature=a.temperature,
-            power=a.power,
-            fan=a.fan,
-            swing_v=a.swing_v,
-            swing_h=a.swing_h,
-        ),
-        DaikinCommand.from_raw_timings,
     ),
     "DaikinArcCommand": _Factory(
         lambda a: DaikinArcCommand(
@@ -352,7 +339,7 @@ for _model in GreeModel:
 class _Case(NamedTuple):
     command: Command
     decoder: Callable[[list[int]], Command | None]
-    digest: str
+    timings: list[int]
 
 
 _CORPUS = json.loads(
@@ -361,7 +348,7 @@ _CORPUS = json.loads(
 _CASES: list[_Case] = []
 _IDS: list[str] = []
 for _case in _CORPUS["cases"]:
-    _raw_args = _case["arguments"]
+    _raw_args = _case["arguments"].copy()
     _args = _Arguments(
         mode=ClimateMode(_raw_args.pop("mode", "cool")),
         fan=ClimateFan(_raw_args.pop("fan", "auto")),
@@ -370,8 +357,18 @@ for _case in _CORPUS["cases"]:
     )
     _tag = _case["factory"]
     _factory = _FACTORIES.get(_tag) or _FACTORIES[f"{_tag}.{_args.model}"]
-    _CASES.append(_Case(_factory.build(_args), _factory.decode, _case["sha256"]))
-    _IDS.append(_case["key"])
+    _CASES.append(
+        _Case(
+            _factory.build(_args),
+            _factory.decode,
+            [_case["palette"][int(c, 36)] for c in _case["timings"]],
+        )
+    )
+    _IDS.append(
+        _case["factory"]
+        + "-"
+        + "-".join(f"{key}={value}" for key, value in _case["arguments"].items())
+    )
 
 
 @pytest.mark.parametrize("case", _CASES, ids=_IDS)
@@ -379,24 +376,41 @@ def test_climate_reference(case: _Case) -> None:
     """Match upstream generated pulses and decode every transmitted section."""
     assert case.command.modulation == 38000
     timings = case.command.get_raw_timings()
-    assert (
-        hashlib.sha256(",".join(map(str, timings)).encode()).hexdigest() == case.digest
-    )
+    assert timings == case.timings
     received = case.decoder(timings)
     assert received is not None
     assert received.get_raw_timings() == timings
 
 
-@pytest.mark.parametrize("case", _CASES, ids=_IDS)
+# Framing depends on the decoder and model, not every state permutation.
+_FRAMING = {}
+for _case, _id in zip(_CASES, _IDS, strict=True):
+    _FRAMING.setdefault((_case.decoder, "power=False" in _id), (_case, _id))
+_FRAME_CASES = [entry[0] for entry in _FRAMING.values()]
+_FRAME_IDS = [entry[1] for entry in _FRAMING.values()]
+
+
+@pytest.mark.parametrize("case", _FRAME_CASES, ids=_FRAME_IDS)
 @pytest.mark.parametrize("length", [0, 1, 5, 17])
 def test_climate_truncated(case: _Case, length: int) -> None:
     """Incomplete sections must never be interpreted as full state."""
     assert case.decoder(case.command.get_raw_timings()[:length]) is None
 
 
-@pytest.mark.parametrize("case", _CASES, ids=_IDS)
-def test_climate_jitter(case: _Case) -> None:
+@pytest.mark.parametrize("case", _FRAME_CASES, ids=_FRAME_IDS)
+@pytest.mark.parametrize(
+    "scale,bias",
+    [
+        pytest.param(0.92, 0, id="shorter"),
+        pytest.param(1.08, 0, id="longer"),
+        pytest.param(1, 100, id="stretched-marks"),
+        pytest.param(1, -100, id="shortened-marks"),
+    ],
+)
+def test_climate_jitter(case: _Case, scale: float, bias: int) -> None:
     """Accept receiver timing variation without changing decoded state bytes."""
-    received = case.decoder([round(t * 1.08) for t in case.command.get_raw_timings()])
+    received = case.decoder(
+        [round(t * scale) + bias for t in case.command.get_raw_timings()]
+    )
     assert received is not None
     assert received.get_raw_timings() == case.command.get_raw_timings()

@@ -1,1 +1,0 @@
-"""Coolix command codes."""

@@ -1,11 +1,11 @@
 """Midea climate button commands."""
 
-from enum import Enum
+from enum import IntEnum
 
 from ...commands.midea import MideaCommand
 
 
-class MideaSpecialCode(Enum):
+class MideaSpecialCode(IntEnum):
     """Dedicated commands; toggle actions require caller-maintained state."""
 
     SWING_STEP = 0x1

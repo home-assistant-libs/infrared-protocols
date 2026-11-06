@@ -1,15 +1,17 @@
 """Toshiba 48-bit packet transport with a compulsory duplicate packet."""
 
-from typing import Self, override
+from typing import ClassVar, Self, override
 
 from . import Command
 from ._timing import PulseTiming, Reader, bits, number
 
-_TIMING = PulseTiming(560, 560, 1690)
-
 
 class ToshibaAcPacketCommand(Command):
     """A duplicated primary word and an optional secondary word."""
+
+    HEADER: ClassVar[tuple[int, int]] = (4500, -4500)
+    TIMING: ClassVar[PulseTiming] = PulseTiming(560, 560, 1690)
+    GAP: ClassVar[int] = 4500
 
     def __init__(
         self, *, rc_code_1: int, rc_code_2: int | None = None, modulation: int = 38000
@@ -30,29 +32,39 @@ class ToshibaAcPacketCommand(Command):
         return [
             duration
             for word in words
-            for duration in [4500, -4500, *_TIMING.encode(bits(word, 48)), 560, -4500]
+            for duration in [
+                *self.HEADER,
+                *self.TIMING.encode(bits(word, 48)),
+                self.TIMING.mark,
+                -self.GAP,
+            ]
         ]
 
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
         """Validate duplicate words; accept an omitted final idle space."""
+        words = cls._read_words(timings)
+        if words is None:
+            return None
+        return cls(rc_code_1=words[0], rc_code_2=words[2] if len(words) == 3 else None)
+
+    @classmethod
+    def _read_words(cls, timings: list[int]) -> list[int] | None:
         r = Reader(timings)
         words: list[int] = []
         try:
             while True:
-                r.expect(4500, -4500)
-                words.append(number(r.read_bits(_TIMING, 48)))
-                r.expect(560)
+                r.expect(*cls.HEADER)
+                words.append(number(r.read_bits(cls.TIMING, 48)))
+                r.expect(cls.TIMING.mark)
                 if len(timings) - r.pos <= 1:
                     break
                 if len(words) == 3:
                     return None
-                r.expect(-5000)
+                r.expect(-cls.GAP)
             r.end()
             if len(words) < 2 or words[0] != words[1]:
                 return None
-            return cls(
-                rc_code_1=words[0], rc_code_2=words[2] if len(words) == 3 else None
-            )
+            return words
         except ValueError:
             return None

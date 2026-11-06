@@ -1,1 +1,0 @@
-"""Midea command codes."""

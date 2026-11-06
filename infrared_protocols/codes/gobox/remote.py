@@ -1,11 +1,11 @@
 """Go-Box remote button codes."""
 
-from enum import Enum
+from enum import IntEnum
 
 from ...commands.gobox import GoboxCommand
 
 
-class GoboxCode(Enum):
+class GoboxCode(IntEnum):
     """Go-Box navigation, playback and adjustment buttons."""
 
     MENU = 0xAA55

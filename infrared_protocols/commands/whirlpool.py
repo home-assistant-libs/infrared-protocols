@@ -2,17 +2,15 @@
 
 from functools import reduce
 from operator import xor
-from typing import ClassVar
+from typing import ClassVar, Self, override
 
 from ._climate import ClimatePacket, FramePart
-from ._timing import PulseTiming
+from ._climate_fields import decoded, selection, temperature_value
+from ._timing import PulseTiming, Reader, byte_bits, pack_bytes
 from .climate import (
     ClimateFan,
     ClimateMode,
     ClimateState,
-    decoded,
-    selection,
-    temperature_value,
 )
 
 _MODES = {
@@ -122,23 +120,62 @@ class WhirlpoolCommand(ClimatePacket):
         temperature = self.state.temperature
         return () if temperature is None else (int(temperature),)
 
+    @override
+    def get_raw_timings(self) -> list[int]:
+        """Preserve a received short packet instead of inventing its third part."""
+        if len(self.data) == 21:
+            return super().get_raw_timings()
+        return [
+            *self.HEADER,
+            *self.TIMING.encode(byte_bits(self.data[:6])),
+            self.TIMING.mark,
+            -7960,
+            *self.TIMING.encode(byte_bits(self.data[6:])),
+            self.TIMING.mark,
+        ]
+
+    @classmethod
+    def from_raw_timings(cls, timings: list[int]) -> Self | None:
+        """Accept complete 21-byte packets and the remote's short 14-byte form."""
+        result = super().from_raw_timings(timings)
+        if result is not None:
+            return result
+        reader = Reader(timings)
+        try:
+            reader.expect(*cls.HEADER)
+            first = pack_bytes(reader.read_bits(cls.TIMING, 48))
+            reader.expect(cls.TIMING.mark, -7960)
+            second = pack_bytes(reader.read_bits(cls.TIMING, 64))
+            reader.expect(cls.TIMING.mark)
+            reader.end()
+            result = cls.__new__(cls)
+            ClimatePacket.__init__(result, data=first + second)
+            return result
+        except ValueError:
+            return None
+
     @classmethod
     def parse(cls, data: bytes) -> ClimateState:
         """Verify both XOR checksums, without inventing an absolute power state."""
         if (
-            len(data) != cls.LENGTH
+            len(data) not in (14, cls.LENGTH)
             or data[:2] != b"\x83\x06"
             or reduce(xor, data[2:14], 0)
-            or reduce(xor, data[14:21], 0)
+            or len(data) == 21
+            and reduce(xor, data[14:21], 0)
         ):
             raise ValueError("invalid Whirlpool packet or checksum")
         mode = decoded(data[3] & 15, _MODES)
-        temperature = (data[3] >> 4) + cls.MIN_TEMP
+        temperature: int | None = (data[3] >> 4) + cls.MIN_TEMP
         temperature_value(temperature, cls.MIN_TEMP, cls.MIN_TEMP + 14)
         if cls.HISENSE and mode == ClimateMode.AUTO:
             temperature = {0x50: 22, 0x40: 24}.get(data[2] & 0x70)
+        if cls.HISENSE and mode == ClimateMode.FAN_ONLY:
+            temperature = None
         return ClimateState(
-            mode=mode,
+            mode=None
+            if len(data) == 21 and not cls.HISENSE and data[15] in (0, 1)
+            else mode,
             temperature=temperature,
             fan=decoded(data[2] & 3, _FANS),
             swing_v=bool(data[2] & 128) if cls.HISENSE else None,

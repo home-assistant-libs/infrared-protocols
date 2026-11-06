@@ -6,14 +6,12 @@ from operator import xor
 from typing import ClassVar, Self, override
 
 from . import Command
+from ._climate_fields import decoded, selection, temperature_value
 from ._timing import PulseTiming, Reader, byte_bits, pack_bytes
 from .climate import (
     ClimateFan,
     ClimateMode,
     ClimateState,
-    decoded,
-    selection,
-    temperature_value,
 )
 
 _MODES = {
@@ -30,6 +28,18 @@ _FANS = {
     ClimateFan.MEDIUM: 4,
     ClimateFan.HIGH: 6,
 }
+
+
+class ToshibaFan(IntEnum):
+    """Native fan field, preserving the two intermediate speeds."""
+
+    AUTO = 0
+    QUIET = 1
+    LOW = 2
+    LOW_PLUS = 3
+    MEDIUM = 4
+    MEDIUM_PLUS = 5
+    HIGH = 6
 
 
 class ToshibaMotion(IntEnum):
@@ -145,7 +155,7 @@ class ToshibaCommand(Command):
         fan_code = self.data[6] >> 5
         if fan_code > 6 or self.data[6] & 16 or self.data[5] & 15:
             raise ValueError("invalid Toshiba fan or temperature field")
-        fan = {3: ClimateFan.LOW, 5: ClimateFan.MEDIUM}.get(fan_code)
+        fan = {3: ToshibaFan.LOW_PLUS, 5: ToshibaFan.MEDIUM_PLUS}.get(fan_code)
         if fan is None:
             fan = decoded(fan_code, _FANS)
         return ClimateState(power=power, mode=mode, temperature=temp, fan=fan)
@@ -158,6 +168,8 @@ class ToshibaCommand(Command):
             *self.TIMING.encode(byte_bits(self.data, lsb=False)),
             self.TIMING.mark,
         ]
+        if len(self.data) == 7 and self.data[5] == ToshibaMotion.VANE_STEP:
+            return frame + [-self.GAP]
         return frame + [-self.GAP] + frame + ([-self.GAP] if self.FINAL_GAP else [])
 
     @classmethod
@@ -229,7 +241,13 @@ class ToshibaSeiyaCommand(ToshibaCommand):
         if self.data[4] != 1 or self.data[7:9] != b"\x00\x21":
             raise ValueError("invalid Seiya feature fields")
         ToshibaSeiyaSwing(self.data[9])
-        return super().state
+        state = super().state
+        return ClimateState(
+            power=state.power,
+            mode=state.mode,
+            temperature=state.temperature,
+            fan=state.fan if state.power else None,
+        )
 
     @property
     def swing(self) -> ToshibaSeiyaSwing:
@@ -263,6 +281,8 @@ class ToshibaRas25j2kvsgNdCommand(ToshibaCommand):
                 and data[9:11] == b"\x7f\x03"
                 and data[6] >> 5 == 0
             )
+        if len(data) == 10 and data[8] in (2, 10) and data[7] >> 6:
+            raise ValueError("silent power selection excludes percentage limits")
         if not valid:
             raise ValueError("invalid Toshiba preset packet")
         if len(data) != 9 and data[7] & 3:
@@ -273,6 +293,49 @@ class ToshibaRas25j2kvsgNdCommand(ToshibaCommand):
         ):
             raise ValueError("heating preset outside heat mode")
         return state
+
+    @property
+    def fan(self) -> ToshibaFan | None:
+        """Return the native fan selection, including Low+ and Medium+."""
+        return ToshibaFan(self.data[6] >> 5) if len(self.data) > 7 else None
+
+    @property
+    def preset(self) -> ToshibaPreset | None:
+        """Return the encoded preset; motion commands carry none."""
+        data = self.data
+        if len(data) == 7:
+            return None
+        if len(data) == 9:
+            return {2: ToshibaPreset.FIREPLACE_1, 3: ToshibaPreset.FIREPLACE_2}.get(
+                data[7] & 3, ToshibaPreset.NONE
+            )
+        if len(data) == 10:
+            return {
+                1: ToshibaPreset.BOOST,
+                3: ToshibaPreset.ECO,
+                4: ToshibaPreset.FROST_PROTECTION,
+            }.get(data[8], ToshibaPreset.NONE)
+        if len(data) == 11:
+            return ToshibaPreset.HADA_CARE
+        return {
+            4: ToshibaPreset.SLEEP_1H,
+            12: ToshibaPreset.SLEEP_3H,
+            20: ToshibaPreset.SLEEP_5H,
+            36: ToshibaPreset.SLEEP_9H,
+        }[data[8]]
+
+    @property
+    def power_selection(self) -> ToshibaPowerSelection | None:
+        """Return the compressor power or silent setting."""
+        if len(self.data) == 7:
+            return None
+        if len(self.data) == 10 and self.data[8] in (2, 10):
+            return (
+                ToshibaPowerSelection.SILENT_1
+                if self.data[8] == 2
+                else ToshibaPowerSelection.SILENT_2
+            )
+        return ToshibaPowerSelection(self.data[7] >> 6)
 
     @classmethod
     def climate(
@@ -306,6 +369,8 @@ class ToshibaRas25j2kvsgNdCommand(ToshibaCommand):
         if power_selection >= 3 and preset != ToshibaPreset.NONE:
             raise ValueError("silent power selection cannot be combined with a preset")
         fan_code = selection(fan, _FANS)
+        if mode == ClimateMode.DRY and (fan_code or intermediate_fan is not None):
+            raise ValueError("dry mode requires automatic fan")
         if intermediate_fan is not None:
             if intermediate_fan not in (3, 5):
                 raise ValueError("intermediate_fan must be 3 or 5")

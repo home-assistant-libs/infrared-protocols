@@ -2,15 +2,13 @@
 
 from enum import IntEnum
 
+from ._climate_fields import decoded, selection, temperature_value
 from ._split_climate import SplitClimateCommand
 from ._timing import PulseTiming, bits, number
 from .climate import (
     ClimateFan,
     ClimateMode,
     ClimateState,
-    decoded,
-    selection,
-    temperature_value,
 )
 
 _MODES = {
@@ -52,7 +50,12 @@ class EmmetiBlade(IntEnum):
 
 
 class EmmetiCommand(SplitClimateCommand):
-    """Whole-state Emmeti command with a separate fixed off word."""
+    """Whole-state Emmeti command with a separate fixed off word.
+
+    Decoding requires all sections in one capture. Configure the receiver idle
+    timeout above 20 ms, or join captures with their measured intervening gaps.
+    A default 10 ms ESPHome receiver splits this packet.
+    """
 
     HEADER = (9076, -4408)
     TIMING = PulseTiming(660, 530, 1630)
@@ -92,6 +95,13 @@ class EmmetiCommand(SplitClimateCommand):
         super().__init__(data=number(first + second) if power else _OFF)
 
     @property
+    def blade(self) -> EmmetiBlade | None:
+        """Return the native vane request, absent on a power-off packet."""
+        if self.state.power is False:
+            return None
+        return EmmetiBlade(number(bits(self.data, self.WIDTH)[35:39], lsb=True))
+
+    @property
     def state(self) -> ClimateState:
         """Validate the checksum and report only fields present in the command."""
         if self.data == _OFF:
@@ -99,11 +109,12 @@ class EmmetiCommand(SplitClimateCommand):
         values = bits(self.data, self.WIDTH)
         mode_code, temp = number(values[:3], lsb=True), number(values[8:12], lsb=True)
         if (
-            not values[3]
-            or number(values[24:35]) != 0x52
+            number(values[24:35]) != 0x52
             or number(values[63:], lsb=True) != (temp + mode_code + 2) & 15
         ):
             raise ValueError("invalid Emmeti signature or checksum")
+        if not values[3]:
+            return ClimateState(power=False)
         temperature_value(temp + 16, 16, 30)
         EmmetiBlade(number(values[35:39], lsb=True))
         return ClimateState(

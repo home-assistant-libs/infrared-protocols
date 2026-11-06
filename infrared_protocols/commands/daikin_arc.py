@@ -1,11 +1,13 @@
 """Daikin ARC 312-bit climate state and sensor query commands."""
 
+from dataclasses import dataclass
 from enum import IntEnum
+from typing import Self
 
 from ._climate import ClimatePacket, FramePart
-from ._timing import PulseTiming
+from ._daikin import checked, parse_state, state_packet, validate_sections
+from ._timing import PulseTiming, Reader, pack_bytes
 from .climate import ClimateFan, ClimateMode, ClimateState
-from .daikin import checked, parse_state, state_packet, validate_sections
 
 
 class DaikinHumidity(IntEnum):
@@ -19,7 +21,12 @@ class DaikinHumidity(IntEnum):
 
 
 class DaikinArcCommand(ClimatePacket):
-    """Two-section ARC state with humidity selection."""
+    """Two-section ARC state with humidity selection.
+
+    Decoding requires all sections in one capture. Configure the receiver idle
+    timeout above 35 ms, or join captures with their measured intervening gaps.
+    A default 10 ms ESPHome receiver splits this packet.
+    """
 
     HEADER = (9950, -25100, 3450, -1760)
     TIMING = PulseTiming(400, 480, 1300)
@@ -110,3 +117,40 @@ class DaikinArcQueryCommand(ClimatePacket):
         if data[4:7] != bytes([0x84, 0x87, 0x20]):
             raise ValueError("invalid Daikin query")
         return ClimateState()
+
+
+@dataclass(frozen=True, kw_only=True)
+class DaikinArcSensorResponse:
+    """Received ARC sensor packet; only the indoor temperature is identified.
+
+    The response is not a climate command and its integrity field is unknown.
+    Preserve its bytes without claiming checksum verification or exposing the
+    unidentified sensor fields as measured values.
+    """
+
+    data: bytes
+
+    def __post_init__(self) -> None:
+        """Validate the identified response structure."""
+        if len(self.data) != 24 or self.data[:5] != bytes([0x11, 0xDA, 0x27, 0, 0]):
+            raise ValueError("invalid Daikin ARC sensor response")
+
+    @property
+    def inside_temperature(self) -> int:
+        """Return the reported indoor temperature in degrees Celsius."""
+        return self.data[5]
+
+    @classmethod
+    def from_raw_timings(cls, timings: list[int]) -> Self | None:
+        """Recognize the 24-byte sensor reply independently of state sections."""
+        reader = Reader(timings)
+        try:
+            reader.expect(3450, -1760)
+            data = pack_bytes(reader.read_bits(DaikinArcCommand.TIMING, 192), lsb=True)
+            reader.expect(400)
+            reader.end()
+        except ValueError:
+            return None
+        if data[:5] != bytes([0x11, 0xDA, 0x27, 0, 0]):
+            return None
+        return cls(data=data)
