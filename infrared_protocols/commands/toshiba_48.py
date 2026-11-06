@@ -3,7 +3,7 @@
 from typing import Self
 
 from ._climate_fields import decoded, selection, temperature_value
-from ._timing import PulseTiming
+from ._timing import PulseTiming, bits
 from .climate import (
     ClimateFan,
     ClimateMode,
@@ -47,27 +47,36 @@ class Toshiba48Command(ToshibaAcPacketCommand):
         self, *, first: bytes, second: bytes | None = None, modulation: int = 38000
     ) -> None:
         """Validate packet sizes and the three complement pairs."""
-        if (
-            len(first) != 6
-            or any(first[i] ^ first[i + 1] != 255 for i in (0, 2, 4))
-            or second is not None
-            and len(second) != 6
-        ):
+        if len(first) != 6 or second is not None and len(second) != 6:
             raise ValueError("invalid Toshiba 48-bit packet")
         super().__init__(
             rc_code_1=int.from_bytes(first),
             rc_code_2=int.from_bytes(second) if second is not None else None,
             modulation=modulation,
         )
-        self.first, self.second = (
-            bytes(first),
-            bytes(second) if second is not None else None,
-        )
         _ = self.state
+
+    @property
+    def first(self) -> bytes:
+        """Return the primary payload sent by the shared transport."""
+        bits(self.rc_code_1, 48)
+        data = self.rc_code_1.to_bytes(6)
+        if any(data[i] ^ data[i + 1] != 255 for i in (0, 2, 4)):
+            raise ValueError("invalid Toshiba 48-bit packet")
+        return data
+
+    @property
+    def second(self) -> bytes | None:
+        """Return the optional extension sent by the shared transport."""
+        if self.rc_code_2 is None:
+            return None
+        bits(self.rc_code_2, 48)
+        return self.rc_code_2.to_bytes(6)
 
     @property
     def state(self) -> ClimateState:
         """Interpret a device-specific command."""
+        _ = self.first, self.second
         return ClimateState()
 
     @classmethod
@@ -91,6 +100,7 @@ class ToshibaRacCommand(Toshiba48Command):
     @property
     def room_temperature(self) -> int | None:
         """Return the Comfort Sense report's Celsius reading, when present."""
+        _ = self.state
         return (
             self.first[2] & 31
             if self.first[0] == 0xBA and self.first[2] & 128
@@ -100,16 +110,19 @@ class ToshibaRacCommand(Toshiba48Command):
     @property
     def comfort_sense_enabled(self) -> bool | None:
         """Return the Comfort Sense enable flag, absent in other commands."""
+        _ = self.state
         return bool(self.first[2] & 64) if self.first[0] == 0xBA else None
 
     @property
     def comfort_sense_reports_temperature(self) -> bool | None:
         """Return whether a Comfort Sense message contains a sensor reading."""
+        _ = self.state
         return bool(self.first[2] & 128) if self.first[0] == 0xBA else None
 
     @property
     def comfort_sense_mode(self) -> ClimateMode | None:
         """Return the mode carried by a Comfort Sense message."""
+        _ = self.state
         if self.first[0] != 0xBA:
             return None
         return {0x7A: ClimateMode.AUTO, 0x72: ClimateMode.COOL, 0x7E: ClimateMode.HEAT}[
@@ -119,11 +132,13 @@ class ToshibaRacCommand(Toshiba48Command):
     @property
     def fahrenheit(self) -> bool | None:
         """Return the native unit flag, absent in standalone actions."""
+        _ = self.state
         return bool(self.second[3] & 1) if self.second is not None else None
 
     @property
     def temperature(self) -> int | None:
         """Return the native setpoint accepted by climate(), without conversion."""
+        _ = self.state
         second = self.second
         if second is None or self.state.mode == ClimateMode.FAN_ONLY:
             return None

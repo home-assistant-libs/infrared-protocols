@@ -105,14 +105,6 @@ class ToshibaCommand(Command):
 
     def __init__(self, *, data: bytes) -> None:
         """Validate a complete packet, including length complement and checksum."""
-        if (
-            len(data) not in self.LENGTHS
-            or data[:2] != b"\xf2\x0d"
-            or data[2] != len(data) - 6
-            or data[2] ^ data[3] != 255
-            or reduce(xor, data[4:], 0)
-        ):
-            raise ValueError("invalid Toshiba packet header, size or checksum")
         super().__init__(modulation=38000)
         self.data = bytes(data)
         _ = self.state
@@ -142,6 +134,15 @@ class ToshibaCommand(Command):
     @property
     def state(self) -> ClimateState:
         """Decode basic mode, fan and temperature; motion packets carry no state."""
+        data = self.data
+        if (
+            len(data) not in self.LENGTHS
+            or data[:2] != b"\xf2\x0d"
+            or data[2] != len(data) - 6
+            or data[2] ^ data[3] != 255
+            or reduce(xor, data[4:], 0)
+        ):
+            raise ValueError("invalid Toshiba packet header, size or checksum")
         if len(self.data) == 7:
             if self.data[4] != 0x21:
                 raise ValueError("unknown Toshiba motion format")
@@ -239,11 +240,11 @@ class ToshibaSeiyaCommand(ToshibaCommand):
 
     @property
     def state(self) -> ClimateState:
-        """Validate Seiya auxiliary fields before extracting common settings."""
+        """Validate Seiya auxiliary fields and recover common settings."""
+        state = super().state
         if self.data[4] != 1 or self.data[7:9] != b"\x00\x21":
             raise ValueError("invalid Seiya feature fields")
         ToshibaSeiyaSwing(self.data[9])
-        state = super().state
         return ClimateState(
             power=state.power,
             mode=state.mode,
@@ -254,6 +255,7 @@ class ToshibaSeiyaCommand(ToshibaCommand):
     @property
     def swing(self) -> ToshibaSeiyaSwing:
         """Return the momentary swing request."""
+        _ = self.state
         return ToshibaSeiyaSwing(self.data[9])
 
 
@@ -265,9 +267,10 @@ class ToshibaRas25j2kvsgNdCommand(ToshibaCommand):
     @property
     def state(self) -> ClimateState:
         """Validate the selected extended packet layout and decode basic state."""
+        state = super().state
         data = self.data
         if len(data) == 7:
-            return super().state
+            return state
         if data[7] & 0x3C or data[7] >> 6 == 3 or data[7] & 3 == 1:
             raise ValueError("invalid Toshiba power or fireplace field")
         if len(data) == 9:
@@ -289,7 +292,6 @@ class ToshibaRas25j2kvsgNdCommand(ToshibaCommand):
             raise ValueError("invalid Toshiba preset packet")
         if len(data) != 9 and data[7] & 3:
             raise ValueError("fireplace cannot be combined with another preset")
-        state = super().state
         if (data[7] & 3 or len(data) == 10 and data[8] == 4) and (
             state.mode != ClimateMode.HEAT or not state.power
         ):
@@ -301,16 +303,19 @@ class ToshibaRas25j2kvsgNdCommand(ToshibaCommand):
     @property
     def action(self) -> ToshibaMotion | None:
         """Return the momentary action, absent in full state packets."""
+        _ = self.state
         return ToshibaMotion(self.data[5]) if len(self.data) == 7 else None
 
     @property
     def fan(self) -> ToshibaFan | None:
         """Return the native fan selection, including Low+ and Medium+."""
+        _ = self.state
         return ToshibaFan(self.data[6] >> 5) if len(self.data) > 7 else None
 
     @property
     def preset(self) -> ToshibaPreset | None:
         """Return the encoded preset; motion commands carry none."""
+        _ = self.state
         data = self.data
         if len(data) == 7:
             return None
@@ -336,6 +341,7 @@ class ToshibaRas25j2kvsgNdCommand(ToshibaCommand):
     @property
     def power_selection(self) -> ToshibaPowerSelection | None:
         """Return the compressor power or silent setting."""
+        _ = self.state
         if len(self.data) == 7:
             return None
         if len(self.data) == 10 and self.data[8] in (2, 10):

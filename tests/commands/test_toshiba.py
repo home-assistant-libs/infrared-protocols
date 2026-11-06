@@ -263,3 +263,169 @@ def test_raw48_missing_compulsory_copy() -> None:
     """A partial first Toshiba raw frame cannot stand in for its full transmission."""
     raw = ToshibaAcPacketCommand(rc_code_1=1).get_raw_timings()[:99]
     assert ToshibaAcPacketCommand.from_raw_timings(raw) is None
+
+
+@pytest.mark.parametrize(
+    "cls",
+    [
+        pytest.param(ToshibaCommand, id="generic"),
+        pytest.param(ToshibaRasB10n3kv2Command, id="ras-b10"),
+        pytest.param(ToshibaSeiyaCommand, id="seiya"),
+        pytest.param(ToshibaRas25j2kvsgNdCommand, id="ras-25"),
+    ],
+)
+@pytest.mark.parametrize(
+    "index", [pytest.param(0, id="header"), pytest.param(-1, id="checksum")]
+)
+def test_replaced_invalid_payload(cls: type[ToshibaCommand], index: int) -> None:
+    """State validates the current header and checksum after payload replacement."""
+    command = cls.climate(mode=ClimateMode.COOL, temperature=24)
+    data = bytearray(command.data)
+    data[index] ^= 1
+    command.data = bytes(data)
+    with pytest.raises(ValueError, match="header, size or checksum"):
+        _ = command.state
+
+
+@pytest.mark.parametrize(
+    "cls",
+    [
+        pytest.param(ToshibaCommand, id="generic"),
+        pytest.param(ToshibaSeiyaCommand, id="seiya"),
+        pytest.param(ToshibaRas25j2kvsgNdCommand, id="ras-25"),
+    ],
+)
+def test_replaced_truncated_payload(cls: type[ToshibaCommand]) -> None:
+    """Layout validation runs before subclass field access on a shortened payload."""
+    command = cls.climate(mode=ClimateMode.COOL, temperature=24)
+    command.data = b"\xf2\x0d"
+    with pytest.raises(ValueError, match="header, size or checksum"):
+        _ = command.state
+
+
+def test_generic_rejects_replaced_motion_payload() -> None:
+    """A valid short motion packet belongs only to the extended remote family."""
+    command = ToshibaCommand.climate(mode=ClimateMode.COOL, temperature=24)
+    command.data = ToshibaRas25j2kvsgNdCommand.motion(
+        action=ToshibaMotion.SWING_TOGGLE
+    ).data
+    with pytest.raises(ValueError, match="header, size or checksum"):
+        _ = command.state
+
+
+def test_replaced_primary_word_updates_state() -> None:
+    """Changing the transport word changes both emitted bytes and decoded state."""
+    command = ToshibaRas2819Command.power_off()
+    replacement = ToshibaRas2819Command.swing_toggle()
+    command.rc_code_1 = replacement.rc_code_1
+    assert command.first == replacement.first
+    assert command.state == ClimateState()
+    assert command.get_raw_timings() == replacement.get_raw_timings()
+
+
+def test_replaced_extension_updates_native_temperature() -> None:
+    """Native readback follows the current extension's Celsius/Fahrenheit flag."""
+    command = ToshibaRacCommand.climate(mode=ClimateMode.COOL, temperature=16)
+    replacement = ToshibaRacCommand.climate(
+        mode=ClimateMode.COOL, temperature=60, fahrenheit=True
+    )
+    assert command.first == replacement.first
+    command.rc_code_2 = replacement.rc_code_2
+    assert command.second == replacement.second
+    assert command.temperature == 60
+    assert command.fahrenheit is True
+    assert command.state == replacement.state
+    assert command.get_raw_timings() == replacement.get_raw_timings()
+
+
+@pytest.mark.parametrize(
+    "attribute",
+    [
+        pytest.param("action", id="action"),
+        pytest.param("fan", id="fan"),
+        pytest.param("preset", id="preset"),
+        pytest.param("power_selection", id="power-selection"),
+    ],
+)
+@pytest.mark.parametrize(
+    "data",
+    [
+        pytest.param(b"\xf2\x0d", id="truncated"),
+        pytest.param(bytes.fromhex("f20d03fc0170010071"), id="bad-checksum"),
+    ],
+)
+def test_native_properties_validate_payload(attribute: str, data: bytes) -> None:
+    """Native properties reject invalid payloads consistently with state readback."""
+    command = ToshibaRas25j2kvsgNdCommand.climate(mode=ClimateMode.COOL, temperature=24)
+    command.data = data
+    with pytest.raises(ValueError, match="header, size or checksum"):
+        getattr(command, attribute)
+
+
+def test_seiya_swing_validates_payload() -> None:
+    """Swing readback validates packet length before accessing the action byte."""
+    command = ToshibaSeiyaCommand.climate(mode=ClimateMode.COOL, temperature=24)
+    command.data = b"\xf2\x0d"
+    with pytest.raises(ValueError, match="header, size or checksum"):
+        _ = command.swing
+
+
+@pytest.mark.parametrize(
+    "cls",
+    [
+        pytest.param(ToshibaRacCommand, id="rac"),
+        pytest.param(ToshibaRas2819Command, id="ras-2819"),
+    ],
+)
+@pytest.mark.parametrize(
+    "attribute",
+    [pytest.param("state", id="state"), pytest.param("first", id="bytes")],
+)
+def test_replaced_word_validates_complements(
+    cls: type[ToshibaRacCommand] | type[ToshibaRas2819Command], attribute: str
+) -> None:
+    """Corrupting a complementary byte through the transport invalidates readback."""
+    command = cls.climate(mode=ClimateMode.COOL, temperature=24)
+    command.rc_code_1 ^= 1 << 32
+    with pytest.raises(ValueError, match="invalid Toshiba 48-bit packet"):
+        getattr(command, attribute)
+
+
+@pytest.mark.parametrize(
+    "word,attribute",
+    [
+        pytest.param("rc_code_1", "first", id="primary"),
+        pytest.param("rc_code_2", "second", id="extension"),
+    ],
+)
+@pytest.mark.parametrize(
+    "value", [pytest.param(-1, id="negative"), pytest.param(1 << 48, id="too-wide")]
+)
+def test_replaced_word_validates_width(word: str, attribute: str, value: int) -> None:
+    """Out-of-range transport words surface as ValueError during byte readback."""
+    command = ToshibaRacCommand.climate(mode=ClimateMode.COOL, temperature=24)
+    setattr(command, word, value)
+    with pytest.raises(ValueError):
+        getattr(command, attribute)
+
+
+@pytest.mark.parametrize(
+    "attribute",
+    [
+        pytest.param("fahrenheit", id="fahrenheit"),
+        pytest.param("temperature", id="temperature"),
+        pytest.param("room_temperature", id="room-temperature"),
+        pytest.param("comfort_sense_enabled", id="comfort-enabled"),
+        pytest.param("comfort_sense_reports_temperature", id="comfort-reports"),
+        pytest.param("comfort_sense_mode", id="comfort-mode"),
+    ],
+)
+def test_rac_native_properties_validate_extension(attribute: str) -> None:
+    """Native readback rejects a transport extension with a corrupted checksum."""
+    command = ToshibaRacCommand.climate(
+        mode=ClimateMode.COOL, temperature=60, fahrenheit=True
+    )
+    assert command.rc_code_2 is not None
+    command.rc_code_2 ^= 1
+    with pytest.raises(ValueError, match="extension checksum"):
+        getattr(command, attribute)

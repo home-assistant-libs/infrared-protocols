@@ -25,6 +25,9 @@ class AehaClimatePacket(ClimatePacket):
         packet = AehaCommand.from_raw_timings(timings)
         if packet is None:
             return None
+        frame_length = 3 + 16 * len(packet.data)
+        if len(timings) not in (frame_length, frame_length + 1):
+            return None
         try:
             command = cls.__new__(cls)
             data = packet.data if cls.LSB else packet.data.translate(_REVERSED)
