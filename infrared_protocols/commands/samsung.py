@@ -96,10 +96,11 @@ class Samsung32Command(Command):
         """Decode standard/extended Samsung32 and validate command complements."""
         messages: list[bytes] = []
         try:
-            for frame in frames(timings, period=108000, tolerance=0.4):
-                if messages and len(frame) < 67:
+            packets = frames(timings, period=108000, tolerance=0.4)
+            for index, frame in enumerate(packets):
+                if messages and len(frame) < 67 and index == len(packets) - 1:
                     break
-                reader = Reader(frame, tolerance=0.4)
+                reader = Reader(timings=frame, tolerance=0.4)
                 reader.expect(4500, -4500)
                 data = pack_bytes(reader.read_bits(PulseTiming(560, 560, 1690), 32))
                 reader.expect(560)

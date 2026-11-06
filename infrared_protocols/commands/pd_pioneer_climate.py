@@ -35,7 +35,8 @@ class PdPioneerClimateCommand(ClimatePacket):
 
     Decoding requires all sections in one capture. Configure the receiver idle
     timeout above 10.01 ms, or join captures with their measured intervening gaps.
-    A default 10 ms ESPHome receiver splits this packet.
+    A default 10 ms ESPHome receiver splits this packet; pass the consecutive
+    bursts from one press to from_raw_captures() to decode it.
     """
 
     HEADER = (3120, -1560)
@@ -129,7 +130,7 @@ class PdPioneerClimateCommand(ClimatePacket):
         power = even[5] != 0xA0
         return ClimateState(
             power=power,
-            mode=mode,
+            mode=mode if power else None,
             temperature=temp if power and mode != ClimateMode.FAN_ONLY else None,
             fan=fan,
             swing_v=bool(odd[7] & 8),

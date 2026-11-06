@@ -34,7 +34,7 @@ class _DysonPacketCommand(Command):
 
     @classmethod
     def _read_payload(cls, timings: list[int]) -> int | None:
-        reader = Reader(timings)
+        reader = Reader(timings=timings)
         try:
             reader.expect(*cls.HEADER)
             value = number(reader.read_bits(cls.TIMING, 15))
@@ -59,8 +59,17 @@ class _DysonFanCommand(_DysonPacketCommand):
         if not 0 <= code <= 0xFF:
             raise ValueError("Dyson command code must be a valid 8-bit value")
         super().__init__(modulation=modulation)
-        self.code = code
         self.payload = self._PREAMBLE << 8 | code
+
+    @property
+    def code(self) -> int:
+        """Return the family-prefixed eight-bit button code."""
+        return self.payload & 255
+
+    @code.setter
+    def code(self, value: int) -> None:
+        bits(value, 8)
+        self.payload = self._PREAMBLE << 8 | value
 
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
@@ -100,8 +109,17 @@ class DysonCommand(_DysonPacketCommand):
         bits(code, 13)
         bits(index, 2)
         super().__init__(modulation=modulation)
-        self.code = code
         self.payload = code << 2 | index
+
+    @property
+    def code(self) -> int:
+        """Return the button identifier without the rolling index."""
+        return self.button_code
+
+    @code.setter
+    def code(self, value: int) -> None:
+        bits(value, 13)
+        self.payload = value << 2 | self.index
 
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:

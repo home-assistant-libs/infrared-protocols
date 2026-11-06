@@ -2,7 +2,7 @@
 
 from typing import ClassVar, Self, override
 
-from ._timing import Reader, bits, number
+from ._timing import Reader, bits, join_captures, number
 from ._word import WordCommand
 from .climate import ClimateState
 
@@ -13,6 +13,14 @@ class SplitClimateCommand(WordCommand):
     WIDTH = 67
     SPLIT: ClassVar[int] = 35
     GAP: ClassVar[int] = 20000
+
+    @classmethod
+    def from_raw_captures(cls, captures: list[list[int]]) -> Self | None:
+        """Decode both bursts of one press from a default 10-ms idle receiver."""
+        try:
+            return cls.from_raw_timings(join_captures(captures, (cls.GAP,)))
+        except ValueError:
+            return None
 
     @property
     def state(self) -> ClimateState:
@@ -35,7 +43,7 @@ class SplitClimateCommand(WordCommand):
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
         """Decode both blocks and require valid protocol state."""
-        reader = Reader(timings)
+        reader = Reader(timings=timings)
         try:
             reader.expect(*cls.HEADER)
             values = reader.read_bits(cls.TIMING, cls.SPLIT)

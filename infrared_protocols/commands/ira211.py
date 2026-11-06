@@ -64,20 +64,25 @@ class Ira211Command(Command):
         self,
         *,
         action: Ira211Action = Ira211Action.SYNC,
-        temperature: float = 20,
-        mode: Ira211Mode = Ira211Mode.COMFORT,
-        fan: Ira211Fan = Ira211Fan.AUTO,
+        temperature: float | None = 20,
+        mode: Ira211Mode | None = Ira211Mode.COMFORT,
+        fan: Ira211Fan | None = Ira211Fan.AUTO,
         modulation: int = 38000,
     ) -> None:
         """Initialize valid half-degree settings."""
-        if not 5 <= temperature <= 35 or temperature * 2 % 1:
+        fields = _FIELDS[Ira211Action(action)]
+        if "t" in fields and (
+            temperature is None or not 5 <= temperature <= 35 or temperature * 2 % 1
+        ):
             raise ValueError("temperature must be 5..35 in half-degree steps")
+        if "m" in fields and mode is None or "f" in fields and fan is None:
+            raise ValueError("the action requires its mode and fan fields")
         super().__init__(modulation=modulation)
         self.action, self.temperature, self.mode, self.fan = (
             Ira211Action(action),
-            temperature,
-            Ira211Mode(mode),
-            Ira211Fan(fan),
+            temperature if "t" in fields else None,
+            Ira211Mode(mode) if "m" in fields and mode is not None else None,
+            Ira211Fan(fan) if "f" in fields and fan is not None else None,
         )
 
     @override
@@ -86,10 +91,16 @@ class Ira211Command(Command):
         fields = _FIELDS[self.action]
         values = [int(self.action)]
         if "t" in fields:
+            if self.temperature is None:
+                raise ValueError("temperature is required by this action")
             values.extend([int(self.temperature), 5 if self.temperature % 1 else 0])
         if "m" in fields:
+            if self.mode is None:
+                raise ValueError("mode is required by this action")
             values.append(int(self.mode))
         if "f" in fields:
+            if self.fan is None:
+                raise ValueError("fan is required by this action")
             values.append(int(self.fan))
         wire = bytes([0x66] + [_reverse(value ^ 255) for value in values])
         wire += bytes([_checksum(wire)])
@@ -99,7 +110,7 @@ class Ira211Command(Command):
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
         """Verify framing, checksum and the action's state fields."""
-        r = Reader(timings)
+        r = Reader(timings=timings)
         try:
             r.expect(7600, -800, 800, -7600)
             unit = (timings[0] - timings[3]) / 19
@@ -129,9 +140,9 @@ class Ira211Command(Command):
             fields = _FIELDS[action]
             if len(values) != len(fields):
                 return None
-            temperature = 20.0
-            mode = Ira211Mode.COMFORT
-            fan = Ira211Fan.AUTO
+            temperature = None
+            mode = None
+            fan = None
             if "t" in fields:
                 whole, tenths = values.pop(0), values.pop(0)
                 if tenths not in (0, 5):

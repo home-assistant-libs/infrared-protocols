@@ -142,6 +142,7 @@ def test_toshiba_presets(preset: ToshibaPreset, temperature: int) -> None:
     assert result is not None
     assert result.data == command.data
     assert result.state == command.state
+    assert result.preset == preset
 
 
 @pytest.mark.parametrize("power_selection", list(ToshibaPowerSelection))
@@ -153,6 +154,7 @@ def test_toshiba_power_selection(power_selection: ToshibaPowerSelection) -> None
     result = ToshibaRas25j2kvsgNdCommand.from_raw_timings(command.get_raw_timings())
     assert result is not None
     assert result.data == command.data
+    assert result.power_selection == power_selection
 
 
 @pytest.mark.parametrize("action", list(ToshibaMotion))
@@ -162,7 +164,7 @@ def test_toshiba_motion(action: ToshibaMotion) -> None:
     result = ToshibaRas25j2kvsgNdCommand.from_raw_timings(command.get_raw_timings())
     assert result is not None
     assert result.state == ClimateState()
-    assert result.data[5] == action
+    assert result.action == action
 
 
 def test_toshiba_invalid_auxiliary_field() -> None:
@@ -189,6 +191,9 @@ def test_mitsubishi_presets(preset: MitsubishiPreset) -> None:
     result = MitsubishiCommand.from_raw_timings(command.get_raw_timings())
     assert result is not None
     assert result.data == command.data
+    assert result.preset == preset
+    assert result.state.swing_v == (preset != MitsubishiPreset.NIGHT)
+    assert result.dual_vanes == (True if preset != MitsubishiPreset.NIGHT else None)
 
 
 @pytest.mark.parametrize(

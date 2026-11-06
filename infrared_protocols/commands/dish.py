@@ -29,7 +29,7 @@ class DishCommand(Command):
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
         """Decode a single received frame or a complete four-frame press."""
-        r = Reader(timings)
+        r = Reader(timings=timings)
         try:
             r.expect(400, -6100)
             fields = r.read_bits(_TIMING, 16)

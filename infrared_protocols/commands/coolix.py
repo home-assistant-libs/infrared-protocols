@@ -46,7 +46,7 @@ class CoolixCommand(Command):
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
         """Validate every complement and preserve both frames when present."""
-        r = Reader(timings)
+        r = Reader(timings=timings)
         words: list[int] = []
         try:
             while True:

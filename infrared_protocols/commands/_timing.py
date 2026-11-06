@@ -53,6 +53,26 @@ def runs(levels: Iterable[int], unit: int) -> list[int]:
     return result
 
 
+def join_captures(captures: list[list[int]], gaps: tuple[int, ...]) -> list[int]:
+    """Join one press split at receiver idle timeouts using its protocol gaps.
+
+    The caller groups consecutive bursts from one press. A reported idle timeout
+    is a lower bound, so replace it with the protocol's known section gap.
+    The complete command decoder still validates every section and checksum.
+    """
+    if len(captures) != len(gaps) + 1:
+        raise ValueError("incorrect number of receiver bursts")
+    result: list[int] = []
+    for index, capture in enumerate(captures):
+        body = capture[:-1] if capture and capture[-1] <= -3000 else capture
+        if not body or body[0] <= 0 or body[-1] <= 0:
+            raise ValueError("incomplete receiver burst")
+        if index:
+            result.append(-gaps[index - 1])
+        result.extend(body)
+    return result
+
+
 @dataclass(frozen=True)
 class PulseTiming:
     """A zero and one mark/space pair, measured in microseconds."""
@@ -77,7 +97,7 @@ class PulseTiming:
 class Reader:
     """Consume a capture; malformed or truncated input raises ValueError."""
 
-    def __init__(self, timings: list[int], *, tolerance: float = 0.25) -> None:
+    def __init__(self, *, timings: list[int], tolerance: float = 0.25) -> None:
         """Retain the capture and a cursor into it."""
         self.timings = timings
         self.pos = 0

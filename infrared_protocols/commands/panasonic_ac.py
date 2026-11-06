@@ -339,11 +339,11 @@ class PanasonicAcCommand(KaseikyoCommand):
                 nanoex=bool(second[17] & 4) if model is None else False,
                 frost_protection=frost,
             )
-            result.data = decoded.data
+            result.data = [first[2:], second[2:]]
             result.base_unit = decoded.base_unit
             result.repeat_count = decoded.repeat_count
             result.full_frame_repeat = decoded.full_frame_repeat
-            result._frame_gaps = decoded._frame_gaps
+            result._frame_gaps = decoded._frame_gaps or [10000]
             return result
         except ValueError:
             return None
@@ -404,5 +404,5 @@ class PanasonicAcToggleCommand(KaseikyoCommand):
         result.data, result.base_unit = decoded.data, decoded.base_unit
         result.repeat_count = decoded.repeat_count
         result.full_frame_repeat = decoded.full_frame_repeat
-        result._frame_gaps = decoded._frame_gaps
+        result._frame_gaps = decoded._frame_gaps or [10000]
         return result

@@ -24,7 +24,7 @@ from infrared_protocols.commands.samsung import Samsung32Command
 from infrared_protocols.commands.sony import SonyCommand
 
 Decoder = Callable[[list[int]], Command | None]
-CASES: list[tuple[Command, Decoder]] = [
+_INPUTS: list[tuple[Command, Decoder]] = [
     *[
         (
             RC5Command(address=a, command=c, toggle=t, repeat_count=r),
@@ -102,33 +102,40 @@ CASES: list[tuple[Command, Decoder]] = [
 ]
 
 
-@pytest.mark.parametrize(
-    "command,decode",
-    CASES,
-    ids=[
-        type(command).__name__
-        + "-"
-        + "-".join(
-            f"{key}={value}"
-            for key, value in vars(command).items()
-            if key
-            in (
-                "address",
-                "command",
-                "extension",
-                "toggle",
-                "mode",
-                "data",
-                "code",
-                "repeat_count",
-                "address_bits",
-                "preamble_address",
-                "preamble_command",
+CASES = [
+    pytest.param(command, decode, id=name)
+    for (command, decode), name in zip(
+        _INPUTS,
+        [
+            type(command).__name__
+            + "-"
+            + "-".join(
+                f"{key}={value}"
+                for key, value in vars(command).items()
+                if key
+                in (
+                    "address",
+                    "command",
+                    "extension",
+                    "toggle",
+                    "mode",
+                    "data",
+                    "code",
+                    "payload",
+                    "repeat_count",
+                    "address_bits",
+                    "preamble_address",
+                    "preamble_command",
+                )
             )
-        )
-        for command, _ in CASES
-    ],
-)
+            for command, _ in _INPUTS
+        ],
+        strict=True,
+    )
+]
+
+
+@pytest.mark.parametrize("command,decode", CASES)
 def test_decode_existing_encoder(command: Command, decode: Decoder) -> None:
     """Recover edge-valued fields, extensions, toggles and full-frame repeats."""
     raw = command.get_raw_timings()
@@ -137,33 +144,7 @@ def test_decode_existing_encoder(command: Command, decode: Decoder) -> None:
     assert result.get_raw_timings() == raw
 
 
-@pytest.mark.parametrize(
-    "command,decode",
-    CASES,
-    ids=[
-        type(command).__name__
-        + "-"
-        + "-".join(
-            f"{key}={value}"
-            for key, value in vars(command).items()
-            if key
-            in (
-                "address",
-                "command",
-                "extension",
-                "toggle",
-                "mode",
-                "data",
-                "code",
-                "repeat_count",
-                "address_bits",
-                "preamble_address",
-                "preamble_command",
-            )
-        )
-        for command, _ in CASES
-    ],
-)
+@pytest.mark.parametrize("command,decode", CASES)
 @pytest.mark.parametrize("prefix", [0, 1, 5])
 def test_truncated(command: Command, decode: Decoder, prefix: int) -> None:
     """A partial leader or payload cannot be a complete command."""

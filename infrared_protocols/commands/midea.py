@@ -49,7 +49,7 @@ class MideaCommand(Command):
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
         """Require a valid checksum and matching inverted packet."""
-        r = Reader(timings)
+        r = Reader(timings=timings)
         try:
             r.expect(4480, -4480)
             wire = pack_bytes(r.read_bits(_TIMING, 48), lsb=False)

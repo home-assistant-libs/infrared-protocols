@@ -14,7 +14,8 @@ class AehaClimatePacket(ClimatePacket):
     @override
     def get_raw_timings(self) -> list[int]:
         """Convert the model's MSB byte view to AEHA's native LSB byte view."""
-        return AehaCommand(data=self.data.translate(_REVERSED)).get_raw_timings()[:-1]
+        data = self.data if self.LSB else self.data.translate(_REVERSED)
+        return AehaCommand(data=data).get_raw_timings()[:-1]
 
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
@@ -24,7 +25,8 @@ class AehaClimatePacket(ClimatePacket):
             return None
         try:
             command = cls.__new__(cls)
-            ClimatePacket.__init__(command, data=packet.data.translate(_REVERSED))
+            data = packet.data if cls.LSB else packet.data.translate(_REVERSED)
+            ClimatePacket.__init__(command, data=data)
             return command
         except ValueError:
             return None

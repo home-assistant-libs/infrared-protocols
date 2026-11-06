@@ -27,7 +27,8 @@ class DaikinBrcCommand(ClimatePacket):
 
     Decoding requires all sections in one capture. Configure the receiver idle
     timeout above 29.41 ms, or join captures with their measured intervening gaps.
-    A default 10 ms ESPHome receiver splits this packet.
+    A default 10 ms ESPHome receiver splits this packet; pass the consecutive
+    bursts from one press to from_raw_captures() to decode it.
     """
 
     HEADER = (5070, -2140)

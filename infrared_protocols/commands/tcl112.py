@@ -73,7 +73,7 @@ class Tcl112Command(ClimatePacket):
         temperature_value(temperature, 16, 31, 0.5)
         return ClimateState(
             power=bool(data[5] & 4),
-            mode=decoded(data[6] & 15, _MODES),
+            mode=decoded(data[6] & 15, _MODES) if data[5] & 4 else None,
             temperature=temperature,
             fan=decoded(data[8] & 7, _FANS),
             swing_v=data[8] & 0x38 == 0x38,

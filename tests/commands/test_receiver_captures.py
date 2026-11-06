@@ -38,6 +38,7 @@ def test_rc6_physical_capture() -> None:
     received = RC6Command.from_raw_timings(raw)
     assert received is not None
     assert (received.mode, received.address, received.command) == (0, 0xF1, 0x76)
+    assert received.toggle == 0
 
 
 def test_sony_physical_capture() -> None:
@@ -242,10 +243,11 @@ def test_hob_receiver_skew_and_idle(code: Hob2HoodCode) -> None:
     "code",
     [code for code in Hob2HoodCode if code.to_command().get_raw_timings()[-1] < 0],
 )
-def test_hob_dropped_final_space(code: Hob2HoodCode) -> None:
+@pytest.mark.parametrize("tail", [[], [-20000]], ids=["omitted", "merged-idle"])
+def test_hob_dropped_final_space(code: Hob2HoodCode, tail: list[int]) -> None:
     """Some receivers stop before reporting the final space."""
     received = Hob2HoodCommand.from_raw_timings(
-        code.to_command().get_raw_timings()[:-1]
+        [t - 240 for t in code.to_command().get_raw_timings()[:-1]] + tail
     )
     assert received is not None
     assert received.command == code

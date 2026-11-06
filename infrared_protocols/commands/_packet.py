@@ -45,7 +45,7 @@ class PacketCommand(Command):
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
         """Decode an allowed packet length and verify the checksum."""
         for length in cls.LENGTHS:
-            r = Reader(timings)
+            r = Reader(timings=timings)
             try:
                 r.expect(*cls.HEADER)
                 wire = pack_bytes(

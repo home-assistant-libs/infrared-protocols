@@ -35,7 +35,7 @@ class Samsung36Command(Command):
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
         """Decode a frame, allowing the final idle space to be omitted."""
-        r = Reader(timings)
+        r = Reader(timings=timings)
         try:
             r.expect(4500, -4500)
             address = number(r.read_bits(_TIMING, 16))

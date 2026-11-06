@@ -25,7 +25,8 @@ class DaikinArcCommand(ClimatePacket):
 
     Decoding requires all sections in one capture. Configure the receiver idle
     timeout above 35 ms, or join captures with their measured intervening gaps.
-    A default 10 ms ESPHome receiver splits this packet.
+    A default 10 ms ESPHome receiver splits this packet; pass the consecutive
+    bursts from one press to from_raw_captures() to decode it.
     """
 
     HEADER = (9950, -25100, 3450, -1760)
@@ -129,10 +130,17 @@ class DaikinArcSensorResponse:
     """
 
     data: bytes
+    known_bits: int = 192
 
     def __post_init__(self) -> None:
         """Validate the identified response structure."""
-        if len(self.data) != 24 or self.data[:5] != bytes([0x11, 0xDA, 0x27, 0, 0]):
+        if (
+            len(self.data) != 24
+            or self.data[:5] != bytes([0x11, 0xDA, 0x27, 0, 0])
+            or self.known_bits not in (191, 192)
+            or self.known_bits == 191
+            and self.data[-1] & 128
+        ):
             raise ValueError("invalid Daikin ARC sensor response")
 
     @property
@@ -142,15 +150,21 @@ class DaikinArcSensorResponse:
 
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
-        """Recognize the 24-byte sensor reply independently of state sections."""
-        reader = Reader(timings)
+        """Recognize sensor replies, preserving a missing final bit as unknown.
+
+        A 385/386-entry receiver capture omits the last bit space. Its unknown
+        high bit is stored as zero; known_bits distinguishes it from a measured zero.
+        """
+        reader = Reader(timings=timings)
         try:
             reader.expect(3450, -1760)
-            data = pack_bytes(reader.read_bits(DaikinArcCommand.TIMING, 192), lsb=True)
+            count = 191 if len(timings) in (385, 386) else 192
+            values = reader.read_bits(DaikinArcCommand.TIMING, count)
+            data = pack_bytes(values + ([0] if count == 191 else []), lsb=True)
             reader.expect(400)
             reader.end()
         except ValueError:
             return None
         if data[:5] != bytes([0x11, 0xDA, 0x27, 0, 0]):
             return None
-        return cls(data=data)
+        return cls(data=data, known_bits=count)

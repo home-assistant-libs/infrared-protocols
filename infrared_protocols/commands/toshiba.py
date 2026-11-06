@@ -188,7 +188,7 @@ class ToshibaCommand(Command):
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
         """Decode one complete packet or two identical protocol copies."""
-        reader = Reader(timings)
+        reader = Reader(timings=timings)
         try:
             data = cls._read(reader)
             if len(timings) - reader.pos > 1:
@@ -292,7 +292,14 @@ class ToshibaRas25j2kvsgNdCommand(ToshibaCommand):
             state.mode != ClimateMode.HEAT or not state.power
         ):
             raise ValueError("heating preset outside heat mode")
+        if state.mode == ClimateMode.FAN_ONLY:
+            return ClimateState(power=state.power, mode=state.mode, fan=state.fan)
         return state
+
+    @property
+    def action(self) -> ToshibaMotion | None:
+        """Return the momentary action, absent in full state packets."""
+        return ToshibaMotion(self.data[5]) if len(self.data) == 7 else None
 
     @property
     def fan(self) -> ToshibaFan | None:
@@ -344,12 +351,11 @@ class ToshibaRas25j2kvsgNdCommand(ToshibaCommand):
         mode: ClimateMode,
         temperature: int,
         power: bool = True,
-        fan: ClimateFan = ClimateFan.AUTO,
+        fan: ClimateFan | ToshibaFan = ClimateFan.AUTO,
         preset: ToshibaPreset = ToshibaPreset.NONE,
         power_selection: ToshibaPowerSelection = ToshibaPowerSelection.PERCENT_100,
-        intermediate_fan: int | None = None,
     ) -> Self:
-        """Build a state; intermediate_fan accepts native Low+ (3) or Medium+ (5).
+        """Build a state with common or native fan selections.
 
         Frost protection accepts 5..13 °C in heat mode. Fireplace presets also
         require heat. Sleep uses automatic fan; silent power excludes presets.
@@ -368,13 +374,9 @@ class ToshibaRas25j2kvsgNdCommand(ToshibaCommand):
             raise ValueError("heating presets require heat mode and power on")
         if power_selection >= 3 and preset != ToshibaPreset.NONE:
             raise ValueError("silent power selection cannot be combined with a preset")
-        fan_code = selection(fan, _FANS)
-        if mode == ClimateMode.DRY and (fan_code or intermediate_fan is not None):
+        fan_code = int(fan) if isinstance(fan, ToshibaFan) else selection(fan, _FANS)
+        if mode == ClimateMode.DRY and fan_code:
             raise ValueError("dry mode requires automatic fan")
-        if intermediate_fan is not None:
-            if intermediate_fan not in (3, 5):
-                raise ValueError("intermediate_fan must be 3 or 5")
-            fan_code = intermediate_fan
         sleep_hours = {
             ToshibaPreset.SLEEP_1H: 1,
             ToshibaPreset.SLEEP_3H: 3,

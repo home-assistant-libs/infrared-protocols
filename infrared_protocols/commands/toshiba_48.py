@@ -113,6 +113,24 @@ class Toshiba48Command(ToshibaAcPacketCommand):
 class ToshibaRacCommand(Toshiba48Command):
     """RAC-PT1411HWRU C/F state, absolute swing and Comfort Sense messages."""
 
+    @property
+    def fahrenheit(self) -> bool | None:
+        """Return the native unit flag, absent in standalone actions."""
+        return bool(self.second[3] & 1) if self.second is not None else None
+
+    @property
+    def temperature(self) -> int | None:
+        """Return the native setpoint accepted by climate(), without conversion."""
+        second = self.second
+        if second is None or self.state.mode == ClimateMode.FAN_ONLY:
+            return None
+        value = (self.first[4] >> 4) | (second[2] & 32) | (second[3] & 16)
+        return (
+            _TEMPS_F.index(value) + 60
+            if self.fahrenheit
+            else _TEMPS_C.index(value) + 16
+        )
+
     @classmethod
     def climate(
         cls,

@@ -6,9 +6,8 @@ extraction and compiled executables stay in a temporary directory. Only measured
 outputs and encoder inputs are saved. The installed library does not import or
 link these reference encoders.
 
-Cases in the fixture files select inputs from the stage programs. Climate keys
-record component:mode:fan:temperature:swing using ESPHome's enum values; the
-arguments object records the corresponding Python API inputs. Timing palettes
+Climate inputs come from cases.py; fixture keys name modes, fans and swing axes.
+The arguments object records the corresponding Python API inputs. Timing palettes
 are lossless: each character indexes the palette using base-36 digits.
 """
 
@@ -20,6 +19,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from captures import toshiba_states
+from cases import expected_state
 
 _DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz"
 
@@ -34,7 +34,7 @@ def read_signals(output: str) -> dict[str, tuple[int, list[int]]]:
 
 
 def main() -> None:
-    """Build the reference programs and refresh existing selected cases."""
+    """Build reference programs and generate the climate case list from inputs."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("esphome_source", type=Path)
     parser.add_argument(
@@ -45,6 +45,7 @@ def main() -> None:
     args = parser.parse_args()
     if not (args.esphome_source / "esphome/components/remote_base").is_dir():
         parser.error("esphome_source must be a complete local ESPHome checkout")
+    args.output.mkdir(parents=True, exist_ok=True)
     args.output.joinpath("toshiba_captures.json").write_text(
         json.dumps(
             {
@@ -63,9 +64,6 @@ def main() -> None:
         for stage in (
             "reference",
             "climate_reference",
-            "climate_reference2",
-            "climate_reference3",
-            "climate_reference4",
             "extra_reference",
         ):
             output = subprocess.check_output(
@@ -80,19 +78,47 @@ def main() -> None:
             signals.update(read_signals(output))
         inputs = json.loads(Path(directory, "inputs.json").read_text())
         inputs.update(json.loads(Path(directory, "extra/inputs.json").read_text()))
+        climate_inputs = json.loads(Path(directory, "climate_inputs.json").read_text())
     climate_path = args.output / "esphome_climate.json"
-    corpus = json.loads(climate_path.read_text())
-    corpus.pop("hash_format", None)
+    corpus = {
+        "source": "ESPHome encoder output",
+        "kind": "Synthetic outputs of original C++ encoders, not hardware captures",
+    }
     corpus["timing_format"] = (
         "Each base-36 character indexes the signed microsecond palette; "
         "zero-duration spaces omitted"
     )
-    for case in corpus["cases"]:
-        _, timings = signals[case["key"]]
-        palette = list(dict.fromkeys(timings))
-        case.pop("sha256", None)
-        case["palette"] = palette
-        case["timings"] = "".join(_DIGITS[palette.index(t)] for t in timings)
+    corpus["cases"] = []
+    for source in climate_inputs:
+        index = 0
+        while (key := source["key"] + f"@{index}") in signals:
+            case = {
+                "key": key,
+                "factory": source["factory"],
+                "arguments": source["arguments"],
+            }
+            if index:
+                if source["component"] not in ("toshiba_1", "toshiba_2"):
+                    raise ValueError(f"unmapped transmission: {key}")
+                case.update(
+                    factory="ToshibaRacCommand.swing",
+                    arguments={"enabled": source["swing"] in (1, 2)},
+                )
+            _, timings = signals[key]
+            if timings[0] < 0:
+                case["leading_idle"] = -timings[0]
+                timings = timings[1:]
+            if len(timings) > 1 and timings[-1] < 0 and timings[-2] < 0:
+                case["trailing_idle"] = -timings[-1]
+                timings = timings[:-1]
+            case["expected_state"] = expected_state(case["factory"], case["arguments"])
+            palette = list(dict.fromkeys(timings))
+            case["palette"] = palette
+            case["timings"] = "".join(_DIGITS[palette.index(t)] for t in timings)
+            corpus["cases"].append(case)
+            index += 1
+        if not index:
+            raise ValueError(f"no signal for {source['key']}")
     metadata = {k: v for k, v in corpus.items() if k != "cases"}
     climate_path.write_text(
         json.dumps(metadata, indent=2)[:-2]
@@ -101,14 +127,21 @@ def main() -> None:
         + "\n  ]\n}\n"
     )
     transport_path = args.output / "esphome_protocols.json"
-    corpus = json.loads(transport_path.read_text())
-    for case in corpus["signals"]:
-        carrier, timings = signals[case["protocol"]]
-        if case["protocol"] == "toto":
+    corpus = {
+        "source": "ESPHome encoder output",
+        "kind": "Synthetic encoder outputs, not hardware captures",
+        "signals": [],
+    }
+    for protocol, input_values in inputs.items():
+        carrier, timings = signals[protocol]
+        if protocol == "toto":
             # The component's transmitter config sends three encoder outputs.
             timings = timings + [-36000] + timings + [-36000] + timings
-        case["carrier"], case["timings"] = carrier, timings
-        case["input"] = inputs[case["protocol"]]
+        corpus["signals"].append(
+            dict(
+                protocol=protocol, carrier=carrier, timings=timings, input=input_values
+            )
+        )
     transport_path.write_text(json.dumps(corpus, indent=2) + "\n")
 
 

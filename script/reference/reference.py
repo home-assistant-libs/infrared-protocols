@@ -36,11 +36,15 @@ template<size_t N> constexpr size_t format_hex_pretty_size() {return N*3+1;}
 constexpr size_t format_hex_pretty_size(size_t n) {return n*3+1;}
 template<typename... T> const char* format_hex_pretty_to(T...) {return "";}
 inline uint8_t reverse_bits(uint8_t b) { uint8_t r=0; for(int i=0;i<8;i++) {r=(r<<1)|(b&1);b>>=1;}return r; }
+inline void put_be16(uint8_t* p,uint16_t v){p[0]=v>>8;p[1]=v;}
+inline void put_be32(uint8_t* p,uint32_t v){for(int i=0;i<4;i++)p[i]=v>>(24-i*8);}
+inline uint8_t xor_bytes(const uint8_t* p,size_t n,uint8_t init=0){for(size_t i=0;i<n;i++)init^=p[i];return init;}
 inline uint8_t sum_bytes(const uint8_t* p,size_t n,uint8_t init=0) {for(size_t i=0;i<n;i++)init+=p[i];return init;}
 namespace esphome {
 using std::optional;
 namespace remote_base {
 using RawTimings=std::vector<int32_t>;
+using RawTimingsView=const RawTimings&;
 enum class BitOrder { BIT_ORDER_LSB_FIRST, BIT_ORDER_MSB_FIRST };
 struct BitTimings { uint32_t bit_mark=0, one_space=0, zero_space=0; BitOrder bit_order=BitOrder::BIT_ORDER_LSB_FIRST; uint32_t one_mark=0,zero_mark=0; };
 class RemoteTransmitData {
@@ -102,7 +106,7 @@ cases = [
     ),
     (
         "toto",
-        "TotoProtocol().encode(&d,TotoData{.rc_code_1=3,.rc_code_2=9,.command=0xED});",
+        "TotoProtocol().encode(&d,TotoData{.code=0xB79C});",
     ),
     ("roomba", "RoombaProtocol().encode(&d,RoombaData{0xA5});"),
     (

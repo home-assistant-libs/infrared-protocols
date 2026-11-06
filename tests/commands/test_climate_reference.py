@@ -5,14 +5,13 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import NamedTuple
+from typing import NamedTuple, Protocol
 
 import pytest
 
-from infrared_protocols.commands import Command
 from infrared_protocols.commands.airton import AirtonCommand
 from infrared_protocols.commands.ballu import BalluCommand
-from infrared_protocols.commands.climate import ClimateFan, ClimateMode
+from infrared_protocols.commands.climate import ClimateFan, ClimateMode, ClimateState
 from infrared_protocols.commands.daikin_arc import DaikinArcCommand, DaikinHumidity
 from infrared_protocols.commands.daikin_brc import DaikinBrcCommand
 from infrared_protocols.commands.delonghi import DelonghiCommand
@@ -31,13 +30,18 @@ from infrared_protocols.commands.hitachi import (
 )
 from infrared_protocols.commands.islandaire import IslandaireCommand
 from infrared_protocols.commands.mistral import MistralCommand
-from infrared_protocols.commands.mitsubishi import MitsubishiCommand, MitsubishiFan
+from infrared_protocols.commands.mitsubishi import (
+    MitsubishiCommand,
+    MitsubishiFan,
+    MitsubishiPreset,
+)
 from infrared_protocols.commands.noblex import NoblexCommand
 from infrared_protocols.commands.pd_pioneer_climate import PdPioneerClimateCommand
 from infrared_protocols.commands.remko_ar715 import RemkoAr715Command
 from infrared_protocols.commands.tcl112 import Tcl112Command
 from infrared_protocols.commands.toshiba import (
     ToshibaCommand,
+    ToshibaRas25j2kvsgNdCommand,
     ToshibaRasB10n3kv2Command,
     ToshibaSeiyaCommand,
     ToshibaSeiyaSwing,
@@ -71,14 +75,55 @@ class _Arguments:
     fahrenheit: bool = False
     model: GreeModel = GreeModel.GENERIC
     blade: int = 0
+    enabled: bool = False
+    send_temperature: bool = True
+    preset: str = "none"
+
+
+class _ClimateCommand(Protocol):
+    """The state projection shared by the reference-tested climate commands."""
+
+    modulation: int
+
+    @property
+    def state(self) -> ClimateState:
+        """Return only state carried by the received packet."""
+        ...
+
+    def get_raw_timings(self) -> list[int]:
+        """Encode the complete protocol command."""
+        ...
 
 
 class _Factory(NamedTuple):
-    build: Callable[[_Arguments], Command]
-    decode: Callable[[list[int]], Command | None]
+    build: Callable[[_Arguments], _ClimateCommand]
+    decode: Callable[[list[int]], _ClimateCommand | None]
 
 
 _FACTORIES: dict[str, _Factory] = {
+    "ToshibaRas25j2kvsgNdCommand.climate": _Factory(
+        lambda a: ToshibaRas25j2kvsgNdCommand.climate(
+            mode=a.mode, temperature=int(a.temperature), fan=a.fan
+        ),
+        ToshibaRas25j2kvsgNdCommand.from_raw_timings,
+    ),
+    "ToshibaRacCommand.comfort_sense": _Factory(
+        lambda a: ToshibaRacCommand.comfort_sense(
+            mode=a.mode,
+            temperature=int(a.temperature),
+            enabled=a.enabled,
+            send_temperature=a.send_temperature,
+        ),
+        ToshibaRacCommand.from_raw_timings,
+    ),
+    "ToshibaRas2819Command.swing_toggle": _Factory(
+        lambda a: ToshibaRas2819Command.swing_toggle(),
+        ToshibaRas2819Command.from_raw_timings,
+    ),
+    "ToshibaRacCommand.swing": _Factory(
+        lambda a: ToshibaRacCommand.swing(enabled=a.enabled),
+        ToshibaRacCommand.from_raw_timings,
+    ),
     "BalluCommand": _Factory(
         lambda a: BalluCommand(
             mode=a.mode,
@@ -119,7 +164,11 @@ _FACTORIES: dict[str, _Factory] = {
     ),
     "WhynterCommand": _Factory(
         lambda a: WhynterCommand(
-            mode=a.mode, temperature=int(a.temperature), power=a.power, fan=a.fan
+            mode=a.mode,
+            temperature=int(a.temperature),
+            power=a.power,
+            fan=a.fan,
+            fahrenheit=a.fahrenheit,
         ),
         WhynterCommand.from_raw_timings,
     ),
@@ -201,6 +250,7 @@ _FACTORIES: dict[str, _Factory] = {
             temperature=a.temperature,
             power=a.power,
             fan=MitsubishiFan(a.native_fan),
+            preset=MitsubishiPreset(a.preset),
             swing_v=a.swing_v,
             swing_h=a.swing_h,
         ),
@@ -337,9 +387,10 @@ for _model in GreeModel:
 
 
 class _Case(NamedTuple):
-    command: Command
-    decoder: Callable[[list[int]], Command | None]
+    command: _ClimateCommand
+    decoder: Callable[[list[int]], _ClimateCommand | None]
     timings: list[int]
+    expected_state: ClimateState
 
 
 _CORPUS = json.loads(
@@ -362,13 +413,10 @@ for _case in _CORPUS["cases"]:
             _factory.build(_args),
             _factory.decode,
             [_case["palette"][int(c, 36)] for c in _case["timings"]],
+            ClimateState(**_case["expected_state"]),
         )
     )
-    _IDS.append(
-        _case["factory"]
-        + "-"
-        + "-".join(f"{key}={value}" for key, value in _case["arguments"].items())
-    )
+    _IDS.append(_case["key"])
 
 
 @pytest.mark.parametrize("case", _CASES, ids=_IDS)
@@ -380,12 +428,15 @@ def test_climate_reference(case: _Case) -> None:
     received = case.decoder(timings)
     assert received is not None
     assert received.get_raw_timings() == timings
+    assert received.state == case.expected_state
 
 
 # Framing depends on the decoder and model, not every state permutation.
 _FRAMING = {}
 for _case, _id in zip(_CASES, _IDS, strict=True):
-    _FRAMING.setdefault((_case.decoder, "power=False" in _id), (_case, _id))
+    _FRAMING.setdefault(
+        (_case.decoder, len(_case.timings), _case.expected_state.power), (_case, _id)
+    )
 _FRAME_CASES = [entry[0] for entry in _FRAMING.values()]
 _FRAME_IDS = [entry[1] for entry in _FRAMING.values()]
 

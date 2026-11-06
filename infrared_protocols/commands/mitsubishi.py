@@ -158,9 +158,9 @@ class MitsubishiCommand(ClimatePacket):
         return self.data[8] >> 4
 
     @property
-    def dual_vanes(self) -> bool:
-        """Return whether the packet commands the second vertical vane."""
-        return bool(self.data[16] & 0x38)
+    def dual_vanes(self) -> bool | None:
+        """Return True for a non-auto second vane, otherwise its presence is unknown."""
+        return True if self.data[16] & 0x38 else None
 
     @classmethod
     def parse(cls, data: bytes) -> ClimateState:

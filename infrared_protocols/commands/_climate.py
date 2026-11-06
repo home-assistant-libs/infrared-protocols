@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import ClassVar, Self, override
 
 from . import Command
-from ._timing import PulseTiming, Reader, byte_bits, pack_bytes
+from ._timing import PulseTiming, Reader, byte_bits, join_captures, pack_bytes
 from .climate import ClimateState
 
 
@@ -96,7 +96,7 @@ class ClimatePacket(Command):
         Receivers may stop at an inter-frame gap, so a single complete packet
         is accepted even for protocols whose transmitters send it twice.
         """
-        reader = Reader(timings)
+        reader = Reader(timings=timings)
         try:
             data = cls._read_packet(reader)
             for _ in range(cls.COPIES - 1):
@@ -109,5 +109,26 @@ class ClimatePacket(Command):
             command = cls.__new__(cls)
             ClimatePacket.__init__(command, data=data)
             return command
+        except ValueError:
+            return None
+
+    @classmethod
+    def from_raw_captures(
+        cls, captures: list[list[int]], *, idle: int = 10000
+    ) -> Self | None:
+        """Decode consecutive bursts of one press split by a receiver idle timeout.
+
+        Supply all sections in order; incomplete or corrupt presses return None.
+        A single complete transmitted copy suffices for repeated commands.
+        """
+        if idle < 3000:
+            raise ValueError("idle must be at least 3000 microseconds")
+        gaps: list[int] = []
+        for index, part in enumerate(cls._parts()):
+            gaps.extend(-t for t in part.header if t <= -idle)
+            if index < len(cls._parts()) - 1 and part.gap >= idle:
+                gaps.append(part.gap)
+        try:
+            return cls.from_raw_timings(join_captures(captures, tuple(gaps)))
         except ValueError:
             return None

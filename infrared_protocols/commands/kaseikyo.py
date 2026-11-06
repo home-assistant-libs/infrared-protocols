@@ -128,7 +128,7 @@ class KaseikyoCommand(Command):
         if len(timings) < 2 or not 2600 <= timings[0] <= 4400:
             return None
         unit = round((timings[0] - timings[1]) / 12)
-        reader = Reader(timings)
+        reader = Reader(timings=timings)
         address: int | None = None
         payloads: list[bytes] = []
         repeats = 0
@@ -176,7 +176,7 @@ class KaseikyoCommand(Command):
                 ):
                     raise ValueError("invalid Kaseikyo address or parity")
                 address = frame_address
-                payloads.append(data[2:])
+                payloads.append(bytes([data[2] & 0xF0]) + data[3:])
                 starts.append(start)
             if address is None or not payloads:
                 return None

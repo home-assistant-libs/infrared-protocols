@@ -140,7 +140,7 @@ class WhirlpoolCommand(ClimatePacket):
         result = super().from_raw_timings(timings)
         if result is not None:
             return result
-        reader = Reader(timings)
+        reader = Reader(timings=timings)
         try:
             reader.expect(*cls.HEADER)
             first = pack_bytes(reader.read_bits(cls.TIMING, 48))
@@ -178,7 +178,7 @@ class WhirlpoolCommand(ClimatePacket):
             else mode,
             temperature=temperature,
             fan=decoded(data[2] & 3, _FANS),
-            swing_v=bool(data[2] & 128) if cls.HISENSE else None,
+            swing_v=bool(data[8] & 64) if cls.HISENSE else None,
         )
 
 

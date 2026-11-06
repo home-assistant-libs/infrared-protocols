@@ -50,7 +50,7 @@ class ToshibaAcPacketCommand(Command):
 
     @classmethod
     def _read_words(cls, timings: list[int]) -> list[int] | None:
-        r = Reader(timings)
+        r = Reader(timings=timings)
         words: list[int] = []
         try:
             while True:

@@ -86,7 +86,7 @@ def test_gree_yan_model_semantics() -> None:
 
 
 def test_gree_yac_rejects_followup() -> None:
-    """The YAW1F secondary packet is not an ordinary YAC state."""
+    """The YAC follow-up packet is not an ordinary YAC state."""
     sent = GreeModelCommand(model=GreeModel.YAC, mode=ClimateMode.COOL, temperature=24)
     sent.data = bytes.fromhex("09082070002020f0")
     assert (
@@ -127,7 +127,8 @@ def test_panasonic_received_frost_state_section(temperature: int) -> None:
     assert received.state.frost_protection
     assert received.state.temperature == temperature
     assert received.state.fan == PanasonicAcFanSpeed.HIGH
-    assert isinstance(received.data, bytes)
+    assert isinstance(received.data, list)
+    assert len(received.get_raw_timings()) == 439
 
 
 def test_panasonic_bad_checksum() -> None:

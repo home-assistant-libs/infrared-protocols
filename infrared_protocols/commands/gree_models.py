@@ -186,6 +186,8 @@ class GreeModelCommand(Command):
             raise ValueError("invalid Gree checksum")
         if model == GreeModel.YAC and data[3] & 0xF0 == 0x70:
             raise ValueError("YAC follow-up carries no climate state")
+        if model == GreeModel.YAW1F and data == _FOLLOWUP:
+            raise ValueError("YAW1F follow-up carries no climate state")
         temperature = 16 + (data[1] & 15) + (0.5 if data[3] & 4 else 0)
         temperature_value(temperature, 16, 30, 0.5)
         code = data[0] >> 4 & 3
@@ -207,7 +209,7 @@ class GreeModelCommand(Command):
         swing_h: bool | None = None
         if model in (GreeModel.YAC, GreeModel.YAG, GreeModel.YAW1F):
             swing_v = swinging and vertical in (1, 7, 9, 11)
-            swing_h = swinging and data[4] >> 4 & 7 == 1
+            swing_h = (model == GreeModel.YAC or swinging) and data[4] >> 4 & 7 == 1
         elif model == GreeModel.GENERIC:
             swing_v = swinging and bool(vertical)
         return ClimateState(
@@ -256,7 +258,7 @@ class GreeModelCommand(Command):
     def from_raw_timings(cls, timings: list[int], *, model: GreeModel) -> Self | None:
         """Decode using an explicit remote model; validate any YAW1F follow-up."""
         model = GreeModel(model)
-        reader = Reader(timings)
+        reader = Reader(timings=timings)
         try:
             data = cls._read(reader, model)
             if model == GreeModel.YAW1F and len(timings) - reader.pos > 1:

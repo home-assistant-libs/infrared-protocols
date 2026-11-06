@@ -77,7 +77,7 @@ class WhynterCommand(WordCommand):
         """Decode a complete word and validate the state fields."""
         from ._timing import Reader
 
-        reader = Reader(timings)
+        reader = Reader(timings=timings)
         try:
             reader.expect(*cls.HEADER)
             value = number(reader.read_bits(cls.TIMING, cls.WIDTH))

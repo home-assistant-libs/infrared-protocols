@@ -137,7 +137,7 @@ class RC6Command(Command):
         messages: list[tuple[int, int, int, int]] = []
         try:
             for frame in frames(timings, period=RC6_REPEAT_PERIOD_US):
-                reader = Reader(frame)
+                reader = Reader(timings=frame)
                 reader.expect(RC6_LEADER_MARK_US, -RC6_LEADER_SPACE_US)
                 values = levels(frame[2:], RC6_UNIT_US)
                 if len(values) == 43:

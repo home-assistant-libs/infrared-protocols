@@ -25,28 +25,18 @@ from infrared_protocols.commands.toshiba_48 import (
 _CAPTURED = json.loads(
     (Path(__file__).parents[1] / "fixtures/toshiba_captures.json").read_text()
 )["states"]
-_FANS = {
-    0: ClimateFan.AUTO,
-    1: ClimateFan.QUIET,
-    2: ClimateFan.LOW,
-    3: ClimateFan.LOW,
-    4: ClimateFan.MEDIUM,
-    5: ClimateFan.MEDIUM,
-    6: ClimateFan.HIGH,
-}
 _CASES = [
     pytest.param(
         bytes.fromhex(case["data"]),
         ToshibaRas25j2kvsgNdCommand.climate(
             mode=ClimateMode(case["mode"]),
             temperature=case["temperature"],
-            fan=_FANS[case["fan"]],
-            intermediate_fan=case["fan"] if case["fan"] in (3, 5) else None,
+            fan=ToshibaFan(case["fan"]),
             preset=ToshibaPreset(case["preset"]),
             power_selection=ToshibaPowerSelection(case["power_selection"]),
         ),
         ClimateMode(case["mode"]),
-        case["temperature"],
+        None if case["mode"] == "fan_only" else case["temperature"],
         ToshibaFan(case["fan"]),
         ToshibaPreset(case["preset"]),
         ToshibaPowerSelection(case["power_selection"]),
@@ -61,7 +51,7 @@ def test_handheld_state(
     packet: bytes,
     command: ToshibaRas25j2kvsgNdCommand,
     mode: ClimateMode,
-    temperature: int,
+    temperature: int | None,
     fan: ToshibaFan,
     preset: ToshibaPreset,
     power: ToshibaPowerSelection,
@@ -98,6 +88,7 @@ def test_motion_transmissions(action: ToshibaMotion, packet: str, copies: int) -
     assert received.state == ClimateState()
     assert received.preset is None
     assert received.power_selection is None
+    assert received.action == action
 
 
 def test_silent_percentage_conflict() -> None:
@@ -166,3 +157,5 @@ def test_rac_native_fahrenheit() -> None:
     received = ToshibaRacCommand.from_raw_timings(sent.get_raw_timings())
     assert received is not None
     assert received.state.temperature == pytest.approx((75 - 32) * 5 / 9)
+    assert received.temperature == 75
+    assert received.fahrenheit is True

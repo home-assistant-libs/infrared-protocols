@@ -107,6 +107,21 @@ class HaierTundraCommand(ClimatePacket):
         super().__init__(data=data + bytes([self.checksum(data)]))
 
     @property
+    def health(self) -> bool:
+        """Return whether the health function is enabled."""
+        return bool(self.data[3] & 2)
+
+    @property
+    def quiet(self) -> bool:
+        """Return whether quiet operation is selected."""
+        return bool(self.data[6] & 128)
+
+    @property
+    def turbo(self) -> bool:
+        """Return whether turbo operation is selected."""
+        return bool(self.data[6] & 64)
+
+    @property
     def button(self) -> HaierButton:
         """Return the transmitted button."""
         return HaierButton(self.data[12])

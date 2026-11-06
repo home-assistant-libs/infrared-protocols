@@ -40,7 +40,7 @@ class MagiQuestCommand(Command):
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
         """Decode and verify the current wand format."""
-        r = Reader(timings)
+        r = Reader(timings=timings)
         try:
             values = r.read_bits(_TIMING, 56, last_space_optional=True)
             r.end()
@@ -74,7 +74,7 @@ class MagiQuestLegacyCommand(Command):
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
         """Decode the legacy layout, including its two start bits and stop mark."""
-        reader = Reader(timings)
+        reader = Reader(timings=timings)
         try:
             values = reader.read_bits(_TIMING, 50)
             reader.expect(288)

@@ -95,7 +95,7 @@ class SonyCommand(Command):
     @classmethod
     def _decode_frame(cls, timings: list[int]) -> Self | None:
         for count in (12, 15, 20):
-            reader = Reader(timings)
+            reader = Reader(timings=timings)
             try:
                 reader.expect(2400)
                 values: list[int] = []

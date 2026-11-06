@@ -85,11 +85,13 @@ class RemkoAr715Command(WordCommand):
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
         """Decode the complete 52-bit state, including its checksum."""
-        reader = Reader(timings)
+        reader = Reader(timings=timings)
         try:
             reader.expect(*cls.HEADER)
             value = number(reader.read_bits(cls.TIMING, cls.WIDTH))
             reader.expect(cls.TIMING.mark)
+            if len(timings) - reader.pos >= 2:
+                reader.expect(-3492, cls.TIMING.mark)
             reader.end()
             result = cls.__new__(cls)
             WordCommand.__init__(result, data=value)

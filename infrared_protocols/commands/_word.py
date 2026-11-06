@@ -34,7 +34,7 @@ class WordCommand(Command):
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
         """Decode one complete word, or None for an invalid capture."""
-        reader = Reader(timings)
+        reader = Reader(timings=timings)
         try:
             reader.expect(*cls.HEADER)
             data = number(reader.read_bits(cls.TIMING, cls.WIDTH))

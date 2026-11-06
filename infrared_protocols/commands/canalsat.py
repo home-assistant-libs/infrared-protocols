@@ -3,6 +3,7 @@
 from typing import ClassVar, Self, override
 
 from . import Command
+from ._decode import levels as decode_levels
 from ._timing import bits, close, number, runs
 
 
@@ -51,19 +52,17 @@ class CanalSatCommand(Command):
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
         """Decode this timing variant.
 
-        The first one-unit mark identifies the nominal clock. Captures with
+        The complete frame duration identifies the nominal clock. Captures with
         enough clock distortion to cross variants require a configured model.
         """
-        if not timings or not close(timings[0], cls.UNIT, 0.12):
+        if timings and timings[-1] < -4 * cls.UNIT:
+            timings = timings[:-1]
+        if not timings or not close(sum(abs(t) for t in timings), 48 * cls.UNIT, 0.12):
             return None
-        levels: list[int] = []
-        for duration in timings:
-            if duration < -4 * cls.UNIT and len(levels) == 48:
-                break
-            count = round(abs(duration) / cls.UNIT)
-            if count not in (1, 2) or not close(abs(duration), count * cls.UNIT):
-                return None
-            levels.extend([int(duration > 0)] * count)
+        try:
+            levels = decode_levels(timings, cls.UNIT, maximum=2)
+        except ValueError:
+            return None
         if len(levels) != 48 or any(
             levels[i] == levels[i + 1] for i in range(0, 48, 2)
         ):

@@ -1,6 +1,6 @@
 """Decoded climate vocabulary; state temperatures are degrees Celsius.
 
-Constructor units are protocol-specific and documented by each command. Native
+Constructor units are protocol-specific and documented by each command.
 This is an opt-in projection for the new state-packet families, not a replacement
 for existing per-module IntEnum APIs. Integrations must select a remote model
 and map its supported capabilities; protocols with toggles cannot be treated as

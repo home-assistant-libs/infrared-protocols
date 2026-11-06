@@ -107,8 +107,11 @@ class PioneerCommand(Command):
         """Decode one-frame or two-part Pioneer commands and matching repeats."""
         messages: list[tuple[int, int]] = []
         try:
-            for frame in frames(timings, period=PIONEER_FRAME_PERIOD_US):
-                reader = Reader(frame)
+            packets = frames(timings, period=PIONEER_FRAME_PERIOD_US)
+            for index, frame in enumerate(packets):
+                if messages and len(frame) < 67 and index == len(packets) - 1:
+                    break
+                reader = Reader(timings=frame)
                 reader.expect(9000, -4500)
                 data = pack_bytes(reader.read_bits(PulseTiming(560, 560, 1690), 32))
                 reader.expect(560)
@@ -121,6 +124,10 @@ class PioneerCommand(Command):
                 return cls(
                     address=first[0], command=first[1], repeat_count=len(messages) - 1
                 )
+            if len(messages) >= 3 and len(messages) % 2 and len(packets[-1]) < 67:
+                if messages[-1] != first:
+                    return None
+                messages.pop()
             if len(messages) % 2 or any(
                 message != messages[i % 2] for i, message in enumerate(messages)
             ):

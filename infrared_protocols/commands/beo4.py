@@ -45,7 +45,7 @@ class Beo4Command(Command):
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
         """Decode a complete Beo4 frame."""
-        r = Reader(timings)
+        r = Reader(timings=timings)
         try:
             messages: list[tuple[int, int, bool]] = []
             while True:

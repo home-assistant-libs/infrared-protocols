@@ -41,9 +41,10 @@ def frames(
 def levels(timings: list[int], unit: float, *, maximum: int = 3) -> list[int]:
     """Expand mark/space runs, rejecting zero, oversized or off-grid durations."""
     short = [
-        abs(t) / round(abs(t) / unit)
-        for t in timings
-        if 0.6 * unit <= abs(t) <= 2.4 * unit
+        (abs(mark) + abs(space)) / (round(abs(mark) / unit) + round(abs(space) / unit))
+        for mark, space in zip(timings, timings[1:], strict=False)
+        if mark * space < 0
+        and all(0.5 * unit < abs(t) <= 2.5 * unit for t in (mark, space))
     ]
     measured_unit = median(short) if short else unit
     if not close(round(measured_unit), unit, 0.3):

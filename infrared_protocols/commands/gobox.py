@@ -27,7 +27,7 @@ class GoboxCommand(Command):
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
         """Decode a Go-Box frame and validate its prefix."""
-        r = Reader(timings)
+        r = Reader(timings=timings)
         try:
             value = number(r.read_bits(PulseTiming(580, 545, 1640), 32))
             r.expect(580)

@@ -25,7 +25,7 @@ class RoombaCommand(Command):
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
         """Decode a command even when the receiver drops its final space."""
-        r = Reader(timings)
+        r = Reader(timings=timings)
         try:
             data = number(r.read_bits(_TIMING, 8, last_space_optional=True))
             r.end()

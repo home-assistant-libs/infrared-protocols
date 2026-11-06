@@ -138,15 +138,23 @@ def test_arc_query() -> None:
     assert received.state == ClimateState()
 
 
-def test_arc_sensor_reply() -> None:
+@pytest.mark.parametrize("known_bits,trailing", [(191, []), (191, [-10000]), (192, [])])
+def test_arc_sensor_reply(known_bits: int, trailing: list[int]) -> None:
     """The response example records 26 C indoors without a known checksum."""
     # ESPHome components/daikin_arc/daikin_arc.cpp, sensor-response packet example.
     data = bytes.fromhex("11da2700001a0c042c21610700070c0018000e3c006c1b61")
-    raw = [3450, -1760, *DaikinArcCommand.TIMING.encode(byte_bits(data)), 400]
+    raw = [
+        3450,
+        -1760,
+        *DaikinArcCommand.TIMING.encode(byte_bits(data)[:known_bits]),
+        400,
+        *trailing,
+    ]
     received = DaikinArcSensorResponse.from_raw_timings(raw)
     assert received is not None
     assert received.data == data
     assert received.inside_temperature == 26
+    assert received.known_bits == known_bits
     assert DaikinArcSensorResponse.from_raw_timings(raw[:-8]) is None
 
 
@@ -209,8 +217,8 @@ def test_haier_buttons(button: HaierButton, unit: HaierUnit) -> None:
     assert raw_packet is not None
     assert raw_packet.data == sent.data[:-1]
     assert (received.button, received.unit) == (button, unit)
-    assert received.data[3] == 2
-    assert received.data[6] == 128
+    assert received.health is True
+    assert received.quiet is True
 
 
 @pytest.mark.parametrize("cls", [HaierTundraCommand, HitachiAc344Command])
@@ -288,10 +296,21 @@ def test_pd_half_degree_economy(temperature: float) -> None:
     assert received.economy
 
 
-@pytest.mark.parametrize("packet_type", [0, 1, 2, 7, 255])
-def test_wyt_application_types(packet_type: int) -> None:
+@pytest.mark.parametrize(
+    "data",
+    [
+        pytest.param(bytes(13), id="zero"),
+        *[
+            pytest.param(
+                bytes([0x23, 0xCB, 0x26, packet_type, 0, 0x24, 3, 7, 5, 0x80, 0, 0, 0]),
+                id=f"type-{packet_type}",
+            )
+            for packet_type in (0, 1, 2, 7, 255)
+        ],
+    ],
+)
+def test_wyt_application_types(data: bytes) -> None:
     """Raw WYT accepts all application types and adds fifteen only for type two."""
-    data = bytes([0x23, 0xCB, 0x26, packet_type, 0, 0x24, 3, 7, 5, 0x80, 0, 0, 0])
     sent = PioneerWytCommand(data=data)
     received = PioneerWytCommand.from_raw_timings(sent.get_raw_timings())
     assert received is not None
@@ -391,23 +410,29 @@ def test_whynter_fahrenheit() -> None:
     assert received.state.temperature == pytest.approx((75 - 32) * 5 / 9)
 
 
-def test_haier_unknown_received_button() -> None:
+@pytest.mark.parametrize(
+    "sent,data",
+    [
+        pytest.param(
+            HaierTundraCommand(mode=ClimateMode.COOL, temperature=24),
+            bytes.fromhex("a682000040a0002000000000143c"),
+            id="haier",
+        ),
+        pytest.param(
+            HitachiAc344Command(mode=ClimateMode.COOL, temperature=24),
+            bytes.fromhex(
+                "01100040bfff00cc33926d22dd609f00ff00ff00ff00ff00ff53acf10e01fe01fe807f03fc00ff00ff00ff"
+            ),
+            id="hitachi",
+        ),
+    ],
+)
+def test_unknown_received_button(
+    sent: HaierTundraCommand | HitachiAc344Command, data: bytes
+) -> None:
     """Reject unknown button values before exposing an accessor that would fail."""
-    sent = HaierTundraCommand(mode=ClimateMode.COOL, temperature=24)
-    data = bytearray(sent.data)
-    data[12] = 0x14
-    data[-1] = sum(data[:-1]) & 255
-    sent.data = bytes(data)
-    assert HaierTundraCommand.from_raw_timings(sent.get_raw_timings()) is None
-
-
-def test_hitachi_unknown_received_button() -> None:
-    """A correct complement cannot turn an unknown action into a known button."""
-    sent = HitachiAc344Command(mode=ClimateMode.COOL, temperature=24)
-    data = bytearray(sent.data)
-    data[11], data[12] = 0x22, 0xDD
-    sent.data = bytes(data)
-    assert HitachiAc344Command.from_raw_timings(sent.get_raw_timings()) is None
+    sent.data = data
+    assert type(sent).from_raw_timings(sent.get_raw_timings()) is None
 
 
 def test_haier_turbo() -> None:
@@ -415,7 +440,7 @@ def test_haier_turbo() -> None:
     sent = HaierTundraCommand(mode=ClimateMode.COOL, temperature=24, turbo=True)
     received = HaierTundraCommand.from_raw_timings(sent.get_raw_timings())
     assert received is not None
-    assert received.data[6] == 64
+    assert received.turbo is True
     with pytest.raises(ValueError, match="exclusive"):
         HaierTundraCommand(
             mode=ClimateMode.COOL, temperature=24, turbo=True, quiet=True
@@ -445,11 +470,3 @@ def test_delonghi_invalid_temperature(mode: ClimateMode, temperature: int) -> No
     """A mode's temperature field cannot encode the adjacent out-of-range values."""
     with pytest.raises(ValueError, match="temperature"):
         DelonghiCommand(mode=mode, temperature=temperature)
-
-
-def test_wyt_zero_payload() -> None:
-    """The raw transport imposes no climate burst type restriction."""
-    sent = PioneerWytCommand(data=bytes(13))
-    received = PioneerWytCommand.from_raw_timings(sent.get_raw_timings())
-    assert received is not None
-    assert received.data == bytes(13)

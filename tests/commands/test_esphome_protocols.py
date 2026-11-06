@@ -39,7 +39,7 @@ from infrared_protocols.commands.toshiba_ac import ToshibaAcPacketCommand
 from infrared_protocols.commands.toto import TotoCommand
 
 Decoder = Callable[[list[int]], Command | None]
-CASES: list[tuple[str, Command, Decoder]] = [
+_INPUTS: list[tuple[str, Command, Decoder]] = [
     ("dyson", DysonCommand(code=0x1234, index=2), DysonCommand.from_raw_timings),
     ("lg28", Lg28Command(data=0xABCDEFA), Lg28Command.from_raw_timings),
     ("lg32", Lg32Command(data=0xABCDEFAB), Lg32Command.from_raw_timings),
@@ -126,7 +126,13 @@ SIGNALS = {
 }
 
 
-@pytest.mark.parametrize("name,command,decode", CASES, ids=[case[0] for case in CASES])
+CASES = [
+    pytest.param(name, command, decode, id=name) for name, command, decode in _INPUTS
+]
+ENCODERS = [pytest.param(command, decode, id=name) for name, command, decode in _INPUTS]
+
+
+@pytest.mark.parametrize("name,command,decode", CASES)
 def test_reference_signals(name: str, command: Command, decode: Decoder) -> None:
     """Match independent upstream encoder output and decode it without data loss."""
     fixture = SIGNALS[name]
@@ -137,28 +143,24 @@ def test_reference_signals(name: str, command: Command, decode: Decoder) -> None
     assert decoded.get_raw_timings() == fixture["timings"]
 
 
-@pytest.mark.parametrize("name,command,decode", CASES, ids=[case[0] for case in CASES])
+@pytest.mark.parametrize("command,decode", ENCODERS)
 @pytest.mark.parametrize("prefix", [0, 1, 3, 7])
-def test_truncated_frames(
-    name: str, command: Command, decode: Decoder, prefix: int
-) -> None:
+def test_truncated_frames(command: Command, decode: Decoder, prefix: int) -> None:
     """Incomplete fields must not produce commands."""
     assert decode(command.get_raw_timings()[:prefix]) is None
 
 
-@pytest.mark.parametrize("name,command,decode", CASES, ids=[case[0] for case in CASES])
-def test_invalid_polarity(name: str, command: Command, decode: Decoder) -> None:
+@pytest.mark.parametrize("command,decode", ENCODERS)
+def test_invalid_polarity(command: Command, decode: Decoder) -> None:
     """A mark in place of a space is not a valid signal."""
     raw = command.get_raw_timings()
     raw[1] = abs(raw[1])
     assert decode(raw) is None
 
 
-@pytest.mark.parametrize("name,command,decode", CASES, ids=[case[0] for case in CASES])
+@pytest.mark.parametrize("command,decode", ENCODERS)
 @pytest.mark.parametrize("scale", [0.92, 1.08])
-def test_receiver_jitter(
-    name: str, command: Command, decode: Decoder, scale: float
-) -> None:
+def test_receiver_jitter(command: Command, decode: Decoder, scale: float) -> None:
     """Small timing distortion should not change the decoded message."""
     raw = [round(value * scale) for value in command.get_raw_timings()]
     decoded = decode(raw)
@@ -228,14 +230,16 @@ def test_ira211_actions(action: Ira211Action, temperature: float) -> None:
 @pytest.mark.parametrize(
     "decode,raw",
     [
-        (TotoCommand.from_raw_timings, [6200, -2800]),
-        (
+        pytest.param(TotoCommand.from_raw_timings, [6000, -3000], id="toto-header"),
+        pytest.param(
             MideaCommand.from_raw_timings,
             MideaCommand(data=bytes(5)).get_raw_timings()[:99],
+            id="midea-incomplete",
         ),
-        (
+        pytest.param(
             ToshibaAcPacketCommand.from_raw_timings,
             ToshibaAcPacketCommand(rc_code_1=1).get_raw_timings()[:99],
+            id="toshiba-missing-copy",
         ),
     ],
 )

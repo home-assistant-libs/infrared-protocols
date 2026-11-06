@@ -5,7 +5,7 @@ from typing import Self, override
 from . import Command
 from ._timing import PulseTiming, Reader, bits, number
 
-_TIMING = PulseTiming(550, 550, 1700)
+_TIMING = PulseTiming(600, 520, 1667)
 
 
 class TotoCommand(Command):
@@ -26,30 +26,38 @@ class TotoCommand(Command):
         super().__init__(modulation=modulation)
         self.command, self.rc_code_1, self.rc_code_2 = command, rc_code_1, rc_code_2
 
+    @property
+    def code(self) -> int:
+        """Return the native LSB-first 16-bit code, e.g. 0x37BB for EC/D/D."""
+        parameters = self.rc_code_1 << 4 | self.rc_code_2
+        return int(f"{self.command:08b}"[::-1], 2) << 8 | int(
+            f"{parameters:08b}"[::-1], 2
+        )
+
     @override
     def get_raw_timings(self) -> list[int]:
         """Encode a complete frame."""
         parameters = self.rc_code_1 * 16 + self.rc_code_2
         payload = (parameters << 16) | (self.command << 8) | (parameters ^ self.command)
         frame = [
-            6200,
-            -2800,
+            6000,
+            -3000,
             *_TIMING.encode(bits(0x2008, 15) + bits(payload, 24)),
-            550,
+            600,
         ]
         return frame + [-36000] + frame + [-36000] + frame
 
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
         """Decode and verify the header and checksum."""
-        r = Reader(timings)
+        r = Reader(timings=timings)
         try:
             packets: list[int] = []
             while True:
-                r.expect(6200, -2800)
+                r.expect(6000, -3000)
                 header = number(r.read_bits(_TIMING, 15))
                 payload = number(r.read_bits(_TIMING, 24))
-                r.expect(550)
+                r.expect(600)
                 parameters, command, checksum = payload.to_bytes(3, "big")
                 if header != 0x2008 or parameters ^ command != checksum:
                     return None

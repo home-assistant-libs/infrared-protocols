@@ -45,9 +45,11 @@ class DelonghiCommand(ClimatePacket):
         retained operating-mode field, so its temperature uses the cool offset.
         """
         selection(mode, _MODES)
-        heat = power and mode == ClimateMode.HEAT
+        heat = mode == ClimateMode.HEAT
         temperature_value(temperature, 13 if heat else 17, 27 if heat else 32)
-        temp = int(temperature) - (12 if heat else 17)
+        temp = (
+            int(temperature) - 12 if heat and power else max(17, int(temperature)) - 17
+        )
         data = bytes(
             [
                 0x53,
@@ -75,6 +77,6 @@ class DelonghiCommand(ClimatePacket):
         return ClimateState(
             power=power,
             mode=mode,
-            temperature=temperature,
+            temperature=temperature if power else None,
             fan=decoded(data[1] >> 5, _FANS),
         )

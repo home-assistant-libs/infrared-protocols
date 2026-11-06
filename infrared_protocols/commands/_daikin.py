@@ -56,9 +56,9 @@ def state_packet(
     temperature_value(temperature, 10, 30, 0.5)
     effective_temp = (
         0xC0
-        if mode == ClimateMode.DRY
+        if power and mode == ClimateMode.DRY
         else 0x32
-        if mode == ClimateMode.FAN_ONLY
+        if power and mode == ClimateMode.FAN_ONLY
         else int(temperature * 2)
     )
     return bytearray(
@@ -90,12 +90,7 @@ def parse_state(data: bytes) -> ClimateState:
     power = bool(data[5] & 1)
     mode = decoded(data[5] >> 4, _MODES) if power else None
     temperature = (
-        None
-        if data[6] == 0xC0
-        or mode == ClimateMode.FAN_ONLY
-        or not power
-        and data[6] == 0x32
-        else data[6] / 2
+        None if data[6] == 0xC0 or mode == ClimateMode.FAN_ONLY else data[6] / 2
     )
     if temperature is not None:
         temperature_value(temperature, 10, 30, 0.5)
