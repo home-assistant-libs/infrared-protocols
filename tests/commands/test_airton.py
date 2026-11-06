@@ -29,3 +29,22 @@ def test_airton_sleep_unavailable(mode: ClimateMode) -> None:
     """The remote cannot request sleep in automatic or fan-only programs."""
     with pytest.raises(ValueError, match="sleep"):
         AirtonCommand(mode=mode, temperature=24, sleep=True)
+
+
+def test_replaced_payload_updates_state() -> None:
+    """Writable payload bytes and decoded settings describe the same transmission."""
+    command = AirtonCommand(mode=ClimateMode.COOL, temperature=24)
+    replacement = AirtonCommand(mode=ClimateMode.HEAT, temperature=26, display=False)
+    command.data = replacement.data
+    assert command.state.mode is ClimateMode.HEAT
+    assert command.state.temperature == 26
+    assert command.display is False
+    assert command.get_raw_timings() == replacement.get_raw_timings()
+
+
+def test_invalid_replaced_payload_rejects_state() -> None:
+    """Reading state validates the replacement instead of returning stale settings."""
+    command = AirtonCommand(mode=ClimateMode.COOL, temperature=24)
+    command.data = command.data[:-1] + bytes([command.data[-1] ^ 1])
+    with pytest.raises(ValueError, match="checksum"):
+        _ = command.state

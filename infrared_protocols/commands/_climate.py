@@ -36,13 +36,17 @@ class ClimatePacket(Command):
     COPIES: ClassVar[int] = 1
     REPEAT_GAP: ClassVar[int] = 0
     data: bytes
-    state: ClimateState
 
     def __init__(self, *, data: bytes, modulation: int = 38000) -> None:
         """Validate the complete wire packet and extract its common state."""
         super().__init__(modulation=modulation)
         self.data = bytes(data)
-        self.state = self.parse(self.data)
+        self.parse(self.data)
+
+    @property
+    def state(self) -> ClimateState:
+        """Decode the current payload, including changes made after construction."""
+        return self.parse(self.data)
 
     @classmethod
     def parse(cls, data: bytes) -> ClimateState:
