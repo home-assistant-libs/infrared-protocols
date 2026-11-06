@@ -410,12 +410,13 @@ def test_panasonic_ckp_toggle() -> None:
     assert received.state.power_toggle is True
 
 
-def test_panasonic_legacy_nanoex() -> None:
+@pytest.mark.parametrize("nanoex", [False, True], ids=["off", "on"])
+def test_panasonic_legacy_nanoex(nanoex: bool) -> None:
     """Legacy full-state nanoe-X remains readable alongside native vane settings."""
-    sent = PanasonicAcCommand(mode=PanasonicAcMode.COOL, temperature=24, nanoex=True)
+    sent = PanasonicAcCommand(mode=PanasonicAcMode.COOL, temperature=24, nanoex=nanoex)
     received = PanasonicAcCommand.from_raw_timings(sent.get_raw_timings())
     assert received is not None
-    assert received.state.nanoex is True
+    assert received.state.nanoex is nanoex
 
 
 @pytest.mark.parametrize("temperature", [8, 10])
@@ -503,3 +504,15 @@ def test_decoder_truncated(
 ) -> None:
     """A partial leader or payload cannot be a complete command."""
     assert type(command).from_raw_timings(command.get_raw_timings()[:prefix]) is None
+
+
+@pytest.mark.parametrize("toggle", list(PanasonicAcToggle))
+def test_toggle_action_section_only(toggle: PanasonicAcToggle) -> None:
+    """A default receiver can deliver the short action separately from its prefix."""
+    sent = PanasonicAcToggleCommand(toggle=toggle)
+    assert isinstance(sent.data, list)
+    second = KaseikyoCommand(address=0x2002, data=sent.data[1]).get_raw_timings()
+    received = PanasonicAcToggleCommand.from_raw_timings(second)
+    assert received is not None
+    assert received.data == sent.data
+    assert received.get_raw_timings() == sent.get_raw_timings()

@@ -68,18 +68,18 @@ class WhynterCommand(WordCommand):
         """Decode the carried state; off frames carry no mode."""
         if self.data >> 24 != 0x12:
             raise ValueError("invalid Whynter signature")
-        native = number(bits(self.data & 255, 8), lsb=True)
-        fahrenheit = bool(self.data & 1024)
         temperature_value(
-            native if fahrenheit else native + 16,
-            61 if fahrenheit else 16,
-            89 if fahrenheit else 32,
+            self.temperature,
+            61 if self.fahrenheit else 16,
+            89 if self.fahrenheit else 32,
         )
         mode_code = self.data >> 16 & 15
         return ClimateState(
             power=bool(self.data & 256),
             mode=decoded(mode_code, _MODES) if mode_code else None,
-            temperature=(native - 32) * 5 / 9 if fahrenheit else native + 16,
+            temperature=(self.temperature - 32) * 5 / 9
+            if self.fahrenheit
+            else self.temperature,
             fan=decoded(self.data >> 20 & 7, _FANS),
         )
 

@@ -92,6 +92,11 @@ class DaikinArcCommand(ClimatePacket):
         return DaikinAcFanSpeed(self.data[28] >> 4)
 
     @property
+    def humidity_changed(self) -> bool:
+        """Return whether this powered-on command explicitly adjusts humidity."""
+        return bool(self.data[9] & 0x10)
+
+    @property
     def humidity(self) -> DaikinHumidity:
         """Return the target humidity selection."""
         return DaikinHumidity(self.data[27])

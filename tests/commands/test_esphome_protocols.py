@@ -157,10 +157,20 @@ def test_invalid_polarity(command: Command, decode: Decoder) -> None:
 
 
 @pytest.mark.parametrize("command,decode", ENCODERS)
-@pytest.mark.parametrize("scale", [0.92, 1.08])
-def test_receiver_jitter(command: Command, decode: Decoder, scale: float) -> None:
+@pytest.mark.parametrize(
+    "scale,bias",
+    [
+        pytest.param(0.92, 0, id="shorter"),
+        pytest.param(1.08, 0, id="longer"),
+        pytest.param(1, -80, id="short-marks"),
+        pytest.param(1, 80, id="long-marks"),
+    ],
+)
+def test_receiver_jitter(
+    command: Command, decode: Decoder, scale: float, bias: int
+) -> None:
     """Small timing distortion should not change the decoded message."""
-    raw = [round(value * scale) for value in command.get_raw_timings()]
+    raw = [round(value * scale) + bias for value in command.get_raw_timings()]
     decoded = decode(raw)
     assert decoded is not None
     assert decoded.get_raw_timings() == command.get_raw_timings()
@@ -171,69 +181,3 @@ def test_magiquest_legacy_reference() -> None:
     command = MagiQuestLegacyCommand(wand_id=0x12345678, magnitude=0xABCD)
     assert command.get_raw_timings() == SIGNALS["magiquest_legacy"]["timings"]
     assert MagiQuestCommand.from_raw_timings(command.get_raw_timings()) is None
-
-
-@pytest.mark.parametrize(
-    "wand_id,magnitude", [(0, 0), (0x12345678, 0x123), (0x7FFFFFFF, 511)]
-)
-@pytest.mark.parametrize("trim", [0, 1])
-def test_magiquest_wand(wand_id: int, magnitude: int, trim: int) -> None:
-    """Decode complete wand messages with an optional final space."""
-    command = MagiQuestCommand(wand_id=wand_id, magnitude=magnitude)
-    raw = command.get_raw_timings()
-    decoded = MagiQuestCommand.from_raw_timings(raw[: len(raw) - trim])
-    assert decoded is not None
-    assert (decoded.wand_id, decoded.magnitude) == (wand_id, magnitude)
-
-
-def test_magiquest_checksum() -> None:
-    """A changed checksum symbol must be rejected."""
-    raw = MagiQuestCommand(wand_id=0x12345678, magnitude=0x123).get_raw_timings()
-    raw[-2:] = [576, -576]
-    assert MagiQuestCommand.from_raw_timings(raw) is None
-
-
-@pytest.mark.parametrize("action", list(Ira211Action))
-@pytest.mark.parametrize("temperature", [5, 20.5, 35])
-def test_ira211_actions(action: Ira211Action, temperature: float) -> None:
-    """Every action carries exactly its own fields."""
-    command = Ira211Command(
-        action=action,
-        temperature=temperature,
-        mode=Ira211Mode.TIMER,
-        fan=Ira211Fan.HIGH,
-    )
-    decoded = Ira211Command.from_raw_timings(command.get_raw_timings())
-    assert decoded is not None
-    assert decoded.get_raw_timings() == command.get_raw_timings()
-
-
-@pytest.mark.parametrize(
-    "decode,raw",
-    [
-        pytest.param(TotoCommand.from_raw_timings, [6000, -3000], id="toto-header"),
-        pytest.param(
-            MideaCommand.from_raw_timings,
-            MideaCommand(data=bytes(5)).get_raw_timings()[:99],
-            id="midea-incomplete",
-        ),
-        pytest.param(
-            ToshibaAcPacketCommand.from_raw_timings,
-            ToshibaAcPacketCommand(rc_code_1=1).get_raw_timings()[:99],
-            id="toshiba-missing-copy",
-        ),
-    ],
-)
-def test_required_fields_and_copies(decode: Decoder, raw: list[int]) -> None:
-    """Headers alone and missing compulsory copies cannot become commands."""
-    assert decode(raw) is None
-
-
-@pytest.mark.parametrize("command,decode", ENCODERS)
-@pytest.mark.parametrize("bias", [-80, 80], ids=["short-marks", "long-marks"])
-def test_receiver_mark_space_bias(command: Command, decode: Decoder, bias: int) -> None:
-    """Receiver edge delay lengthens marks while shortening adjacent spaces."""
-    raw = [value + bias for value in command.get_raw_timings()]
-    decoded = decode(raw)
-    assert decoded is not None
-    assert decoded.get_raw_timings() == command.get_raw_timings()

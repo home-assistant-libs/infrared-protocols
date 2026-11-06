@@ -197,7 +197,11 @@ class WhirlpoolDg11j191Command(WhirlpoolCommand):
 
 
 class HisenseArgCommand(WhirlpoolCommand):
-    """Hisense/BGH Argentina variant, with absolute swing and auto range codes."""
+    """Hisense/BGH Argentina variant, with absolute swing and auto range codes.
+
+    Cool power-on and power-off toggles are byte-identical. Without the unit's
+    previous power state, these commands report mode=None.
+    """
 
     MIN_TEMP = 16
     HISENSE = True

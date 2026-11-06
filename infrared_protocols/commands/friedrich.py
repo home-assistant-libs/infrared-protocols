@@ -4,7 +4,7 @@ from enum import IntEnum
 
 from ._aeha_climate import AehaClimatePacket
 from ._climate_fields import decoded, selection, temperature_value
-from ._timing import PulseTiming, bits, number
+from ._timing import bits, number
 from .climate import (
     ClimateFan,
     ClimateMode,
@@ -34,8 +34,6 @@ def _reverse(value: int, width: int = 8) -> int:
 class FriedrichCommand(AehaClimatePacket):
     """Power-on state with a native Fahrenheit set point."""
 
-    HEADER = (3400, -1700)
-    TIMING = PulseTiming(425, 425, 1275)
     LENGTH = 16
     LSB = False
 
@@ -116,8 +114,6 @@ class FriedrichButton(IntEnum):
 class FriedrichUtilityCommand(AehaClimatePacket):
     """Short power-off packet."""
 
-    HEADER = FriedrichCommand.HEADER
-    TIMING = FriedrichCommand.TIMING
     LENGTH = 7
     LSB = False
 

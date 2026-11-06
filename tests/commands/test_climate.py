@@ -1,4 +1,4 @@
-"""Tests for climate protocol behavior."""
+"""Cross-family tests for the shared decoded climate state."""
 
 import pytest
 
@@ -32,49 +32,78 @@ from infrared_protocols.commands.zhlt01 import Zhlt01Command
 
 
 @pytest.mark.parametrize(
-    "command",
+    "command,expected_power",
     [
         pytest.param(
-            BalluCommand(mode=ClimateMode.HEAT, temperature=23, power=False), id="ballu"
+            BalluCommand(mode=ClimateMode.HEAT, temperature=23, power=False),
+            False,
+            id="ballu",
         ),
         pytest.param(
             DaikinArcCommand(mode=ClimateMode.FAN_ONLY, temperature=18, power=False),
+            False,
             id="arc",
         ),
         pytest.param(
             DaikinBrcCommand(mode=ClimateMode.COOL, temperature=23, power=False),
+            False,
             id="brc",
         ),
         pytest.param(
             DelonghiCommand(mode=ClimateMode.HEAT, temperature=23, power=False),
+            False,
             id="delonghi",
         ),
         pytest.param(
             HaierTundraCommand(mode=ClimateMode.HEAT, temperature=23, power=False),
+            False,
             id="haier",
         ),
         pytest.param(
             IslandaireCommand(mode=ClimateMode.HEAT, temperature_f=72, power=False),
+            False,
             id="islandaire",
         ),
         pytest.param(
             MistralCommand(mode=ClimateMode.HEAT, temperature=23, power=False),
+            False,
             id="mistral",
         ),
         pytest.param(
-            Zhlt01Command(mode=ClimateMode.HEAT, temperature=23, power=False), id="zhlt"
+            Zhlt01Command(mode=ClimateMode.HEAT, temperature=23, power=False),
+            False,
+            id="zhlt",
         ),
         pytest.param(
             WhirlpoolCommand(mode=ClimateMode.COOL, temperature=24, off_command=True),
+            None,
             id="whirlpool",
+        ),
+        pytest.param(
+            NoblexCommand(mode=ClimateMode.HEAT, temperature=24, power=False),
+            False,
+            id="noblex",
+        ),
+        pytest.param(
+            PdPioneerClimateCommand(mode=ClimateMode.COOL, temperature=24, power=False),
+            False,
+            id="pd-pioneer",
+        ),
+        pytest.param(
+            Tcl112Command(mode=ClimateMode.HEAT, temperature=24, power=False),
+            False,
+            id="tcl112",
         ),
     ],
 )
-def test_off_has_no_placeholder_mode(command: ClimatePacket) -> None:
+def test_off_has_no_placeholder_mode(
+    command: ClimatePacket | NoblexCommand, expected_power: bool | None
+) -> None:
     """Off frames must not turn zeroed mode bits into a reported operating mode."""
     received = type(command).from_raw_timings(command.get_raw_timings())
     assert received is not None
     assert received.state.mode is None
+    assert received.state.power is expected_power
 
 
 @pytest.mark.parametrize(
@@ -95,64 +124,3 @@ def test_receiver_idle_shorter_than_sender_gap(command: ClimatePacket) -> None:
     assert received is not None
     assert received.state.mode == ClimateMode.COOL
     assert received.state.temperature == 24
-
-
-@pytest.mark.parametrize("cls", [HaierTundraCommand, HitachiAc344Command])
-def test_unknown_button_rejected(
-    cls: type[HaierTundraCommand] | type[HitachiAc344Command],
-) -> None:
-    """A valid checksum cannot legitimize an unsupported action identifier."""
-    with pytest.raises(ValueError):
-        cls(mode=ClimateMode.COOL, temperature=24, button=255)  # type: ignore[arg-type]
-
-
-@pytest.mark.parametrize(
-    "sent,data",
-    [
-        pytest.param(
-            HaierTundraCommand(mode=ClimateMode.COOL, temperature=24),
-            bytes.fromhex("a682000040a0002000000000143c"),
-            id="haier",
-        ),
-        pytest.param(
-            HitachiAc344Command(mode=ClimateMode.COOL, temperature=24),
-            bytes.fromhex(
-                "01100040bfff00cc33926d22dd609f00ff00ff00ff00ff00ff53acf10e01fe01fe807f03fc00ff00ff00ff"
-            ),
-            id="hitachi",
-        ),
-    ],
-)
-def test_unknown_received_button(
-    sent: HaierTundraCommand | HitachiAc344Command, data: bytes
-) -> None:
-    """Reject unknown button values before exposing an accessor that would fail."""
-    sent.data = data
-    assert type(sent).from_raw_timings(sent.get_raw_timings()) is None
-
-
-@pytest.mark.parametrize(
-    "command",
-    [
-        pytest.param(
-            NoblexCommand(mode=ClimateMode.HEAT, temperature=24, power=False),
-            id="noblex",
-        ),
-        pytest.param(
-            PdPioneerClimateCommand(mode=ClimateMode.COOL, temperature=24, power=False),
-            id="pd-pioneer",
-        ),
-        pytest.param(
-            Tcl112Command(mode=ClimateMode.HEAT, temperature=24, power=False),
-            id="tcl112",
-        ),
-    ],
-)
-def test_off_mode(
-    command: NoblexCommand | PdPioneerClimateCommand | Tcl112Command,
-) -> None:
-    """Fixed off templates do not identify the retained operating mode."""
-    received = type(command).from_raw_timings(command.get_raw_timings())
-    assert received is not None
-    assert received.state.power is False
-    assert received.state.mode is None

@@ -124,15 +124,16 @@ class ToshibaCommand(Command):
         mode: ClimateMode,
         temperature: int,
         power: bool = True,
-        fan: ClimateFan = ClimateFan.AUTO,
+        fan: ClimateFan | ToshibaFan = ClimateFan.AUTO,
     ) -> Self:
         """Build a generic whole-degree 17..30 °C state."""
         temp = temperature_value(temperature, 17, 30)
+        fan_code = int(fan) if isinstance(fan, ToshibaFan) else selection(fan, _FANS)
         payload = bytes(
             [
                 1,
                 temp << 4,
-                (selection(mode, _MODES) if power else 7) | selection(fan, _FANS) << 5,
+                (selection(mode, _MODES) if power else 7) | fan_code << 5,
                 0,
             ]
         )
@@ -225,12 +226,13 @@ class ToshibaSeiyaCommand(ToshibaCommand):
         mode: ClimateMode,
         temperature: int,
         power: bool = True,
-        fan: ClimateFan = ClimateFan.AUTO,
+        fan: ClimateFan | ToshibaFan = ClimateFan.AUTO,
         swing: ToshibaSeiyaSwing = ToshibaSeiyaSwing.UNCHANGED,
     ) -> Self:
         """Build a Seiya state; send swing requests only when a change is intended."""
         temp = temperature_value(temperature, 17, 30)
-        code = selection(mode, _MODES) | selection(fan, _FANS) << 5 if power else 7
+        fan_code = int(fan) if isinstance(fan, ToshibaFan) else selection(fan, _FANS)
+        code = selection(mode, _MODES) | fan_code << 5 if power else 7
         return cls(
             data=_packet(bytes([1, temp << 4, code, 0, 0x21, ToshibaSeiyaSwing(swing)]))
         )

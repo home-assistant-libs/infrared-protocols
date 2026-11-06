@@ -41,14 +41,24 @@ class JvcCommand(WordCommand):
             value = number(reader.read_bits(cls.TIMING, cls.WIDTH))
             reader.expect(*cls.FOOTER)
             repeats = 0
+            scale = (timings[0] - timings[1]) / sum(abs(t) for t in cls.HEADER)
+            previous_duration = sum(abs(t) for t in timings[: reader.pos])
             while len(timings) - reader.pos > 1:
-                if timings[reader.pos] > -3000:
-                    return None
-                reader.pos += 1
+                reader.expect(-round(60000 * scale - previous_duration))
+                start = reader.pos
+                remaining = len(timings) - reader.pos
+                if remaining < 2 * cls.WIDTH + 1:
+                    prefix = reader.read_bits(cls.TIMING, remaining // 2)
+                    if prefix != bits(value, cls.WIDTH)[: len(prefix)]:
+                        return None
+                    if remaining % 2:
+                        reader.expect(cls.TIMING.mark)
+                    break
                 if number(reader.read_bits(cls.TIMING, cls.WIDTH)) != value:
                     return None
                 reader.expect(*cls.FOOTER)
                 repeats += 1
+                previous_duration = sum(abs(t) for t in timings[start : reader.pos])
             reader.end()
             return cls(data=value, repeat_count=repeats)
         except ValueError:

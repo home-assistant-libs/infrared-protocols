@@ -18,3 +18,8 @@ def test_toto_three_transmissions() -> None:
     received = TotoCommand.from_raw_timings(raw)
     assert received is not None
     assert (received.command, received.rc_code_1, received.rc_code_2) == (0xED, 3, 9)
+
+
+def test_header_alone_rejected() -> None:
+    """A Toto leader without fields cannot become a command."""
+    assert TotoCommand.from_raw_timings([6000, -3000]) is None

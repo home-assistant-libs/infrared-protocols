@@ -54,6 +54,7 @@ class RC6Command(Command):
     address: int
     command: int
     toggle: int
+    mode: int
 
     def __init__(
         self,
@@ -70,23 +71,23 @@ class RC6Command(Command):
             raise ValueError("RC-6 address must be in range 0x00..0xFF")
         if not 0 <= command <= 0xFF:
             raise ValueError("RC-6 command must be in range 0x00..0xFF")
+        if not 0 <= mode <= 7:
+            raise ValueError("RC-6 mode must fit in three bits")
         super().__init__(modulation=modulation, repeat_count=repeat_count)
         self.address = address
         self.command = command
         self.toggle = toggle
-        if not 0 <= mode <= 7:
-            raise ValueError("RC-6 mode must fit in three bits")
         self.mode = mode
 
     @override
     def get_raw_timings(self) -> list[int]:
         """Get raw timings for the RC-6 command.
 
-        RC-6 mode 0 protocol timing (in microseconds):
+        RC-6 protocol timing (in microseconds):
         - Carrier: 36 kHz
         - Unit time: 444µs; normal bit 888µs, trailer bit 1776µs
         - Leader: 2664µs burst, 888µs space
-        - Frame: start bit (always 1), 3 mode bits (000 for mode 0),
+        - Frame: start bit (always 1), 3 configurable mode bits (0..7),
           trailer bit carrying the toggle, address (8 bits, MSB first),
           command (8 bits, MSB first)
         - Logical '1': burst in first half of bit time (high then low)

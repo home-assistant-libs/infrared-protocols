@@ -94,10 +94,11 @@ class NoblexCommand(SplitClimateCommand):
             raise ValueError("invalid Noblex signature or checksum")
         temp = (_reverse(data[1]) & 15) + 16
         temperature_value(temp, 16, 30)
+        mode = decoded(data[0] >> 5, _MODES) if data[0] & 16 else None
         return ClimateState(
             power=bool(data[0] & 16),
-            mode=decoded(data[0] >> 5, _MODES) if data[0] & 16 else None,
-            temperature=temp,
+            mode=mode,
+            temperature=None if mode == ClimateMode.AUTO else temp,
             fan=decoded(data[0] >> 2 & 3, _FANS),
             swing_v=bool(data[0] & 2),
         )

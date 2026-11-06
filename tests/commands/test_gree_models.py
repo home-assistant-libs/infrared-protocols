@@ -142,6 +142,15 @@ def test_gree_vane_without_enable_bit(model: GreeModel) -> None:
     "model,packet",
     [
         pytest.param(GreeModel.YX1FF, "19087050002000d0", id="turbo-with-low-fan"),
+        pytest.param(GreeModel.YX1FF, "49086a5011200080", id="timer-ones"),
+        pytest.param(GreeModel.YX1FF, "49686050112000e0", id="timer-tens"),
+        pytest.param(GreeModel.YX1FF, "49086051112000f0", id="byte-three"),
+        pytest.param(GreeModel.YX1FF, "49086050122000e0", id="vane-while-swinging"),
+        pytest.param(GreeModel.YX1FF, "49086050012000d0", id="missing-horizontal-vane"),
+        pytest.param(GreeModel.YX1FF, "49086050110000c0", id="byte-five"),
+        pytest.param(GreeModel.YX1FF, "4908605011202000", id="byte-six"),
+        pytest.param(GreeModel.YX1FF, "49086050112000e1", id="checksum-low-nibble"),
+        pytest.param(GreeModel.YX1FF, "4958645011200020", id="timer-over-24h"),
         pytest.param(GreeModel.YB1FA, "09082050002000d0", id="missing-model-a-power"),
     ],
 )
@@ -210,3 +219,16 @@ def test_gree_unsupported_features() -> None:
             temperature=24,
             features=GreeFeature.HEALTH,
         )
+
+
+def test_yb_turbo_overrides_received_fan() -> None:
+    """YB1FA's turbo flag overrides a lower ordinary fan field."""
+    command = GreeModelCommand(
+        model=GreeModel.YB1FA, mode=ClimateMode.COOL, temperature=24
+    )
+    command.data = bytes.fromhex("19087050002000d0")
+    received = GreeModelCommand.from_raw_timings(
+        command.get_raw_timings(), model=GreeModel.YB1FA
+    )
+    assert received is not None
+    assert received.state.fan is ClimateFan.HIGH

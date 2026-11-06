@@ -29,3 +29,27 @@ def test_different_headerless_word_rejected() -> None:
     first = JvcCommand(data=0xC2D0).get_raw_timings()
     second = JvcCommand(data=0xC2D1).get_raw_timings()
     assert JvcCommand.from_raw_timings(first + [-22875] + second[2:]) is None
+
+
+@pytest.mark.parametrize("trim", [1, 2, 10, 32])
+def test_clipped_last_repeat(trim: int) -> None:
+    """A clipped final repeat preserves the word and the preceding complete repeat."""
+    raw = JvcCommand(data=0xC2D0, repeat_count=2).get_raw_timings()[:-trim]
+    received = JvcCommand.from_raw_timings(raw)
+    assert received is not None
+    assert (received.data, received.repeat_count) == (0xC2D0, 1)
+
+
+def test_clipped_intermediate_repeat_rejected() -> None:
+    """A broken repeat followed by another frame is not a clipped capture ending."""
+    raw = JvcCommand(data=0xC2D0, repeat_count=2).get_raw_timings()
+    del raw[45:60]
+    assert JvcCommand.from_raw_timings(raw) is None
+
+
+@pytest.mark.parametrize("gap", [-10000, -200000], ids=["too-short", "too-long"])
+def test_repeat_cadence(gap: int) -> None:
+    """Repeated words must belong to one held key on the 60-ms period."""
+    raw = JvcCommand(data=0xC2D0, repeat_count=1).get_raw_timings()
+    raw[raw.index(-22875)] = gap
+    assert JvcCommand.from_raw_timings(raw) is None

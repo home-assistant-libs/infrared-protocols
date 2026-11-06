@@ -125,21 +125,14 @@ _CAPTURES = json.loads(
 )["captures"]
 
 _DECODE_CASES = [
-    pytest.param(command, id=type(command).__name__ + "-" + str(vars(command)))
-    for command in [
-        *[
-            KaseikyoCommand(address=a, data=d, repeat_count=r)
-            for a, d, r in product(
-                (0, 8194, 65535),
-                (
-                    bytes([0]),
-                    bytes([160, 1, 255]),
-                    [bytes([160, 1]), bytes([176, 255])],
-                ),
-                (0, 2),
-            )
-        ]
-    ]
+    pytest.param(
+        KaseikyoCommand(address=a, data=d, repeat_count=r), id=f"{a:#06x}-{d!r}-r{r}"
+    )
+    for a, d, r in product(
+        (0, 8194, 65535),
+        (bytes([0]), bytes([160, 1, 255]), [bytes([160, 1]), bytes([176, 255])]),
+        (0, 2),
+    )
 ]
 
 
@@ -250,7 +243,7 @@ def test_recorded_kaseikyo() -> None:
 def test_decoder_round_trip_fields(command: KaseikyoCommand) -> None:
     """Decode edge-valued fields and preserve their protocol meaning."""
     raw = command.get_raw_timings()
-    result = type(command).from_raw_timings(raw)
+    result = KaseikyoCommand.from_raw_timings(raw)
     assert result is not None
     assert result.get_raw_timings() == raw
     assert result.address == command.address
@@ -262,4 +255,4 @@ def test_decoder_round_trip_fields(command: KaseikyoCommand) -> None:
 @pytest.mark.parametrize("prefix", [0, 1, 5])
 def test_decoder_truncated(command: KaseikyoCommand, prefix: int) -> None:
     """A partial leader or payload cannot be a complete command."""
-    assert type(command).from_raw_timings(command.get_raw_timings()[:prefix]) is None
+    assert KaseikyoCommand.from_raw_timings(command.get_raw_timings()[:prefix]) is None

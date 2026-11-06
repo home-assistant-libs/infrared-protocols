@@ -58,3 +58,24 @@ def test_brc_rejects_fractional_celsius_wire_value() -> None:
     data[-1] = (data[-1] + 1) & 255
     sent.data = bytes(data)
     assert DaikinBrcCommand.from_raw_timings(sent.get_raw_timings()) is None
+
+
+@pytest.mark.parametrize(
+    "cls,temperature,fahrenheit,celsius",
+    [
+        pytest.param(DaikinBrcCommand, 24, False, 24, id="celsius"),
+        pytest.param(
+            DaikinBrcFahrenheitCommand, 75, True, (75 - 32) * 5 / 9, id="fahrenheit"
+        ),
+    ],
+)
+def test_native_temperature(
+    cls: type[DaikinBrcCommand], temperature: int, fahrenheit: bool, celsius: float
+) -> None:
+    """BRC readback retains native units and an exact native set point."""
+    command = cls(mode=ClimateMode.COOL, temperature=temperature)
+    received = cls.from_raw_timings(command.get_raw_timings())
+    assert received is not None
+    assert received.fahrenheit is fahrenheit
+    assert received.temperature == temperature
+    assert received.state.temperature == celsius

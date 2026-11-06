@@ -16,3 +16,35 @@ def test_tcl_half_degree(temperature: float) -> None:
     assert received is not None
     assert received.state.temperature == temperature
     assert received.state.fan == ClimateFan.QUIET
+
+
+@pytest.mark.parametrize(
+    "temperature",
+    [
+        pytest.param(15.5, id="too-low"),
+        pytest.param(31.5, id="too-high"),
+        pytest.param(24.25, id="quarter-degree"),
+    ],
+)
+def test_fractional_temperature_limits(temperature: float) -> None:
+    """Reject half-degree inputs outside the range and unsupported quarter degrees."""
+    with pytest.raises(ValueError, match="temperature"):
+        Tcl112Command(mode=ClimateMode.COOL, temperature=temperature)
+
+
+def test_half_degree_quiet_wire_bytes() -> None:
+    """Independent bytes pin the half-degree position and native quiet fan code."""
+    command = Tcl112Command(
+        mode=ClimateMode.COOL, temperature=24.5, fan=ClimateFan.QUIET
+    )
+    assert command.data == bytes.fromhex("23cb2601002403074100000020a4")
+
+
+def test_recorded_quiet_packet() -> None:
+    """The remote capture's quiet code is accepted without requiring the fixed tail."""
+    command = Tcl112Command(mode=ClimateMode.COOL, temperature=24)
+    command.data = bytes.fromhex("23cb260100240307410000000084")
+    received = Tcl112Command.from_raw_timings(command.get_raw_timings())
+    assert received is not None
+    assert received.state.temperature == 24
+    assert received.state.fan is ClimateFan.QUIET

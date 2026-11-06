@@ -26,6 +26,10 @@ class PioneerCommand(Command):
     command: a preamble frame that selects the set, followed by the frame
     carrying the button. Pass ``preamble_address`` and ``preamble_command``
     together to emit one. Devices that need no preamble send a single frame.
+
+    A two-part command needs both frames in one capture: set receiver idle above
+    26 ms, or concatenate captures with their measured gaps before decoding.
+    A lone preamble cannot be distinguished from a single-frame button.
     """
 
     address: int
@@ -124,7 +128,7 @@ class PioneerCommand(Command):
                 return cls(
                     address=first[0], command=first[1], repeat_count=len(messages) - 1
                 )
-            if len(messages) >= 3 and len(messages) % 2 and len(packets[-1]) < 67:
+            if len(messages) >= 3 and len(messages) % 2:
                 if messages[-1] != first:
                     return None
                 messages.pop()

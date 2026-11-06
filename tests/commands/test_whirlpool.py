@@ -24,22 +24,24 @@ def test_whirlpool_short_press() -> None:
 
 
 @pytest.mark.parametrize(
-    "cls,expected",
+    "cls,expected,mode",
     [
         pytest.param(
             WhirlpoolDg11j191Command,
             "83060782000080000000000000050006000008000e",
+            ClimateMode.COOL,
             id="dg11j1-91",
         ),
         pytest.param(
             HisenseArgCommand,
             "830607820000800000000080189d00010000080009",
+            None,
             id="hisense-arg",
         ),
     ],
 )
 def test_whirlpool_independent_packets(
-    cls: type[WhirlpoolCommand], expected: str
+    cls: type[WhirlpoolCommand], expected: str, mode: ClimateMode | None
 ) -> None:
     """ESPHome's whirlpool_tests.cpp records model-specific complete packets."""
     sent = cls(
@@ -49,6 +51,7 @@ def test_whirlpool_independent_packets(
     received = cls.from_raw_timings(sent.get_raw_timings())
     assert received is not None
     assert received.state.temperature == 24
+    assert received.state.mode is mode
     assert received.state.fan == ClimateFan.LOW
     assert received.power_toggle
 

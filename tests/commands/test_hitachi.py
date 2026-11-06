@@ -48,5 +48,21 @@ def test_hitachi_mildew_and_quiet() -> None:
     assert quiet.data[9] == 0x98
     received = HitachiAc344Command.from_raw_timings(off.get_raw_timings())
     assert received is not None
+    assert received.mildew_proof
     assert received.button == HitachiButton.MILDEW_PROOF
     assert received.state.power is False
+
+
+def test_unknown_button_rejected() -> None:
+    """An unsupported button cannot be encoded."""
+    with pytest.raises(ValueError):
+        HitachiAc344Command(mode=ClimateMode.COOL, temperature=24, button=255)  # type: ignore[arg-type]
+
+
+def test_unknown_received_button() -> None:
+    """A valid checksum cannot legitimize an unsupported action identifier."""
+    sent = HitachiAc344Command(mode=ClimateMode.COOL, temperature=24)
+    sent.data = bytes.fromhex(
+        "01100040bfff00cc33926d22dd609f00ff00ff00ff00ff00ff53acf10e01fe01fe807f03fc00ff00ff00ff"
+    )
+    assert HitachiAc344Command.from_raw_timings(sent.get_raw_timings()) is None

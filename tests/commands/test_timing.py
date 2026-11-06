@@ -1,10 +1,7 @@
-"""Tests for timing protocol behavior."""
-
-from collections.abc import Callable
+"""Cross-protocol tests for shared timing tolerance and capture endings."""
 
 import pytest
 
-from infrared_protocols.commands import Command
 from infrared_protocols.commands.climate import ClimateMode
 from infrared_protocols.commands.friedrich import FriedrichCommand
 from infrared_protocols.commands.kaseikyo import KaseikyoCommand
@@ -57,22 +54,17 @@ def test_receiver_mark_space_bias(
 
 
 @pytest.mark.parametrize(
-    "command,decoder",
+    "command",
     [
-        pytest.param(
-            RoombaCommand(data=0x88), RoombaCommand.from_raw_timings, id="roomba"
-        ),
+        pytest.param(RoombaCommand(data=0x88), id="roomba"),
         pytest.param(
             MagiQuestCommand(wand_id=0x12345678, magnitude=0x123),
-            MagiQuestCommand.from_raw_timings,
             id="magiquest",
         ),
     ],
 )
-def test_last_bit_space_merges_idle(
-    command: Command, decoder: Callable[[list[int]], Command | None]
-) -> None:
+def test_last_bit_space_merges_idle(command: RoombaCommand | MagiQuestCommand) -> None:
     """The final bit is determined by its mark, not the capture's idle timeout."""
-    received = decoder(command.get_raw_timings()[:-1] + [-20000])
+    received = type(command).from_raw_timings(command.get_raw_timings()[:-1] + [-20000])
     assert received is not None
     assert received.get_raw_timings() == command.get_raw_timings()

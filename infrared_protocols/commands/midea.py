@@ -108,6 +108,18 @@ class MideaCommand(Command):
         )
 
     @property
+    def fahrenheit(self) -> bool | None:
+        """Return the control packet's native units, absent on standalone actions."""
+        return bool(self.data[2] & 32) if self.data[0] == 0xA1 else None
+
+    @property
+    def temperature(self) -> int | None:
+        """Return the native set point, absent on fan-only and standalone actions."""
+        if self.data[0] != 0xA1 or self.data[1] & 7 == _MODES[ClimateMode.FAN_ONLY]:
+            return None
+        return (self.data[2] & 31) + (62 if self.fahrenheit else 17)
+
+    @property
     def sleep(self) -> bool | None:
         """Return the sleep flag only for control packets."""
         return bool(self.data[1] & 64) if self.data[0] == 0xA1 else None

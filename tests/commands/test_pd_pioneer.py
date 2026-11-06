@@ -8,8 +8,17 @@ from infrared_protocols.commands.pd_pioneer import PdPioneerCommand
 from infrared_protocols.commands.pd_pioneer_climate import PdPioneerClimateCommand
 
 
-@pytest.mark.parametrize("temperature", [16, 16.5, 24.5, 30.5, 31])
-def test_pd_half_degree_economy(temperature: float) -> None:
+@pytest.mark.parametrize(
+    "temperature,wire_temperature",
+    [
+        pytest.param(16, 0x80, id="minimum"),
+        pytest.param(16.5, 0x84, id="low-half"),
+        pytest.param(24.5, 0x84, id="normal-half"),
+        pytest.param(30.5, 0x84, id="high-half"),
+        pytest.param(31, 0x80, id="maximum"),
+    ],
+)
+def test_pd_half_degree_economy(temperature: float, wire_temperature: int) -> None:
     """Both state bursts retain fractional targets and the economy flag."""
     sent = PdPioneerClimateCommand(
         mode=ClimateMode.COOL, temperature=temperature, economy=True
@@ -18,6 +27,8 @@ def test_pd_half_degree_economy(temperature: float) -> None:
     assert received is not None
     assert received.state.temperature == temperature
     assert received.economy
+    assert sent.data[19] == 0x25
+    assert sent.data[26] == wire_temperature
 
 
 @pytest.mark.parametrize(
@@ -46,3 +57,17 @@ def test_pd_type_zero_rejected() -> None:
         -10010,
     ]
     assert PdPioneerCommand.from_raw_timings(raw) is None
+
+
+@pytest.mark.parametrize(
+    "temperature",
+    [
+        pytest.param(15.5, id="too-low"),
+        pytest.param(31.5, id="too-high"),
+        pytest.param(24.25, id="quarter-degree"),
+    ],
+)
+def test_fractional_temperature_limits(temperature: float) -> None:
+    """Reject half-degree inputs outside the range and unsupported quarter degrees."""
+    with pytest.raises(ValueError, match="temperature"):
+        PdPioneerClimateCommand(mode=ClimateMode.COOL, temperature=temperature)

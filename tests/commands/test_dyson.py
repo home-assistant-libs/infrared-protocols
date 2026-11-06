@@ -95,13 +95,8 @@ def test_dyson_command_get_raw_timings(
 
 
 _DECODE_CASES = [
-    pytest.param(command, id=type(command).__name__ + "-" + str(vars(command)))
-    for command in [
-        *[
-            cls(code=c)
-            for cls, c in product((DysonCoolCommand, DysonAm09Command), (0, 1, 255))
-        ]
-    ]
+    pytest.param(cls(code=c), id=f"{cls.__name__}-{c:#04x}")
+    for cls, c in product((DysonCoolCommand, DysonAm09Command), (0, 1, 255))
 ]
 
 
@@ -162,7 +157,6 @@ def test_decoder_round_trip_fields(
     assert result is not None
     assert result.get_raw_timings() == raw
     assert result.code == command.code
-    assert result.repeat_count == command.repeat_count
 
 
 @pytest.mark.parametrize("command", _DECODE_CASES)

@@ -102,14 +102,16 @@ class Ira211Command(Command):
 
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
-        """Verify framing, checksum and the action's state fields."""
+        """Decode the first complete action, allowing a following POWER/SYNC action."""
         r = Reader(timings=timings)
         try:
             r.expect(7600, -800, 800, -7600)
             unit = (timings[0] - timings[3]) / 19
-            body = timings[r.pos :]
-            if body and body[-1] < -9 * unit:
-                body = body[:-1]
+            end = next(
+                (i for i in range(r.pos, len(timings)) if timings[i] <= -9.25 * unit),
+                len(timings),
+            )
+            body = timings[r.pos : end]
             if not body or not close(body[-1], unit):
                 return None
             levels: list[int] = []

@@ -128,3 +128,36 @@ def test_captured_off_placeholder() -> None:
         MideaCommand.climate(mode=ClimateMode.COOL, temperature=24, power=False).data
         == command.data
     )
+
+
+def test_incomplete_packet_rejected() -> None:
+    """A partial payload cannot satisfy the paired Midea frame format."""
+    assert (
+        MideaCommand.from_raw_timings(
+            MideaCommand(data=bytes(5)).get_raw_timings()[:99]
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    "temperature,fahrenheit,celsius",
+    [
+        pytest.param(17, False, 17, id="c-min"),
+        pytest.param(30, False, 30, id="c-max"),
+        pytest.param(62, True, (62 - 32) * 5 / 9, id="f-min"),
+        pytest.param(75, True, (75 - 32) * 5 / 9, id="f-normal"),
+        pytest.param(86, True, (86 - 32) * 5 / 9, id="f-max"),
+    ],
+)
+def test_native_temperature(temperature: int, fahrenheit: bool, celsius: float) -> None:
+    """Native unit metadata survives decoding alongside normalized Celsius."""
+    command = MideaCommand.climate(
+        mode=ClimateMode.COOL, temperature=temperature, fahrenheit=fahrenheit
+    )
+    received = MideaCommand.from_raw_timings(command.get_raw_timings())
+    assert received is not None
+    assert received.fahrenheit is fahrenheit
+    assert received.temperature == temperature
+    assert received.state is not None
+    assert received.state.temperature == celsius

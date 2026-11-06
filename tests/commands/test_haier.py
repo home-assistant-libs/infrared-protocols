@@ -56,3 +56,16 @@ def test_haier_auxiliary_state(quiet: bool, turbo: bool) -> None:
     assert received.health is True
     assert received.quiet == quiet
     assert received.turbo == turbo
+
+
+def test_unknown_button_rejected() -> None:
+    """An unsupported button cannot be encoded."""
+    with pytest.raises(ValueError):
+        HaierTundraCommand(mode=ClimateMode.COOL, temperature=24, button=255)  # type: ignore[arg-type]
+
+
+def test_unknown_received_button() -> None:
+    """A valid checksum cannot legitimize an unsupported action identifier."""
+    sent = HaierTundraCommand(mode=ClimateMode.COOL, temperature=24)
+    sent.data = bytes.fromhex("a682000040a0002000000000143c")
+    assert HaierTundraCommand.from_raw_timings(sent.get_raw_timings()) is None

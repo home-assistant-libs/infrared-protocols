@@ -2,7 +2,7 @@
 
 from typing import Self, override
 
-from ._timing import PulseTiming, Reader, bits, number
+from ._timing import PulseTiming, Reader, bits, close, number
 from ._word import WordCommand
 
 
@@ -12,6 +12,7 @@ class _LgCommand(WordCommand):
     HEADER = (8000, -4000)
     TIMING = PulseTiming(600, 550, 1600)
     FOOTER = (600,)
+    REPEAT_HEADER = 8500
 
     def __init__(
         self, *, data: int, modulation: int | None = None, repeat_count: int = 0
@@ -22,7 +23,7 @@ class _LgCommand(WordCommand):
 
     @property
     def _repeat_header(self) -> int:
-        return 8500
+        return self.REPEAT_HEADER
 
     def _frame(self) -> list[int]:
         return super().get_raw_timings()
@@ -48,12 +49,21 @@ class _LgCommand(WordCommand):
             value = number(reader.read_bits(cls.TIMING, cls.WIDTH))
             reader.expect(*cls.FOOTER)
             repeats = 0
+            scale = (timings[0] - timings[1]) / sum(abs(t) for t in header)
+            previous_duration = sum(abs(t) for t in timings[: reader.pos])
             while len(timings) - reader.pos > 1:
-                if timings[reader.pos] > -3000:
-                    return None
-                reader.pos += 1
+                gap = max(39750 * scale, 108050 * scale - previous_duration)
+                if repeats == 0 and close(timings[reader.pos], -39750 * scale):
+                    gap = 39750 * scale
+                reader.expect(-round(gap))
+                start = reader.pos
+                remaining = len(timings) - reader.pos
+                if remaining < 3:
+                    reader.expect(*(repeat_header, -2250, 550)[:remaining])
+                    break
                 reader.expect(repeat_header, -2250, 550)
                 repeats += 1
+                previous_duration = sum(abs(t) for t in timings[start : reader.pos])
             reader.end()
             return value, repeats
         except ValueError:
@@ -62,7 +72,9 @@ class _LgCommand(WordCommand):
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
         """Decode the word and any trailing held-key repeat codes."""
-        result = cls._read_capture(timings, header=cls.HEADER, repeat_header=8500)
+        result = cls._read_capture(
+            timings, header=cls.HEADER, repeat_header=cls.REPEAT_HEADER
+        )
         if result is None:
             return None
         return cls(data=result[0], repeat_count=result[1])
@@ -115,3 +127,4 @@ class Lg32Command(_LgCommand):
     """The 32-bit variant of the same pulse-distance transport."""
 
     WIDTH = 32
+    REPEAT_HEADER = 8950

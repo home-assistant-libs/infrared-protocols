@@ -109,6 +109,11 @@ class HitachiAc344Command(ClimatePacket):
         super().__init__(data=bytes(data))
 
     @property
+    def mildew_proof(self) -> bool:
+        """Return the remote's mildew-prevention setting."""
+        return bool(self.data[37] & 4)
+
+    @property
     def button(self) -> HitachiButton:
         """Return the accompanying action."""
         return HitachiButton(self.data[11])

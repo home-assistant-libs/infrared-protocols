@@ -379,16 +379,16 @@ class PanasonicAcToggleCommand(KaseikyoCommand):
 
     @classmethod
     def from_raw_timings(cls, timings: list[int]) -> Self | None:
-        """Decode a complete Quiet/Powerful short command and both checksums."""
+        """Decode the Quiet/Powerful action section alone or both checked sections."""
         decoded = KaseikyoCommand.from_raw_timings(timings)
-        if (
-            decoded is None
-            or decoded.address != PANASONIC_AC_ADDRESS
-            or not isinstance(decoded.data, list)
-            or len(decoded.data) != 2
-        ):
+        if decoded is None or decoded.address != PANASONIC_AC_ADDRESS:
             return None
-        first, second = (bytes([2, 32]) + frame for frame in decoded.data)
+        if isinstance(decoded.data, bytes):
+            first, second = bytes(_FRAME1), bytes([2, 32]) + decoded.data
+        elif len(decoded.data) == 2:
+            first, second = (bytes([2, 32]) + frame for frame in decoded.data)
+        else:
+            return None
         if (
             first != bytes(_FRAME1)
             or len(second) != 8
@@ -401,7 +401,7 @@ class PanasonicAcToggleCommand(KaseikyoCommand):
         except ValueError:
             return None
         result = cls(toggle=toggle)
-        result.data, result.base_unit = decoded.data, decoded.base_unit
+        result.data, result.base_unit = [first[2:], second[2:]], decoded.base_unit
         result.repeat_count = decoded.repeat_count
         result.full_frame_repeat = decoded.full_frame_repeat
         result._frame_gaps = decoded._frame_gaps or [10000]

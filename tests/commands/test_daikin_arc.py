@@ -14,16 +14,21 @@ from infrared_protocols.commands.daikin_arc import (
 
 
 @pytest.mark.parametrize("humidity", list(DaikinHumidity))
-def test_arc_humidity(humidity: DaikinHumidity) -> None:
+@pytest.mark.parametrize("power", [True, False], ids=["on", "off"])
+def test_arc_humidity(humidity: DaikinHumidity, power: bool) -> None:
     """All humidity selections survive both sections and their checksums."""
     sent = DaikinArcCommand(
-        mode=ClimateMode.COOL, temperature=23, humidity=humidity, humidity_changed=True
+        mode=ClimateMode.COOL,
+        temperature=23,
+        humidity=humidity,
+        humidity_changed=True,
+        power=power,
     )
     received = DaikinArcCommand.from_raw_timings(sent.get_raw_timings())
     assert received is not None
     assert received.humidity == humidity
     assert received.state.temperature == 23
-    assert received.data[9] == 0x13
+    assert received.humidity_changed is power
 
 
 def test_arc_query() -> None:

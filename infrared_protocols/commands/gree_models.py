@@ -232,6 +232,8 @@ class GreeModelCommand(Command):
                     ClimateFan.MEDIUM,
                 )[code]
             )
+        if model == GreeModel.YB1FA and data[2] & 16:
+            fan = ClimateFan.HIGH
         vertical = data[4] & 15
         swinging = bool(data[0] & 64)
         swing_v = swinging or vertical in (1, 7, 9, 11)

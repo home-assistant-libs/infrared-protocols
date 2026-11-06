@@ -151,13 +151,11 @@ _CAPTURES = json.loads(
 )["captures"]
 
 _DECODE_CASES = [
-    pytest.param(command, id=type(command).__name__ + "-" + str(vars(command)))
-    for command in [
-        *[
-            RC5Command(address=a, command=c, toggle=t, repeat_count=r)
-            for a, c, t, r in product((0, 31), (0, 63, 64, 127), (0, 1), (0, 2))
-        ]
-    ]
+    pytest.param(
+        RC5Command(address=a, command=c, toggle=t, repeat_count=r),
+        id=f"{a:#04x}-{c:#04x}-t{t}-r{r}",
+    )
+    for a, c, t, r in product((0, 31), (0, 63, 64, 127), (0, 1), (0, 2))
 ]
 
 
@@ -186,7 +184,7 @@ def test_recorded_rc5(raw: list[int], address: int, command: int, toggle: int) -
 def test_decoder_round_trip_fields(command: RC5Command) -> None:
     """Decode edge-valued fields and preserve their protocol meaning."""
     raw = command.get_raw_timings()
-    result = type(command).from_raw_timings(raw)
+    result = RC5Command.from_raw_timings(raw)
     assert result is not None
     assert result.get_raw_timings() == raw
     assert result.address == command.address
@@ -199,4 +197,4 @@ def test_decoder_round_trip_fields(command: RC5Command) -> None:
 @pytest.mark.parametrize("prefix", [0, 1, 5])
 def test_decoder_truncated(command: RC5Command, prefix: int) -> None:
     """A partial leader or payload cannot be a complete command."""
-    assert type(command).from_raw_timings(command.get_raw_timings()[:prefix]) is None
+    assert RC5Command.from_raw_timings(command.get_raw_timings()[:prefix]) is None

@@ -155,15 +155,11 @@ _CAPTURES = json.loads(
 )["captures"]
 
 _DECODE_CASES = [
-    pytest.param(command, id=type(command).__name__ + "-" + str(vars(command)))
-    for command in [
-        *[
-            RC6Command(address=a, command=c, toggle=t, repeat_count=r, mode=m)
-            for a, c, t, r, m in product(
-                (0, 255), (0, 255), (0, 1), (0, 2), (0, 1, 6, 7)
-            )
-        ]
-    ]
+    pytest.param(
+        RC6Command(address=a, command=c, toggle=t, repeat_count=r, mode=m),
+        id=f"{a:#04x}-{c:#04x}-t{t}-r{r}-m{m}",
+    )
+    for a, c, t, r, m in product((0, 255), (0, 255), (0, 1), (0, 2), (0, 1, 6, 7))
 ]
 
 
@@ -220,7 +216,7 @@ def test_recorded_rc6(
 def test_decoder_round_trip_fields(command: RC6Command) -> None:
     """Decode edge-valued fields and preserve their protocol meaning."""
     raw = command.get_raw_timings()
-    result = type(command).from_raw_timings(raw)
+    result = RC6Command.from_raw_timings(raw)
     assert result is not None
     assert result.get_raw_timings() == raw
     assert result.address == command.address
@@ -234,4 +230,13 @@ def test_decoder_round_trip_fields(command: RC6Command) -> None:
 @pytest.mark.parametrize("prefix", [0, 1, 5])
 def test_decoder_truncated(command: RC6Command, prefix: int) -> None:
     """A partial leader or payload cannot be a complete command."""
-    assert type(command).from_raw_timings(command.get_raw_timings()[:prefix]) is None
+    assert RC6Command.from_raw_timings(command.get_raw_timings()[:prefix]) is None
+
+
+@pytest.mark.parametrize(
+    "mode", [pytest.param(-1, id="negative"), pytest.param(8, id="too-large")]
+)
+def test_invalid_mode(mode: int) -> None:
+    """The selected mode must fit its three wire bits."""
+    with pytest.raises(ValueError, match="mode"):
+        RC6Command(address=0, command=0, mode=mode)

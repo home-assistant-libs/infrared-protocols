@@ -172,6 +172,8 @@ _DECODE_CASES = [
         pytest.param(None, None, 10, id="single-partial-third-frame"),
         pytest.param(1, 3, 10, id="two-part-partial-button-repeat"),
         pytest.param(1, 3, 78, id="two-part-partial-preamble-repeat"),
+        pytest.param(1, 3, 68, id="complete-repeated-preamble"),
+        pytest.param(1, 3, 67, id="complete-repeated-preamble-with-idle"),
     ],
 )
 def test_pioneer_clipped_final_repeat(

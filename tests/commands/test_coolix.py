@@ -56,15 +56,23 @@ def test_coolix_buttons(code: CoolixCode) -> None:
     [
         pytest.param(ClimateMode.COOL, 24, ClimateFan.LOW, 0xB29F40, id="cool24-low"),
         pytest.param(ClimateMode.HEAT, 30, ClimateFan.HIGH, 0xB23FBC, id="heat30-high"),
+        pytest.param(
+            ClimateMode.COOL, 17, ClimateFan.MEDIUM, 0xB25F00, id="cool17-medium"
+        ),
+        pytest.param(ClimateMode.COOL, 24, ClimateFan.AUTO, 0xB2BF40, id="cool24-auto"),
+        pytest.param(ClimateMode.AUTO, 24, ClimateFan.AUTO, 0xB21F48, id="auto24"),
+        pytest.param(ClimateMode.DRY, 24, ClimateFan.AUTO, 0xB21F44, id="dry24"),
+        pytest.param(
+            ClimateMode.FAN_ONLY, 24, ClimateFan.AUTO, 0xB2BFE4, id="fan-only"
+        ),
     ],
 )
 def test_coolix_control_bytes(
     mode: ClimateMode, temperature: int, fan: ClimateFan, word: int
 ) -> None:
     """The three-byte word is verified independently of the round trip."""
-    assert (
-        CoolixCommand.climate(mode=mode, temperature=temperature, fan=fan).first == word
-    )
+    command = CoolixCommand.climate(mode=mode, temperature=temperature, fan=fan)
+    assert command.first == command.second == word
 
 
 @pytest.mark.parametrize("code", list(CoolixCode))

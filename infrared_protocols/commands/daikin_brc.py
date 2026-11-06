@@ -87,6 +87,18 @@ class DaikinBrcCommand(ClimatePacket):
         super().__init__(data=preamble + checked(state))
 
     @property
+    def fahrenheit(self) -> bool:
+        """Return the configured remote variant's native units."""
+        return self.FAHRENHEIT
+
+    @property
+    def temperature(self) -> float | None:
+        """Return the native set point, excluding dry/fan-only placeholders."""
+        if self.state.temperature is None:
+            return None
+        return self.data[17] if self.fahrenheit else self.data[17] / 2 + 9
+
+    @property
     def sub_unit(self) -> int:
         """Return the addressed indoor unit."""
         return self.data[3] & 7

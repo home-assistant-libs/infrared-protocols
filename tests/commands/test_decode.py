@@ -1,20 +1,21 @@
-"""Tests for decode protocol behavior."""
-
-from collections.abc import Callable
+"""Cross-protocol tests for the shared frame and Manchester decoders."""
 
 import pytest
 
-from infrared_protocols.commands import Command
 from infrared_protocols.commands.marantz_extended import MarantzExtendedCommand
 from infrared_protocols.commands.pioneer import PioneerCommand
 from infrared_protocols.commands.rc5 import RC5Command
 from infrared_protocols.commands.rc6 import RC6Command
 from infrared_protocols.commands.samsung import Samsung32Command
 
-Decoder = Callable[[list[int]], Command | None]
 
-
-@pytest.mark.parametrize("factory", [Samsung32Command, PioneerCommand])
+@pytest.mark.parametrize(
+    "factory",
+    [
+        pytest.param(Samsung32Command, id="samsung32"),
+        pytest.param(PioneerCommand, id="pioneer"),
+    ],
+)
 def test_intermediate_clipped_frame(
     factory: type[Samsung32Command] | type[PioneerCommand],
 ) -> None:
@@ -50,26 +51,20 @@ def test_manchester_clock_and_bias(
 
 
 @pytest.mark.parametrize(
-    "factory,decode",
+    "command",
     [
-        (
-            lambda: RC5Command(address=1, command=2, repeat_count=1),
-            RC5Command.from_raw_timings,
-        ),
-        (
-            lambda: RC6Command(address=1, command=2, repeat_count=1),
-            RC6Command.from_raw_timings,
-        ),
-        (
-            lambda: Samsung32Command(address=1, command=2, repeat_count=1),
-            Samsung32Command.from_raw_timings,
+        pytest.param(RC5Command(address=1, command=2, repeat_count=1), id="rc5"),
+        pytest.param(RC6Command(address=1, command=2, repeat_count=1), id="rc6"),
+        pytest.param(
+            Samsung32Command(address=1, command=2, repeat_count=1), id="samsung32"
         ),
     ],
-    ids=["rc5", "rc6", "samsung32"],
 )
-def test_invalid_repeat_period(factory: Callable[[], Command], decode: Decoder) -> None:
+def test_invalid_repeat_period(
+    command: RC5Command | RC6Command | Samsung32Command,
+) -> None:
     """An unrelated frame after a long pause is not a held-key repeat."""
-    raw = factory().get_raw_timings()
+    raw = command.get_raw_timings()
     index = raw.index(min(raw))
     raw[index] *= 3
-    assert decode(raw) is None
+    assert type(command).from_raw_timings(raw) is None
