@@ -36,6 +36,7 @@ class KaseikyoCommand(Command):
         super().__init__(modulation=modulation, repeat_count=repeat_count)
         self.full_frame_repeat = full_frame_repeat
         self._frame_gaps: list[int] = []
+        self._repeat_gaps: list[int] = []
         self.address = address
         self.data = data
         self.error_correction = error_correction
@@ -109,8 +110,11 @@ class KaseikyoCommand(Command):
         gap = max(frame_time - sum(abs(t) for t in timings), trailer_min)
         if self.full_frame_repeat:
             frame = timings.copy()
-            for _ in range(self.repeat_count):
-                timings.extend([-gap, *frame])
+            for index in range(self.repeat_count):
+                repeat_gap = (
+                    self._repeat_gaps[index] if index < len(self._repeat_gaps) else gap
+                )
+                timings.extend([-repeat_gap, *frame])
             return timings
         for _ in range(self.repeat_count):
             timings.extend([-gap, leader_high, -repeat_low, bit_high])
@@ -180,11 +184,18 @@ class KaseikyoCommand(Command):
                 starts.append(start)
             if address is None or not payloads:
                 return None
+            clock_scale = (timings[0] - timings[1]) / 12 / (16000000 / 38000)
             full_repeat = (
                 len(payloads) > 1
                 and all(value == payloads[0] for value in payloads)
+                # A normal section gap stays a section even for identical payloads.
+                and all(gap > 12500 * clock_scale for gap in gaps)
                 and all(
-                    close(sum(abs(t) for t in timings[a:b]), 130000)
+                    close(
+                        sum(abs(t) for t in timings[a:b]),
+                        130000 * clock_scale,
+                        tolerance=0.05,
+                    )
                     for a, b in zip(starts, starts[1:], strict=False)
                 )
             )
@@ -201,6 +212,7 @@ class KaseikyoCommand(Command):
             )
             result.base_unit = (timings[0] - timings[1]) / 12
             result._frame_gaps = gaps[: len(payloads) - 1]
+            result._repeat_gaps = gaps if full_repeat else []
             return result
         except ValueError:
             return None

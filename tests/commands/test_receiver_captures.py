@@ -161,6 +161,46 @@ def test_kaseikyo_section_gap_preserved() -> None:
     assert received.get_raw_timings() == raw
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        pytest.param(bytes.fromhex("f0ffffffff"), id="shorter-than-repeat-period"),
+        pytest.param(bytes.fromhex("f0ffffffffffff"), id="near-repeat-period"),
+    ],
+)
+@pytest.mark.parametrize("scale", [0.85, 1.0, 1.15])
+def test_kaseikyo_identical_sections(payload: bytes, scale: float) -> None:
+    """Identical application sections retain their ten-millisecond gap."""
+    command = KaseikyoCommand(address=0xFFFF, data=[payload, payload])
+    raw = [round(t * scale) for t in command.get_raw_timings()]
+    received = KaseikyoCommand.from_raw_timings(raw)
+    assert received is not None
+    assert received.data == [payload, payload]
+    assert received.repeat_count == 0
+    assert not received.full_frame_repeat
+    assert [t for t in received.get_raw_timings() if t < -5000] == [
+        -round(10000 * scale)
+    ]
+
+
+@pytest.mark.parametrize("scale", [0.85, 1.15])
+@pytest.mark.parametrize("bias", [-100, 0, 100])
+def test_kaseikyo_repeat_clock(scale: float, bias: int) -> None:
+    """The held-key period follows the observed clock and retains received gaps."""
+    command = KaseikyoCommand(
+        address=0x2002, data=b"\xa0\x01\xff", repeat_count=2, full_frame_repeat=True
+    )
+    raw = [round(t * scale) + bias for t in command.get_raw_timings()]
+    received = KaseikyoCommand.from_raw_timings(raw)
+    assert received is not None
+    assert received.data == command.data
+    assert received.repeat_count == 2
+    assert received.full_frame_repeat
+    assert [t for t in received.get_raw_timings() if t < -5000] == [
+        t for t in raw if t < -5000
+    ]
+
+
 def test_sony_held_key() -> None:
     """SIRC repeats a full frame on a 45-ms period."""
     sent = SonyCommand(address=0x4B9, address_bits=13, command=7, repeat_count=2)

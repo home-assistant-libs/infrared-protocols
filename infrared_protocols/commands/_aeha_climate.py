@@ -11,6 +11,8 @@ _REVERSED = bytes(int(f"{value:08b}"[::-1], 2) for value in range(256))
 class AehaClimatePacket(ClimatePacket):
     """Keep model payload fields while sharing AEHA's encoder and receiver windows."""
 
+    HEADER = (AehaCommand.TIMING.leader_mark, -AehaCommand.TIMING.leader_space)
+
     @override
     def get_raw_timings(self) -> list[int]:
         """Convert the model's MSB byte view to AEHA's native LSB byte view."""

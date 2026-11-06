@@ -123,12 +123,20 @@ class ClimatePacket(Command):
         """
         if idle < 3000:
             raise ValueError("idle must be at least 3000 microseconds")
-        gaps: list[int] = []
-        for index, part in enumerate(cls._parts()):
-            gaps.extend(-t for t in part.header if t <= -idle)
-            if index < len(cls._parts()) - 1 and part.gap >= idle:
-                gaps.append(part.gap)
-        try:
-            return cls.from_raw_timings(join_captures(captures, tuple(gaps)))
-        except ValueError:
-            return None
+        parts = cls._parts()
+        packet_gaps: list[int] = []
+        for index, part in enumerate(parts):
+            packet_gaps.extend(-t for t in part.header if t <= -idle)
+            if index < len(parts) - 1 and part.gap >= idle:
+                packet_gaps.append(part.gap)
+        gaps = packet_gaps.copy()
+        for _ in range(cls.COPIES):
+            if len(captures) == len(gaps) + 1:
+                try:
+                    return cls.from_raw_timings(join_captures(captures, tuple(gaps)))
+                except ValueError:
+                    return None
+            if cls.REPEAT_GAP >= idle:
+                gaps.append(cls.REPEAT_GAP)
+            gaps.extend(packet_gaps)
+        return None
