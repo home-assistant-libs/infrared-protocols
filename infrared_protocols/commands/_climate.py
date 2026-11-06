@@ -4,7 +4,14 @@ from dataclasses import dataclass
 from typing import ClassVar, Self, override
 
 from . import Command
-from ._timing import PulseTiming, Reader, byte_bits, join_captures, pack_bytes
+from ._timing import (
+    PulseTiming,
+    Reader,
+    byte_bits,
+    capture_gap_options,
+    join_captures,
+    pack_bytes,
+)
 from .climate import ClimateState
 
 
@@ -125,20 +132,26 @@ class ClimatePacket(Command):
             raise ValueError("idle must be at least 3000 microseconds")
         if len(captures) == 1:
             return cls.from_raw_timings(captures[0])
+        if not captures:
+            return None
         parts = cls._parts()
         packet_gaps: list[int] = []
         for index, part in enumerate(parts):
-            packet_gaps.extend(-t for t in part.header if t <= -idle)
-            if index < len(parts) - 1 and part.gap >= idle:
+            packet_gaps.extend(-t for t in part.header if t < 0)
+            if index < len(parts) - 1 and part.gap:
                 packet_gaps.append(part.gap)
         gaps = packet_gaps.copy()
         for _ in range(cls.COPIES):
-            if len(captures) == len(gaps) + 1:
+            for selected in capture_gap_options(
+                tuple(gaps), idle=idle, count=len(captures) - 1
+            ):
                 try:
-                    return cls.from_raw_timings(join_captures(captures, tuple(gaps)))
+                    result = cls.from_raw_timings(join_captures(captures, selected))
                 except ValueError:
-                    return None
-            if cls.REPEAT_GAP >= idle:
+                    continue
+                if result is not None:
+                    return result
+            if cls.REPEAT_GAP:
                 gaps.append(cls.REPEAT_GAP)
             gaps.extend(packet_gaps)
         return None

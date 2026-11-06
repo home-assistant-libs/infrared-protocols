@@ -2,7 +2,7 @@
 
 from typing import ClassVar, Self, override
 
-from ._timing import Reader, bits, join_captures, number
+from ._timing import Reader, bits, capture_gap_options, join_captures, number
 from ._word import WordCommand
 from .climate import ClimateState
 
@@ -23,11 +23,17 @@ class SplitClimateCommand(WordCommand):
             raise ValueError("idle must be at least 3000 microseconds")
         if len(captures) == 1:
             return cls.from_raw_timings(captures[0])
-        gaps = (cls.GAP,) if cls.GAP >= idle else ()
-        try:
-            return cls.from_raw_timings(join_captures(captures, gaps))
-        except ValueError:
+        if not captures:
             return None
+        boundaries = (*(-t for t in cls.HEADER if t < 0), cls.GAP)
+        for gaps in capture_gap_options(boundaries, idle=idle, count=len(captures) - 1):
+            try:
+                result = cls.from_raw_timings(join_captures(captures, gaps))
+            except ValueError:
+                continue
+            if result is not None:
+                return result
+        return None
 
     @property
     def state(self) -> ClimateState:

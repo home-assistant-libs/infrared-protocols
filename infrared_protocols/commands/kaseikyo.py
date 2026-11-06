@@ -32,7 +32,12 @@ class KaseikyoCommand(Command):
         ``bytes`` for a single-frame command, or a ``list[bytes]`` to send
         several frames (each sharing the same address) as one multi-frame
         message separated by an inter-frame gap.
+
+        Full-frame repeats require a single section; repeating section groups
+        cannot always be distinguished from additional application sections.
         """
+        if full_frame_repeat and isinstance(data, list) and len(data) > 1:
+            raise ValueError("full_frame_repeat only supports a single payload section")
         super().__init__(modulation=modulation, repeat_count=repeat_count)
         self.full_frame_repeat = full_frame_repeat
         self._frame_gaps: list[int] = []

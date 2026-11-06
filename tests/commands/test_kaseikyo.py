@@ -170,6 +170,21 @@ def test_kaseikyo_full_frame_repeat() -> None:
     assert received.get_raw_timings() == raw
 
 
+@pytest.mark.parametrize(
+    "sections",
+    [
+        pytest.param([b"\xa0\x01", b"\xb0\x02"], id="different-sections"),
+        pytest.param([b"\xa0\x01", b"\xa0\x01"], id="identical-sections"),
+    ],
+)
+def test_kaseikyo_multi_section_full_repeat_rejected(sections: list[bytes]) -> None:
+    """Do not offer group repeats whose boundaries cannot be decoded reliably."""
+    with pytest.raises(ValueError, match="single payload section"):
+        KaseikyoCommand(
+            address=0x2002, data=sections, repeat_count=2, full_frame_repeat=True
+        )
+
+
 def test_kaseikyo_section_gap_preserved() -> None:
     """An application message's section gap is not normalized to ten milliseconds."""
     raw = KaseikyoCommand(

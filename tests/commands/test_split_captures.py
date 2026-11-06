@@ -61,7 +61,7 @@ def _captures(raw: list[int], *, idle: int = 10000) -> list[list[int]]:
         ),
     ],
 )
-@pytest.mark.parametrize("idle", [5000, 10000, 20000, 30000, 40000])
+@pytest.mark.parametrize("idle", [4000, 5000, 10000, 20000, 30000, 40000])
 def test_default_receiver_captures(
     command: ClimatePacket | SplitClimateCommand,
     idle: int,
@@ -79,6 +79,55 @@ def test_default_receiver_captures(
     assert type(command).from_raw_captures(captures[:-1], idle=idle) is None
     captures[-1][0] = 0
     assert type(command).from_raw_captures(captures, idle=idle) is None
+
+
+@pytest.mark.parametrize(
+    "command,idle",
+    [
+        pytest.param(
+            DaikinBrcCommand(mode=ClimateMode.COOL, temperature=24),
+            30000,
+            id="brc",
+        ),
+        pytest.param(
+            NoblexCommand(mode=ClimateMode.COOL, temperature=24),
+            21000,
+            id="noblex",
+        ),
+        pytest.param(
+            EmmetiCommand(mode=ClimateMode.COOL, temperature=24),
+            21000,
+            id="emmeti",
+        ),
+    ],
+)
+def test_stretched_gap_crosses_idle(
+    command: ClimatePacket | SplitClimateCommand, idle: int
+) -> None:
+    """A gap below the nominal timeout can split after ordinary clock drift."""
+    raw = [round(t * 1.08) for t in command.get_raw_timings()]
+    captures = _captures(raw, idle=idle)
+    assert len(captures) == 2
+    received = type(command).from_raw_captures(captures, idle=idle)
+    assert received is not None
+    assert received.state == command.state
+    assert received.get_raw_timings() == command.get_raw_timings()
+    assert type(command).from_raw_captures(captures[:-1], idle=idle) is None
+    captures[-1][0] = 0
+    assert type(command).from_raw_captures(captures, idle=idle) is None
+
+
+def test_arc_gap_shortens_below_idle() -> None:
+    """Only the longer gap splits when clock drift shortens the first divider."""
+    command = DaikinArcCommand(mode=ClimateMode.COOL, temperature=24)
+    captures = _captures(
+        [round(t * 0.92) for t in command.get_raw_timings()], idle=24000
+    )
+    assert len(captures) == 2
+    received = DaikinArcCommand.from_raw_captures(captures, idle=24000)
+    assert received is not None
+    assert received.state == command.state
+    assert received.get_raw_timings() == command.get_raw_timings()
 
 
 @pytest.mark.parametrize("cls", [DaikinArcCommand, NoblexCommand])

@@ -1,7 +1,8 @@
 """Internal building blocks for signed infrared pulse sequences."""
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
+from itertools import combinations
 
 
 def bits(value: int, width: int, *, lsb: bool = False) -> list[int]:
@@ -51,6 +52,14 @@ def runs(levels: Iterable[int], unit: int) -> list[int]:
         else:
             result.append(duration)
     return result
+
+
+def capture_gap_options(
+    gaps: tuple[int, ...], *, idle: int, count: int
+) -> Iterator[tuple[int, ...]]:
+    """Select possible receiver boundaries within the decoder's timing tolerance."""
+    eligible = tuple(gap for gap in gaps if max(gap * 1.25, gap + 225) >= idle)
+    yield from dict.fromkeys(combinations(eligible, count))
 
 
 def join_captures(captures: list[list[int]], gaps: tuple[int, ...]) -> list[int]:
