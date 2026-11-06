@@ -110,6 +110,11 @@ class DaikinBrcCommand(ClimatePacket):
             raise ValueError("invalid BRC sub-unit or frame type")
         power = bool(data[14] & 1)
         mode = decoded(data[14] >> 4, _MODES) if power else None
+        temperature_value(
+            data[17] if cls.FAHRENHEIT else data[17] / 2 + 9,
+            60 if cls.FAHRENHEIT else 16,
+            90 if cls.FAHRENHEIT else 32,
+        )
         temperature = (data[17] - 32) * 5 / 9 if cls.FAHRENHEIT else data[17] / 2 + 9
         return ClimateState(
             power=power,

@@ -1,16 +1,10 @@
 {
-  "sources": [
-    "Arduino-IRremote/src/ir_RC5_RC6.hpp",
-    "Arduino-IRremote/src/ir_Kaseikyo.hpp",
-    "IRremoteESP8266/test/ir_ClimaButler_test.cpp"
-  ],
   "captures": [
     {
       "protocol": "rc5",
       "address": 17,
       "command": 54,
       "toggle": 0,
-      "extension": 0,
       "timings": [
         950,
         -850,
@@ -31,14 +25,14 @@
         950,
         -850,
         1850
-      ]
+      ],
+      "source": "https://github.com/Arduino-IRremote/Arduino-IRremote/blob/c4ec014400ccf5a8b3678d5f33e4cc17eca29d23/src/ir_RC5_RC6.hpp"
     },
     {
       "protocol": "rc5",
       "address": 17,
       "command": 118,
       "toggle": 1,
-      "extension": 0,
       "timings": [
         1900,
         -1700,
@@ -59,14 +53,14 @@
         1000,
         -800,
         1850
-      ]
+      ],
+      "source": "https://github.com/Arduino-IRremote/Arduino-IRremote/blob/c4ec014400ccf5a8b3678d5f33e4cc17eca29d23/src/ir_RC5_RC6.hpp"
     },
     {
       "protocol": "rc5",
       "address": 10,
       "command": 106,
       "toggle": 1,
-      "extension": 0,
       "timings": [
         1900,
         -1700,
@@ -81,14 +75,14 @@
         1800,
         -1750,
         1750
-      ]
+      ],
+      "source": "https://github.com/Arduino-IRremote/Arduino-IRremote/blob/c4ec014400ccf5a8b3678d5f33e4cc17eca29d23/src/ir_RC5_RC6.hpp"
     },
     {
       "protocol": "rc5",
       "address": 31,
       "command": 63,
       "toggle": 1,
-      "extension": 0,
       "timings": [
         950,
         -850,
@@ -117,7 +111,8 @@
         1000,
         -800,
         900
-      ]
+      ],
+      "source": "https://github.com/Arduino-IRremote/Arduino-IRremote/blob/c4ec014400ccf5a8b3678d5f33e4cc17eca29d23/src/ir_RC5_RC6.hpp"
     },
     {
       "protocol": "marantz",
@@ -155,7 +150,8 @@
         900,
         -1750,
         950
-      ]
+      ],
+      "source": "https://github.com/Arduino-IRremote/Arduino-IRremote/blob/c4ec014400ccf5a8b3678d5f33e4cc17eca29d23/src/ir_RC5_RC6.hpp"
     },
     {
       "protocol": "marantz",
@@ -203,14 +199,14 @@
         950,
         -850,
         850
-      ]
+      ],
+      "source": "https://github.com/Arduino-IRremote/Arduino-IRremote/blob/c4ec014400ccf5a8b3678d5f33e4cc17eca29d23/src/ir_RC5_RC6.hpp"
     },
     {
       "protocol": "rc6",
       "address": 241,
       "command": 118,
       "toggle": 0,
-      "extension": 0,
       "timings": [
         2700,
         -850,
@@ -247,14 +243,15 @@
         550,
         -750,
         550
-      ]
+      ],
+      "source": "https://github.com/Arduino-IRremote/Arduino-IRremote/blob/c4ec014400ccf5a8b3678d5f33e4cc17eca29d23/src/ir_RC5_RC6.hpp",
+      "mode": 0
     },
     {
       "protocol": "rc6",
       "address": 85,
       "command": 85,
       "toggle": 1,
-      "extension": 0,
       "timings": [
         2700,
         -800,
@@ -281,14 +278,15 @@
         900,
         -900,
         1000
-      ]
+      ],
+      "source": "https://github.com/Arduino-IRremote/Arduino-IRremote/blob/c4ec014400ccf5a8b3678d5f33e4cc17eca29d23/src/ir_RC5_RC6.hpp",
+      "mode": 0
     },
     {
       "protocol": "rc6a",
       "address": 241,
       "command": 118,
       "toggle": 1,
-      "extension": 10001,
       "timings": [
         2700,
         -850,
@@ -347,14 +345,14 @@
         550,
         -850,
         500
-      ]
+      ],
+      "source": "https://github.com/Arduino-IRremote/Arduino-IRremote/blob/c4ec014400ccf5a8b3678d5f33e4cc17eca29d23/src/ir_RC5_RC6.hpp"
     },
     {
       "protocol": "rc6a",
       "address": 255,
       "command": 255,
       "toggle": 0,
-      "extension": 16383,
       "timings": [
         2700,
         -850,
@@ -427,7 +425,8 @@
         450,
         -450,
         450
-      ]
+      ],
+      "source": "https://github.com/Arduino-IRremote/Arduino-IRremote/blob/c4ec014400ccf5a8b3678d5f33e4cc17eca29d23/src/ir_RC5_RC6.hpp"
     },
     {
       "protocol": "kaseikyo",
@@ -533,7 +532,8 @@
         450,
         -1250,
         450
-      ]
+      ],
+      "source": "https://github.com/Arduino-IRremote/Arduino-IRremote/blob/c4ec014400ccf5a8b3678d5f33e4cc17eca29d23/src/ir_Kaseikyo.hpp"
     },
     {
       "protocol": "remko",
@@ -648,7 +648,58 @@
         536,
         -3396,
         544
-      ]
+      ],
+      "source": "https://github.com/crankyoldgit/IRremoteESP8266/blob/1e2f0f3ef0a93cbf2a8ddb2e95130f8f4c584b3f/test/ir_ClimaButler_test.cpp"
+    },
+    {
+      "protocol": "sony",
+      "address": 1209,
+      "command": 7,
+      "address_bits": 13,
+      "timings": [
+        2550,
+        -400,
+        1300,
+        -450,
+        1350,
+        -450,
+        1300,
+        -450,
+        700,
+        -450,
+        700,
+        -450,
+        750,
+        -450,
+        700,
+        -400,
+        1300,
+        -500,
+        700,
+        -450,
+        700,
+        -450,
+        1300,
+        -500,
+        1300,
+        -450,
+        1300,
+        -450,
+        700,
+        -450,
+        1350,
+        -400,
+        750,
+        -450,
+        700,
+        -450,
+        1300,
+        -450,
+        700,
+        -450,
+        700
+      ],
+      "source": "https://github.com/Arduino-IRremote/Arduino-IRremote/blob/c4ec014400ccf5a8b3678d5f33e4cc17eca29d23/src/ir_Sony.hpp"
     }
   ]
 }

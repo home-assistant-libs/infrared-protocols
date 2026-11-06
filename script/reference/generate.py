@@ -64,7 +64,6 @@ def main() -> None:
         for stage in (
             "reference",
             "climate_reference",
-            "extra_reference",
         ):
             output = subprocess.check_output(
                 [
@@ -77,7 +76,6 @@ def main() -> None:
             )
             signals.update(read_signals(output))
         inputs = json.loads(Path(directory, "inputs.json").read_text())
-        inputs.update(json.loads(Path(directory, "extra/inputs.json").read_text()))
         climate_inputs = json.loads(Path(directory, "climate_inputs.json").read_text())
     climate_path = args.output / "esphome_climate.json"
     corpus = {
@@ -90,6 +88,13 @@ def main() -> None:
     )
     corpus["cases"] = []
     for source in climate_inputs:
+        transmission_lengths = None
+        if source["component"] == "pd_pioneer_ir":
+            first_key, second_key = source["key"] + "@0", source["key"] + "@1"
+            carrier, first = signals[first_key]
+            _, second = signals.pop(second_key)
+            transmission_lengths = [len(first), len(second)]
+            signals[first_key] = carrier, first + second
         index = 0
         while (key := source["key"] + f"@{index}") in signals:
             case = {
@@ -97,6 +102,8 @@ def main() -> None:
                 "factory": source["factory"],
                 "arguments": source["arguments"],
             }
+            if transmission_lengths is not None:
+                case["transmission_lengths"] = transmission_lengths
             if index:
                 if source["component"] not in ("toshiba_1", "toshiba_2"):
                     raise ValueError(f"unmapped transmission: {key}")

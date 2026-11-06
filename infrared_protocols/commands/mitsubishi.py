@@ -6,7 +6,6 @@ from ._climate import ClimatePacket
 from ._climate_fields import decoded, selection, temperature_value
 from ._timing import PulseTiming
 from .climate import (
-    ClimateFan,
     ClimateMode,
     ClimateState,
 )
@@ -171,16 +170,12 @@ class MitsubishiCommand(ClimatePacket):
         temperature = 16 + (data[7] & 15) + (0.5 if data[7] & 16 else 0)
         temperature_value(temperature, 16, 31.5, 0.5)
         fan = MitsubishiFan(data[9] & 7)
-        common_fan = {
-            MitsubishiFan.AUTO: ClimateFan.AUTO,
-            MitsubishiFan.LEVEL_1: ClimateFan.LOW,
-            MitsubishiFan.QUIET: ClimateFan.QUIET,
-        }.get(fan, fan)
+        mode = decoded(data[6] & 0x38, _MODES)
         return ClimateState(
             power=bool(data[5] & 32),
-            mode=decoded(data[6] & 0x38, _MODES),
-            temperature=temperature,
-            fan=common_fan,
+            mode=mode,
+            temperature=None if mode == ClimateMode.DRY else temperature,
+            fan=fan,
             swing_v=data[9] & 0x38 == 0x38,
             swing_h=data[8] & 0xF0 == 0xC0,
         )

@@ -40,6 +40,11 @@ class WordCommand(Command):
             data = number(reader.read_bits(cls.TIMING, cls.WIDTH))
             reader.expect(*cls.FOOTER)
             reader.end()
-            return cls(data=data)
+            return cls._from_data(data)
         except ValueError:
             return None
+
+    @classmethod
+    def _from_data(cls, data: int) -> Self:
+        """Build and validate the received word's application fields."""
+        return cls(data=data)

@@ -111,6 +111,8 @@ class Samsung32Command(Command):
             first = messages[0]
             if any(message != first for message in messages[1:]):
                 return None
+            if first[1] == 0 and first[0] != 0:
+                return None
             address = first[0] if first[0] == first[1] else first[0] | first[1] << 8
             return cls(
                 address=address, command=first[2], repeat_count=len(messages) - 1

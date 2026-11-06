@@ -1,5 +1,9 @@
 """Tests for the RC-5 IR command encoder."""
 
+import json
+from itertools import product
+from pathlib import Path
+
 import pytest
 
 from infrared_protocols.commands.rc5 import RC5Command
@@ -140,3 +144,59 @@ def test_rc5_command_rejects_out_of_range(address: int, command: int) -> None:
     """RC-5 fields are 5-bit address / 7-bit command — anything else is invalid."""
     with pytest.raises(ValueError):
         RC5Command(address=address, command=command, toggle=0)
+
+
+_CAPTURES = json.loads(
+    (Path(__file__).parents[1] / "fixtures/receiver_captures.json").read_text()
+)["captures"]
+
+_DECODE_CASES = [
+    pytest.param(command, id=type(command).__name__ + "-" + str(vars(command)))
+    for command in [
+        *[
+            RC5Command(address=a, command=c, toggle=t, repeat_count=r)
+            for a, c, t, r in product((0, 31), (0, 63, 64, 127), (0, 1), (0, 2))
+        ]
+    ]
+]
+
+
+@pytest.mark.parametrize(
+    "raw,address,command,toggle",
+    [
+        pytest.param(
+            c["timings"],
+            c["address"],
+            c["command"],
+            c["toggle"],
+            id=f"{c['address']:x}-{c['command']:x}",
+        )
+        for c in _CAPTURES
+        if c["protocol"] == "rc5"
+    ],
+)
+def test_recorded_rc5(raw: list[int], address: int, command: int, toggle: int) -> None:
+    """Recover independent recorded fields and the toggle bit."""
+    result = RC5Command.from_raw_timings(raw)
+    assert result is not None
+    assert (result.address, result.command, result.toggle) == (address, command, toggle)
+
+
+@pytest.mark.parametrize("command", _DECODE_CASES)
+def test_decoder_round_trip_fields(command: RC5Command) -> None:
+    """Decode edge-valued fields and preserve their protocol meaning."""
+    raw = command.get_raw_timings()
+    result = type(command).from_raw_timings(raw)
+    assert result is not None
+    assert result.get_raw_timings() == raw
+    assert result.address == command.address
+    assert result.command == command.command
+    assert result.toggle == command.toggle
+    assert result.repeat_count == command.repeat_count
+
+
+@pytest.mark.parametrize("command", _DECODE_CASES)
+@pytest.mark.parametrize("prefix", [0, 1, 5])
+def test_decoder_truncated(command: RC5Command, prefix: int) -> None:
+    """A partial leader or payload cannot be a complete command."""
+    assert type(command).from_raw_timings(command.get_raw_timings()[:prefix]) is None

@@ -15,10 +15,17 @@ class SplitClimateCommand(WordCommand):
     GAP: ClassVar[int] = 20000
 
     @classmethod
-    def from_raw_captures(cls, captures: list[list[int]]) -> Self | None:
-        """Decode both bursts of one press from a default 10-ms idle receiver."""
+    def from_raw_captures(
+        cls, captures: list[list[int]], *, idle: int = 10000
+    ) -> Self | None:
+        """Decode one press delivered whole or split by the receiver idle timeout."""
+        if idle < 3000:
+            raise ValueError("idle must be at least 3000 microseconds")
+        if len(captures) == 1:
+            return cls.from_raw_timings(captures[0])
+        gaps = (cls.GAP,) if cls.GAP >= idle else ()
         try:
-            return cls.from_raw_timings(join_captures(captures, (cls.GAP,)))
+            return cls.from_raw_timings(join_captures(captures, gaps))
         except ValueError:
             return None
 

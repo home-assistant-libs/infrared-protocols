@@ -35,7 +35,7 @@ def generate(source: Path, out: Path) -> str:
     ] + "}\n"
     (out / "aeha.cpp").write_text(aeha)
     main = '#include "climate_stub.h"\n#include "aeha_protocol.h"\n#include "haier_protocol.h"\n#include "toshiba_ac_protocol.h"\n#include "pd_pioneer_data.h"\n#define USE_GREE_YAW1F\n'
-    specs = [(component, cls) for component, cls in SPECS if component != "daikin"]
+    specs = SPECS
     for component, cls in specs:
         main += extract_climate(src, component, cls)
     ras_header = (src / "toshiba/ras_25j2kvsg_nd.h").read_text()
@@ -54,24 +54,6 @@ def generate(source: Path, out: Path) -> str:
         extra=extra,
         keep=("transmit_frame_", "encode_motion_", "transmit_motion_", "perform_"),
         nested=True,
-    )
-    header = (src / "gree/gree.h").read_text()
-    main += (
-        header[
-            header.index("namespace esphome::gree {") : header.index(
-                "class GreeClimate final"
-            )
-        ]
-        + "}\n"
-    )
-    cpp = (src / "gree/gree.cpp").read_text()
-    main += (
-        cpp[
-            cpp.index("namespace esphome::gree {") : cpp.index(
-                "void GreeClimate::set_model"
-            )
-        ]
-        + "}\n"
     )
     main += """
 struct Input { const char* key; int mode,fan; float temperature; int swing; };
@@ -115,36 +97,27 @@ int main(){using namespace esphome;using namespace esphome::climate;
             )
             + "};for(auto input:inputs){transmissions.clear();captured={};\n"
         )
-        if component == "pd_pioneer_ir":
-            main += """pd_pioneer_ir::ControlData data;
-data.set_mode(static_cast<ClimateMode>(input.mode));
-if(input.mode!=0&&input.mode!=4)data.set_temp(input.temperature);
-data.set_fan_mode(static_cast<ClimateFanMode>(input.fan));
-data.set_swing_mode(static_cast<ClimateSwingMode>(input.swing));data.finalize();
-remote_base::PDPioneerProtocol().encode(&captured,data.odd());
-remote_base::PDPioneerProtocol().encode(&captured,data.even());
-"""
-        elif component.startswith("gree_"):
-            main += f"auto model=static_cast<gree::Model>({component[-1]});\n"
-            main += """gree::GreeClimateData state{.mode=static_cast<ClimateMode>(input.mode),.target_temperature=static_cast<uint8_t>(input.temperature),.fan_mode=static_cast<ClimateFanMode>(input.fan),.swing_mode=static_cast<ClimateSwingMode>(input.swing),.preset=CLIMATE_PRESET_NONE,.feature_bits=gree::default_feature_bits(model)};
-gree::GreeProtocol(model).encode(&captured,gree::GreeClimateCodec::encode(model,state));
-"""
-        else:
-            family = "toshiba" if component.startswith("toshiba_") else component
-            cls = (
-                "reference::ToshibaRas25j2kvsgNdClimate"
-                if component == "toshiba_6"
-                else dict(specs)[family]
-            )
-            main += f"{family}::{cls} obj;\n"
-            if family == "toshiba":
-                main += f"obj.model_=static_cast<toshiba::Model>({component[-1]});\n"
-            main += """obj.mode=static_cast<ClimateMode>(input.mode);
+        family = (
+            component.split("_")[0]
+            if component.startswith(("toshiba_", "gree_"))
+            else component
+        )
+        cls = (
+            "reference::ToshibaRas25j2kvsgNdClimate"
+            if component == "toshiba_6"
+            else dict(specs)[family]
+        )
+        main += f"{family}::{cls} obj;\n"
+        if family in ("toshiba", "gree"):
+            main += f"obj.model_=static_cast<{family}::Model>({component[-1]});\n"
+        if family == "gree":
+            main += "obj.feature_bits_=gree::default_feature_bits(obj.model_);\n"
+        main += """obj.mode=static_cast<ClimateMode>(input.mode);
 obj.fan_mode=static_cast<ClimateFanMode>(input.fan);
 obj.swing_mode=static_cast<ClimateSwingMode>(input.swing);
 obj.target_temperature=input.temperature;
 """
-            main += setup + invoke
+        main += setup + invoke
         main += "emit(input.key);}}\n"
     main += "}\n"
     (out / "climate_main.cpp").write_text(main)

@@ -12,6 +12,8 @@ common += """
 #define GETBITS8(v,p,n) (((v)>>(p))&((1<<(n))-1))
 #define LOG_STR(x) x
 #define USE_WHIRLPOOL_HISENSE_ARG
+#define USE_GREE_FAHRENHEIT
+#define USE_GREE_YAW1F
 using LogString=char;
 inline uint32_t millis(){return 0;}
 inline void assign_bits(uint8_t& v,int mask,bool set){v=set?v|mask:v&~mask;}
@@ -22,7 +24,7 @@ namespace esphome {
 using ::reverse_bits;
 template<typename T> T clamp(T v,T lo,T hi){return std::clamp(v,lo,hi);}
 constexpr float fahrenheit_to_celsius(float v){return (v-32)*5/9;}
-inline float celsius_to_fahrenheit(float v){return v*9/5+32;}
+constexpr float celsius_to_fahrenheit(float v){return v*9/5+32;}
 namespace climate {
 // SOURCE_ENUMS
 }
@@ -33,6 +35,7 @@ struct Transmitter {Transmit transmit(){captured={};return {};}};
 inline Transmitter transmitter;
 namespace remote_base { struct RemoteTransmitterBase { using TransmitCall=Transmit; }; }
 struct State {
+ template<typename Protocol,typename Data> void transmit_(const Data& data){auto call=transmitter_->transmit();Protocol().encode(call.get_data(),data);call.perform();}
  void publish_state(){}
  climate::ClimateMode mode_before_=climate::CLIMATE_MODE_OFF;
  climate::ClimateMode mode=climate::CLIMATE_MODE_COOL;
@@ -102,6 +105,7 @@ KEEP = (
     "vertical_swing_",
 )
 EXTRAS = {
+    "gree": "Model model_=GREE_GENERIC; uint8_t feature_bits_=0; bool use_fahrenheit_=false;",
     "haier_tundra": "uint8_t unit_=0xA6; bool health_mode_=false,quiet_mode_=false,turbo_mode_=false;",
     "airton": "AirtonSettings settings_{false,true,VerticalDirection::VERTICAL_DIRECTION_OFF}; uint8_t previous_mode_=0; bool set_sleep_mode_state(bool v){settings_.sleep_state=v;return true;}",
     "mitsubishi": "std::set<climate::ClimateMode> modes_{climate::CLIMATE_MODE_HEAT}; SetFanMode fan_mode_=MITSUBISHI_FAN_3L; bool fahrenheit_compatibility_=false; HorizontalDirection default_horizontal_direction_=HORIZONTAL_DIRECTION_MIDDLE; VerticalDirection default_vertical_direction_=VERTICAL_DIRECTION_AUTO; uint8_t vertical_vanes_=1;",
@@ -119,7 +123,6 @@ SPECS = [
     ("remko_ar715", "RemkoAr715Climate"),
     ("islandaire", "IslandaireClimate"),
     ("mistral_ir", "MistralIR"),
-    ("daikin", "DaikinClimate"),
     ("daikin_arc", "DaikinArcClimate"),
     ("daikin_brc", "DaikinBrcClimate"),
     ("haier_tundra", "HaierTundra"),
@@ -132,6 +135,8 @@ SPECS = [
     ("whirlpool", "WhirlpoolClimate"),
     ("toshiba", "ToshibaClimate"),
     ("emmeti", "EmmetiClimate"),
+    ("gree", "GreeClimate"),
+    ("pd_pioneer_ir", "PDPioneerIR"),
 ]
 
 
@@ -152,7 +157,8 @@ def extract_climate(
         h.index(f"namespace esphome::{component} {{")
         + len(f"namespace esphome::{component} {{") :
     ]
-    prefix = prefix[: prefix.index("class " + cls)]
+    class_start = re.search(r"class\s+" + cls + r"(?:\s+final)?\s*:", prefix).start()
+    prefix = prefix[:class_start]
     cpp = (src / component / f"{filename}.cpp").read_text()
     cpp = re.sub(r"^#include[^\n]*\n", "", cpp, flags=re.M)
     body = cpp[

@@ -82,6 +82,6 @@ class Zhlt01Command(ClimatePacket):
             mode=decoded(data[9] >> 5, _MODES) if bool(data[7] & 2) else None,
             temperature=temperature,
             fan=decoded(data[7] & 0xE1, _FANS),
-            swing_v=data[7] & 12 == 4,
+            swing_v=data[7] & 12 != 8,
             swing_h=not bool(data[7] & 16),
         )

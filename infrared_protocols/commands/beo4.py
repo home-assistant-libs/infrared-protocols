@@ -17,7 +17,6 @@ class Beo4Command(Command):
         bits(command, 8)
         super().__init__(modulation=modulation)
         self.source, self.command, self.link = source, command, link
-        self.received_frames = 1
 
     @override
     def get_raw_timings(self) -> list[int]:
@@ -85,7 +84,6 @@ class Beo4Command(Command):
                 return None
             source, command, link = messages[0]
             result = cls(source=source, command=command, link=link)
-            result.received_frames = len(messages)
             return result
         except ValueError:
             return None

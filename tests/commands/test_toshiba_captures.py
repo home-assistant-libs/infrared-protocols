@@ -36,7 +36,7 @@ _CASES = [
             power_selection=ToshibaPowerSelection(case["power_selection"]),
         ),
         ClimateMode(case["mode"]),
-        None if case["mode"] == "fan_only" else case["temperature"],
+        case["temperature"],
         ToshibaFan(case["fan"]),
         ToshibaPreset(case["preset"]),
         ToshibaPowerSelection(case["power_selection"]),

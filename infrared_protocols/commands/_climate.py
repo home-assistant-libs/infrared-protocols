@@ -123,6 +123,8 @@ class ClimatePacket(Command):
         """
         if idle < 3000:
             raise ValueError("idle must be at least 3000 microseconds")
+        if len(captures) == 1:
+            return cls.from_raw_timings(captures[0])
         parts = cls._parts()
         packet_gaps: list[int] = []
         for index, part in enumerate(parts):

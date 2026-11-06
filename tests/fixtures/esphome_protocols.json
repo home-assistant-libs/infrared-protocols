@@ -42,7 +42,9 @@
         -525,
         525
       ],
-      "input": "JVCProtocol().encode(&d,JVCData{0xA55A});"
+      "input": {
+        "encoder": "JVCProtocol().encode(&d,JVCData{0xA55A});"
+      }
     },
     {
       "protocol": "dish",
@@ -187,7 +189,9 @@
         400,
         -6100
       ],
-      "input": "DishProtocol().encode(&d,DishData{.address=4,.command=37});"
+      "input": {
+        "encoder": "DishProtocol().encode(&d,DishData{.address=4,.command=37});"
+      }
     },
     {
       "protocol": "samsung36",
@@ -272,7 +276,9 @@
         500,
         -59000
       ],
-      "input": "Samsung36Protocol().encode(&d,Samsung36Data{.address=0x1234,.command=0xABCDE});"
+      "input": {
+        "encoder": "Samsung36Protocol().encode(&d,Samsung36Data{.address=0x1234,.command=0xABCDE});"
+      }
     },
     {
       "protocol": "toto",
@@ -524,7 +530,14 @@
         -520,
         600
       ],
-      "input": "TotoProtocol().encode(&d,TotoData{.code=0xB79C});"
+      "input": {
+        "encoder": "TotoProtocol().encode(&d,TotoData{.code=0xB79C});",
+        "repeat": {
+          "times": 3,
+          "wait_time": 36000,
+          "source": "esphome/components/remote_base/__init__.py::_toto_default_repeat"
+        }
+      }
     },
     {
       "protocol": "roomba",
@@ -547,7 +560,9 @@
         3000,
         -1000
       ],
-      "input": "RoombaProtocol().encode(&d,RoombaData{0xA5});"
+      "input": {
+        "encoder": "RoombaProtocol().encode(&d,RoombaData{0xA5});"
+      }
     },
     {
       "protocol": "hob2hood",
@@ -564,7 +579,9 @@
         2400,
         -500
       ],
-      "input": "Hob2HoodProtocol().encode(&d,Hob2HoodData{HOB2HOOD_COMMAND_FAN_MEDIUM});"
+      "input": {
+        "encoder": "Hob2HoodProtocol().encode(&d,Hob2HoodData{HOB2HOOD_COMMAND_FAN_MEDIUM});"
+      }
     },
     {
       "protocol": "magiquest_legacy",
@@ -672,7 +689,9 @@
         -576,
         288
       ],
-      "input": "MagiQuestProtocol().encode(&d,MagiQuestData{.magnitude=0xABCD,.wand_id=0x12345678});"
+      "input": {
+        "encoder": "MagiQuestProtocol().encode(&d,MagiQuestData{.magnitude=0xABCD,.wand_id=0x12345678});"
+      }
     },
     {
       "protocol": "gobox",
@@ -745,7 +764,9 @@
         580,
         -2000
       ],
-      "input": "GoboxProtocol().encode(&d,GoboxData{GOBOX_MENU});"
+      "input": {
+        "encoder": "GoboxProtocol().encode(&d,GoboxData{GOBOX_MENU});"
+      }
     },
     {
       "protocol": "beo4",
@@ -795,7 +816,9 @@
         -12300,
         200
       ],
-      "input": "Beo4Protocol().encode(&d,Beo4Data{.source=0x12,.command=0xA5,.repeats=0});"
+      "input": {
+        "encoder": "Beo4Protocol().encode(&d,Beo4Data{.source=0x12,.command=0xA5,.repeats=0});"
+      }
     },
     {
       "protocol": "canalsat",
@@ -835,7 +858,9 @@
         -250,
         250
       ],
-      "input": "CanalSatProtocol().encode(&d,CanalSatData{.device=0x12,.address=0x23,.repeat=0,.command=0x56});"
+      "input": {
+        "encoder": "CanalSatProtocol().encode(&d,CanalSatData{.device=0x12,.address=0x23,.repeat=0,.command=0x56});"
+      }
     },
     {
       "protocol": "canalsatld",
@@ -875,7 +900,9 @@
         -320,
         320
       ],
-      "input": "CanalSatLDProtocol().encode(&d,CanalSatData{.device=0x12,.address=0x23,.repeat=0,.command=0x56});"
+      "input": {
+        "encoder": "CanalSatLDProtocol().encode(&d,CanalSatData{.device=0x12,.address=0x23,.repeat=0,.command=0x56});"
+      }
     },
     {
       "protocol": "haier",
@@ -1031,7 +1058,9 @@
         -1650,
         540
       ],
-      "input": "const uint8_t data[]={0xA5,1,2,3,4,5,6,7}; HaierProtocol().encode(&d,data,8);"
+      "input": {
+        "encoder": "const uint8_t data[]={0xA5,1,2,3,4,5,6,7}; HaierProtocol().encode(&d,data,8);"
+      }
     },
     {
       "protocol": "mirage",
@@ -1281,7 +1310,9 @@
         -545,
         554
       ],
-      "input": "const uint8_t data[]={0xA5,1,2,3,4,5,6,7,8,9,10,11,12,13}; MirageProtocol().encode(&d,data,14);"
+      "input": {
+        "encoder": "const uint8_t data[]={0xA5,1,2,3,4,5,6,7,8,9,10,11,12,13}; MirageProtocol().encode(&d,data,14);"
+      }
     },
     {
       "protocol": "midea",
@@ -1487,7 +1518,9 @@
         -560,
         560
       ],
-      "input": "MideaData data{0xA1,0x81,0x48,0xFF,0xFF,0}; data.finalize(); MideaProtocol().encode(&d,data);"
+      "input": {
+        "encoder": "MideaData data{0xA1,0x81,0x48,0xFF,0xFF,0}; data.finalize(); MideaProtocol().encode(&d,data);"
+      }
     },
     {
       "protocol": "coolix",
@@ -1693,7 +1726,9 @@
         -1680,
         560
       ],
-      "input": "CoolixProtocol().encode(&d,CoolixData(0xB21FC8,0xB2BFE4));"
+      "input": {
+        "encoder": "CoolixProtocol().encode(&d,CoolixData(0xB21FC8,0xB2BFE4));"
+      }
     },
     {
       "protocol": "pd_pioneer",
@@ -1928,7 +1963,9 @@
         520,
         -10010
       ],
-      "input": "PDPioneerData data{0x23,0xCB,0x26,1,0,0x24,3,7,5,0x80,0,0,0,0}; data.finalize(); PDPioneerProtocol().encode(&d,data);"
+      "input": {
+        "encoder": "PDPioneerData data{0x23,0xCB,0x26,1,0,0x24,3,7,5,0x80,0,0,0,0}; data.finalize(); PDPioneerProtocol().encode(&d,data);"
+      }
     },
     {
       "protocol": "pioneer_wyt",
@@ -2162,7 +2199,9 @@
         -1100,
         500
       ],
-      "input": "PioneerWytData data{0x23,0xCB,0x26,2,0,0x24,3,7,5,0x80,0,0,0,0}; data.finalize(); PioneerWytProtocol().encode(&d,data);"
+      "input": {
+        "encoder": "PioneerWytData data{0x23,0xCB,0x26,2,0,0x24,3,7,5,0x80,0,0,0,0}; data.finalize(); PioneerWytProtocol().encode(&d,data);"
+      }
     },
     {
       "protocol": "toshiba_ac",
@@ -2469,7 +2508,9 @@
         560,
         -4500
       ],
-      "input": "ToshibaAcProtocol().encode(&d,ToshibaAcData{0x123456789ABC,0xABCDEF012345});"
+      "input": {
+        "encoder": "ToshibaAcProtocol().encode(&d,ToshibaAcData{0x123456789ABC,0xABCDEF012345});"
+      }
     },
     {
       "protocol": "ira211_1",
@@ -2513,10 +2554,7 @@
         -7600
       ],
       "input": {
-        "command": 1,
-        "half_degrees": 43,
-        "mode": "TIMER",
-        "fan": "HIGH"
+        "encoder": "IRA211Protocol().encode(&d, IRA211Data{.command=static_cast<IRA211Command>(1),.half_degrees=43,.mode=IRA211Mode::IRA211_MODE_TIMER,.fan=IRA211Fan::IRA211_FAN_HIGH});"
       }
     },
     {
@@ -2561,10 +2599,7 @@
         -7600
       ],
       "input": {
-        "command": 2,
-        "half_degrees": 43,
-        "mode": "TIMER",
-        "fan": "HIGH"
+        "encoder": "IRA211Protocol().encode(&d, IRA211Data{.command=static_cast<IRA211Command>(2),.half_degrees=43,.mode=IRA211Mode::IRA211_MODE_TIMER,.fan=IRA211Fan::IRA211_FAN_HIGH});"
       }
     },
     {
@@ -2603,10 +2638,7 @@
         -7600
       ],
       "input": {
-        "command": 4,
-        "half_degrees": 43,
-        "mode": "TIMER",
-        "fan": "HIGH"
+        "encoder": "IRA211Protocol().encode(&d, IRA211Data{.command=static_cast<IRA211Command>(4),.half_degrees=43,.mode=IRA211Mode::IRA211_MODE_TIMER,.fan=IRA211Fan::IRA211_FAN_HIGH});"
       }
     },
     {
@@ -2643,10 +2675,7 @@
         -7600
       ],
       "input": {
-        "command": 5,
-        "half_degrees": 43,
-        "mode": "TIMER",
-        "fan": "HIGH"
+        "encoder": "IRA211Protocol().encode(&d, IRA211Data{.command=static_cast<IRA211Command>(5),.half_degrees=43,.mode=IRA211Mode::IRA211_MODE_TIMER,.fan=IRA211Fan::IRA211_FAN_HIGH});"
       }
     },
     {
@@ -2703,10 +2732,7 @@
         -7600
       ],
       "input": {
-        "command": 6,
-        "half_degrees": 43,
-        "mode": "TIMER",
-        "fan": "HIGH"
+        "encoder": "IRA211Protocol().encode(&d, IRA211Data{.command=static_cast<IRA211Command>(6),.half_degrees=43,.mode=IRA211Mode::IRA211_MODE_TIMER,.fan=IRA211Fan::IRA211_FAN_HIGH});"
       }
     },
     {
@@ -2761,10 +2787,7 @@
         -7600
       ],
       "input": {
-        "command": 7,
-        "half_degrees": 43,
-        "mode": "TIMER",
-        "fan": "HIGH"
+        "encoder": "IRA211Protocol().encode(&d, IRA211Data{.command=static_cast<IRA211Command>(7),.half_degrees=43,.mode=IRA211Mode::IRA211_MODE_TIMER,.fan=IRA211Fan::IRA211_FAN_HIGH});"
       }
     },
     {
@@ -2806,8 +2829,7 @@
         780
       ],
       "input": {
-        "code": 4660,
-        "index": 2
+        "encoder": "DysonProtocol().encode(&d,DysonData{.code=0x1234,.index=2});"
       }
     },
     {
@@ -2875,8 +2897,7 @@
         600
       ],
       "input": {
-        "data": 180150010,
-        "nbits": 28
+        "encoder": "LGProtocol().encode(&d,LGData{.data=0xABCDEFA,.nbits=28});"
       }
     },
     {
@@ -2952,8 +2973,7 @@
         600
       ],
       "input": {
-        "data": 2882400171,
-        "nbits": 32
+        "encoder": "LGProtocol().encode(&d,LGData{.data=0xABCDEFAB,.nbits=32});"
       }
     }
   ]

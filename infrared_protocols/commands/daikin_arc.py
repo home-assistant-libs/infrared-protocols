@@ -8,6 +8,7 @@ from ._climate import ClimatePacket, FramePart
 from ._daikin import checked, parse_state, state_packet, validate_sections
 from ._timing import PulseTiming, Reader, pack_bytes
 from .climate import ClimateFan, ClimateMode, ClimateState
+from .daikin_ac import DaikinAcFanSpeed
 
 
 class DaikinHumidity(IntEnum):
@@ -40,7 +41,7 @@ class DaikinArcCommand(ClimatePacket):
         mode: ClimateMode,
         temperature: float,
         power: bool = True,
-        fan: ClimateFan = ClimateFan.AUTO,
+        fan: ClimateFan | DaikinAcFanSpeed = ClimateFan.AUTO,
         swing_v: bool = False,
         swing_h: bool = False,
         humidity: DaikinHumidity = DaikinHumidity.OFF,
@@ -84,6 +85,11 @@ class DaikinArcCommand(ClimatePacket):
             ]
         )
         super().__init__(data=checked(header) + checked(bytes(state)))
+
+    @property
+    def fan(self) -> DaikinAcFanSpeed:
+        """Return every native Daikin speed without folding adjacent levels."""
+        return DaikinAcFanSpeed(self.data[28] >> 4)
 
     @property
     def humidity(self) -> DaikinHumidity:

@@ -2,6 +2,7 @@
 
 from enum import IntEnum
 
+from ...commands import Command
 from ...commands.hob2hood import Hob2HoodCommand
 
 
@@ -16,6 +17,6 @@ class Hob2HoodCode(IntEnum):
     FAN_HIGH = 0xE1
     FAN_MAX = 0x72
 
-    def to_command(self) -> Hob2HoodCommand:
+    def to_command(self) -> Command:
         """Build the infrared command."""
         return Hob2HoodCommand(command=self.value)

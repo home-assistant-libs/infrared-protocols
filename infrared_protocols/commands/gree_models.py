@@ -91,10 +91,9 @@ def _checksum(data: bytes | bytearray) -> int:
 class GreeModelCommand(Command):
     """Named remote variants, separate from GreeAcCommand's captured layout.
 
-    YAN uses the vane nibble as an absolute swing flag; other named models
-    gate latched positions with the primary swing bit. Select the configured
-    remote model rather than inferring it from an overlapping capture. The
-    existing GreeAcCommand retains its captured layout and native enum API.
+    YAC/YAG/YAW1F use absolute vane fields, YB1FA/YX1FF gate them with the
+    swing-enable bit, and legacy models accept either swing representation.
+    Select the configured remote model; overlapping captures cannot identify it.
     """
 
     def __init__(
@@ -112,21 +111,24 @@ class GreeModelCommand(Command):
         fahrenheit: bool = False,
         modulation: int = 38000,
     ) -> None:
-        """Build a 16..30 °C state; Fahrenheit display enables half-degree encoding.
+        """Build a 16..30 °C state, or 60..86 °F with fahrenheit=True.
 
-        YX1FF couples the swing axes. YAC, YAG and YAW1F expose both axes.
+        YX1FF exposes vertical swing only. YAC, YAG and YAW1F expose both axes.
         Feature defaults enable the display light where supported.
         """
         model = GreeModel(model)
         layout = _LAYOUTS[model]
-        temperature_value(temperature, 16, 30, 0.5 if fahrenheit else 1)
+        if fahrenheit:
+            temperature_value(temperature, 60, 86)
+            half_steps = max(0, (10 * int(temperature) - 608 + 8) // 9)
+            temperature = 16 + half_steps / 2
+        else:
+            temperature_value(temperature, 16, 30)
         both_axes = model in (GreeModel.YAC, GreeModel.YAG, GreeModel.YAW1F)
-        if swing_h and not both_axes and model != GreeModel.YX1FF:
+        if swing_h and not both_axes:
             raise ValueError("horizontal swing is unavailable on this model")
         if model == GreeModel.GENERIC and (swing_v or swing_h):
             raise ValueError("the generic transmitter has no swing field")
-        if model == GreeModel.YX1FF and swing_h and not swing_v:
-            raise ValueError("YX1FF offers vertical swing only")
         if sleep and model not in (GreeModel.YX1FF, GreeModel.YAC1FB9):
             raise ValueError("sleep is unavailable on this model")
         feature_bits = layout.features & 32 if features is None else int(features)
@@ -179,6 +181,31 @@ class GreeModelCommand(Command):
         self.model, self.data = model, bytes(data)
 
     @property
+    def features(self) -> GreeFeature:
+        """Return independent features, excluding model-specific power and fan bits."""
+        return GreeFeature(self.data[2] & _LAYOUTS[self.model].features)
+
+    @property
+    def sleep(self) -> bool | None:
+        """Return sleep where the selected remote defines that flag."""
+        if self.model in (GreeModel.YX1FF, GreeModel.YAC1FB9):
+            return bool(self.data[0] & 128)
+        return None
+
+    @property
+    def fahrenheit(self) -> bool:
+        """Return the remote's display-unit flag."""
+        return bool(self.data[3] & 8)
+
+    @property
+    def temperature(self) -> float:
+        """Return the set point in the remote's display units."""
+        half_steps = 2 * (self.data[1] & 15) + bool(self.data[3] & 4)
+        if self.fahrenheit:
+            return (608 + 9 * half_steps) // 10
+        return 16 + half_steps / 2
+
+    @property
     def state(self) -> ClimateState:
         """Read common settings without discarding received auxiliary fields."""
         data, model = self.data, self.model
@@ -188,8 +215,10 @@ class GreeModelCommand(Command):
             raise ValueError("YAC follow-up carries no climate state")
         if model == GreeModel.YAW1F and data == _FOLLOWUP:
             raise ValueError("YAW1F follow-up carries no climate state")
-        temperature = 16 + (data[1] & 15) + (0.5 if data[3] & 4 else 0)
-        temperature_value(temperature, 16, 30, 0.5)
+        temperature_value(
+            16 + (data[1] & 15) + (0.5 if data[3] & 4 else 0), 16, 30, 0.5
+        )
+        mode = decoded(data[0] & 7, _MODES)
         code = data[0] >> 4 & 3
         fan = decoded(code, _FANS)
         if model == GreeModel.YX1FF:
@@ -205,17 +234,40 @@ class GreeModelCommand(Command):
             )
         vertical = data[4] & 15
         swinging = bool(data[0] & 64)
-        swing_v = vertical in (1, 7, 9, 11) if model == GreeModel.YAN else swinging
+        swing_v = swinging or vertical in (1, 7, 9, 11)
         swing_h: bool | None = None
         if model in (GreeModel.YAC, GreeModel.YAG, GreeModel.YAW1F):
-            swing_v = swinging and vertical in (1, 7, 9, 11)
-            swing_h = (model == GreeModel.YAC or swinging) and data[4] >> 4 & 7 == 1
-        elif model == GreeModel.GENERIC:
-            swing_v = swinging and bool(vertical)
+            swing_v = vertical in (1, 7, 9, 11)
+            swing_h = data[4] >> 4 & 7 == 1
+        elif model in (GreeModel.YB1FA, GreeModel.YX1FF):
+            timer_ones, timer_tens = data[2] & 15, data[1] >> 5 & 3
+            timer_minutes = 60 * (10 * timer_tens + timer_ones) + (
+                30 if data[1] & 16 else 0
+            )
+            valid_vertical = (1, 7, 9, 11) if swinging else (0, 2, 3, 4, 5, 6)
+            horizontal = int(swinging) if model == GreeModel.YX1FF else 0
+            if (
+                timer_ones > 9
+                or timer_minutes > 1440
+                or bool(data[2] & 64) != bool(data[0] & 8)
+                or data[3] & 0xF3 != 0x50
+                or vertical not in valid_vertical
+                or data[4] >> 4 != horizontal
+                or data[5] & 0xB8 != 0x20
+                or data[6] != 0
+                or data[7] & 15
+                or model == GreeModel.YX1FF
+                and data[2] & 16
+                and code != 3
+            ):
+                raise ValueError("invalid Gree model-A fields")
+            swing_v = swinging
         return ClimateState(
             power=bool(data[0] & 8),
-            mode=decoded(data[0] & 7, _MODES) if data[0] & 8 else None,
-            temperature=temperature,
+            mode=mode if data[0] & 8 else None,
+            temperature=(self.temperature - 32) * 5 / 9
+            if self.fahrenheit
+            else self.temperature,
             fan=fan,
             swing_v=swing_v,
             swing_h=swing_h,

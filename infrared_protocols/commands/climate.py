@@ -5,7 +5,8 @@ This is an opt-in projection for the new state-packet families, not a replacemen
 for existing per-module IntEnum APIs. Integrations must select a remote model
 and map its supported capabilities; protocols with toggles cannot be treated as
 absolute state setters. Existing native APIs retain their wire-valued enums.
-Native fan enums preserve levels that have no unambiguous common-speed equivalent.
+Families with native fan enums return that enum for every level, preserving all
+speeds without changing the value's type between levels.
 """
 
 from dataclasses import dataclass

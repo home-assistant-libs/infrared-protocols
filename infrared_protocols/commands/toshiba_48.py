@@ -114,6 +114,34 @@ class ToshibaRacCommand(Toshiba48Command):
     """RAC-PT1411HWRU C/F state, absolute swing and Comfort Sense messages."""
 
     @property
+    def room_temperature(self) -> int | None:
+        """Return the Comfort Sense report's Celsius reading, when present."""
+        return (
+            self.first[2] & 31
+            if self.first[0] == 0xBA and self.first[2] & 128
+            else None
+        )
+
+    @property
+    def comfort_sense_enabled(self) -> bool | None:
+        """Return the Comfort Sense enable flag, absent in other commands."""
+        return bool(self.first[2] & 64) if self.first[0] == 0xBA else None
+
+    @property
+    def comfort_sense_reports_temperature(self) -> bool | None:
+        """Return whether a Comfort Sense message contains a sensor reading."""
+        return bool(self.first[2] & 128) if self.first[0] == 0xBA else None
+
+    @property
+    def comfort_sense_mode(self) -> ClimateMode | None:
+        """Return the mode carried by a Comfort Sense message."""
+        if self.first[0] != 0xBA:
+            return None
+        return {0x7A: ClimateMode.AUTO, 0x72: ClimateMode.COOL, 0x7E: ClimateMode.HEAT}[
+            self.first[4]
+        ]
+
+    @property
     def fahrenheit(self) -> bool | None:
         """Return the native unit flag, absent in standalone actions."""
         return bool(self.second[3] & 1) if self.second is not None else None
@@ -344,6 +372,8 @@ class ToshibaRas2819Command(Toshiba48Command):
             else decoded(first[4] & 15, _MODES)
         )
         fan = ClimateFan.AUTO if first[2] == 0x1F else decoded(first[2], _FANS)
+        if mode in (ClimateMode.AUTO, ClimateMode.DRY) and first[2] != 0x1F:
+            raise ValueError("RAS-2819T auto and dry require automatic fan")
         expected = self._extension(ClimateMode.AUTO if first[2] == 0x1F else mode, fan)
         if second != expected:
             raise ValueError("inconsistent RAS-2819T extension")

@@ -2,12 +2,12 @@
 
 from ._climate import ClimatePacket
 from ._climate_fields import decoded, selection, temperature_value
-from ._timing import PulseTiming
 from .climate import (
     ClimateFan,
     ClimateMode,
     ClimateState,
 )
+from .pioneer_wyt import PioneerWytCommand
 
 _MODES = {
     ClimateMode.HEAT: 1,
@@ -28,8 +28,8 @@ _FANS = {
 class Tcl112Command(ClimatePacket):
     """TCL state with half-degree temperature and vertical swing."""
 
-    HEADER = (3100, -1650)
-    TIMING = PulseTiming(500, 350, 1100)
+    HEADER = PioneerWytCommand.HEADER
+    TIMING = PioneerWytCommand.TIMING
     LENGTH = 14
     GAP = 1650
 

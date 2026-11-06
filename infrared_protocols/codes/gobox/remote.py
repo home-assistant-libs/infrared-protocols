@@ -2,6 +2,7 @@
 
 from enum import IntEnum
 
+from ...commands import Command
 from ...commands.gobox import GoboxCommand
 
 
@@ -22,6 +23,6 @@ class GoboxCode(IntEnum):
     LOUDER = 0xB04F
     SOFTER = 0xF807
 
-    def to_command(self) -> GoboxCommand:
+    def to_command(self) -> Command:
         """Build an infrared button command."""
         return GoboxCommand(code=self.value)

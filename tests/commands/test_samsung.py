@@ -1,5 +1,10 @@
 """Tests for the Samsung32 IR command encoder."""
 
+from itertools import product
+
+import pytest
+
+from infrared_protocols.commands._timing import PulseTiming, byte_bits
 from infrared_protocols.commands.samsung import Samsung32Command
 
 
@@ -203,3 +208,61 @@ def test_samsung32_command_get_raw_timings_extended() -> None:
         -44520,
         *expected_raw_timings,
     ]
+
+
+_DECODE_CASES = [
+    pytest.param(
+        command,
+        {65535: 255, 257: 1}.get(command.address, command.address),
+        id=type(command).__name__ + "-" + str(vars(command)),
+    )
+    for command in [
+        *[
+            Samsung32Command(address=a, command=c, repeat_count=r)
+            for a, c, r in product((0, 255, 256, 257, 65535), (0, 255), (0, 2))
+        ]
+    ]
+]
+
+
+@pytest.mark.parametrize("scale", [0.7, 1.3])
+def test_samsung_scaled_and_partial_repeat(scale: float) -> None:
+    """A complete command survives a clipped final held-key repeat."""
+    raw = Samsung32Command(address=7, command=2, repeat_count=1).get_raw_timings()[:-10]
+    received = Samsung32Command.from_raw_timings([round(t * scale) for t in raw])
+    assert received is not None
+    assert (received.address, received.command, received.repeat_count) == (7, 2, 0)
+
+
+@pytest.mark.parametrize("command,expected_address", _DECODE_CASES)
+def test_decoder_round_trip_fields(
+    command: Samsung32Command, expected_address: int
+) -> None:
+    """Decode edge-valued fields and preserve their protocol meaning."""
+    raw = command.get_raw_timings()
+    result = type(command).from_raw_timings(raw)
+    assert result is not None
+    assert result.get_raw_timings() == raw
+    assert result.command == command.command
+    assert result.repeat_count == command.repeat_count
+    assert result.address == expected_address
+
+
+@pytest.mark.parametrize(
+    "command", [pytest.param(c.values[0], id=c.id) for c in _DECODE_CASES]
+)
+@pytest.mark.parametrize("prefix", [0, 1, 5])
+def test_decoder_truncated(command: Samsung32Command, prefix: int) -> None:
+    """A partial leader or payload cannot be a complete command."""
+    assert type(command).from_raw_timings(command.get_raw_timings()[:prefix]) is None
+
+
+def test_extended_zero_high_byte_cannot_change_address() -> None:
+    """Reject an extended address that the public encoder would normalize away."""
+    raw = [
+        4500,
+        -4500,
+        *PulseTiming(560, 560, 1690).encode(byte_bits(bytes([0x12, 0, 0x34, 0xCB]))),
+        560,
+    ]
+    assert Samsung32Command.from_raw_timings(raw) is None

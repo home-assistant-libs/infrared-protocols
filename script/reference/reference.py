@@ -22,6 +22,7 @@ common = """#pragma once
 #include <optional>
 #include <vector>
 #include <string>
+using std::clamp;
 #define PROGMEM
 #define ESPHOME_LOG_TAG(name, value) static const char* name=value;
 #define ESP_LOGI(...)
@@ -74,12 +75,17 @@ for name in ["log", "helpers", "hal", "component", "progmem"]:
     (out / f"esphome/core/{name}.h").write_text(
         '#pragma once\n#include "remote_base.h"\n'
     )
-names = "jvc dish samsung36 toto roomba hob2hood magiquest gobox beo4 canalsat haier mirage midea coolix pd_pioneer pioneer_wyt toshiba_ac".split()
+names = "jvc dish samsung36 toto roomba hob2hood magiquest gobox beo4 canalsat haier mirage midea coolix pd_pioneer pioneer_wyt toshiba_ac ira211 dyson lg".split()
 for name in names:
     shutil.copy(src / f"{name}_protocol.h", out / f"{name}_protocol.h")
     cpp = (src / f"{name}_protocol.cpp").read_text()
     # Preserve upstream encoder code solely in this temporary reference executable.
-    pos = cpp.find("optional<")
+    marker = (
+        "optional<IRA211Data> IRA211Protocol::decode"
+        if name == "ira211"
+        else "optional<"
+    )
+    pos = cpp.find(marker)
     if pos >= 0:
         cpp = cpp[:pos] + "\n} // namespace\n"
     (out / f"{name}.cpp").write_text(cpp)
@@ -156,7 +162,27 @@ cases = [
         "ToshibaAcProtocol().encode(&d,ToshibaAcData{0x123456789ABC,0xABCDEF012345});",
     ),
 ]
-(out / "inputs.json").write_text(json.dumps(dict(cases)))
+cases.extend(
+    (
+        f"ira211_{action}",
+        f"IRA211Protocol().encode(&d, IRA211Data{{.command=static_cast<IRA211Command>({action}),.half_degrees=43,.mode=IRA211Mode::IRA211_MODE_TIMER,.fan=IRA211Fan::IRA211_FAN_HIGH}});",
+    )
+    for action in (1, 2, 4, 5, 6, 7)
+)
+cases.extend(
+    [
+        ("dyson", "DysonProtocol().encode(&d,DysonData{.code=0x1234,.index=2});"),
+        ("lg28", "LGProtocol().encode(&d,LGData{.data=0xABCDEFA,.nbits=28});"),
+        ("lg32", "LGProtocol().encode(&d,LGData{.data=0xABCDEFAB,.nbits=32});"),
+    ]
+)
+inputs = {name: {"encoder": expression} for name, expression in cases}
+inputs["toto"]["repeat"] = {
+    "times": 3,
+    "wait_time": 36000,
+    "source": "esphome/components/remote_base/__init__.py::_toto_default_repeat",
+}
+(out / "inputs.json").write_text(json.dumps(inputs))
 for name, expr in cases:
     main += "{RemoteTransmitData d; " + expr + f' emit("{name}",d);' + "}\n"
 main += "}\n"

@@ -174,7 +174,15 @@ class WhirlpoolCommand(ClimatePacket):
             temperature = None
         return ClimateState(
             mode=None
-            if len(data) == 21 and not cls.HISENSE and data[15] in (0, 1)
+            if len(data) == 21
+            and (
+                not cls.HISENSE
+                and data[15] in (0, 1)
+                and data[3] & 15 == 0
+                or cls.HISENSE
+                and data[15] == 1
+                and mode == ClimateMode.COOL
+            )
             else mode,
             temperature=temperature,
             fan=decoded(data[2] & 3, _FANS),

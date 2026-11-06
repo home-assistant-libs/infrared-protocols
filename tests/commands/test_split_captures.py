@@ -28,7 +28,10 @@ def _captures(raw: list[int], *, idle: int = 10000) -> list[list[int]]:
             result.append(raw[start:index] + [-idle])
             start = index + 1
     if start < len(raw):
-        result.append(raw[start:] + [-idle])
+        body = raw[start:]
+        if body[-1] < 0:
+            body = body[:-1]
+        result.append(body + [-idle])
     return result
 
 
@@ -58,18 +61,33 @@ def _captures(raw: list[int], *, idle: int = 10000) -> list[list[int]]:
         ),
     ],
 )
+@pytest.mark.parametrize("idle", [5000, 10000, 20000, 30000, 40000])
 def test_default_receiver_captures(
     command: ClimatePacket | SplitClimateCommand,
+    idle: int,
 ) -> None:
     """Validate the complete press without requiring a longer receiver timeout."""
-    captures = _captures(command.get_raw_timings())
-    received = type(command).from_raw_captures(captures)
+    captures = _captures(command.get_raw_timings(), idle=idle)
+    received = type(command).from_raw_captures(captures, idle=idle)
     assert received is not None
     assert received.state == command.state
     assert received.get_raw_timings() == command.get_raw_timings()
-    assert type(command).from_raw_captures(captures[:-1]) is None
+    assert (
+        type(command).from_raw_captures([command.get_raw_timings()], idle=idle)
+        is not None
+    )
+    assert type(command).from_raw_captures(captures[:-1], idle=idle) is None
     captures[-1][0] = 0
-    assert type(command).from_raw_captures(captures) is None
+    assert type(command).from_raw_captures(captures, idle=idle) is None
+
+
+@pytest.mark.parametrize("cls", [DaikinArcCommand, NoblexCommand])
+def test_receiver_idle_too_short(
+    cls: type[ClimatePacket] | type[SplitClimateCommand],
+) -> None:
+    """An idle timeout below the supported framing floor is rejected."""
+    with pytest.raises(ValueError, match="idle must be at least"):
+        cls.from_raw_captures([], idle=2999)
 
 
 @pytest.mark.parametrize(

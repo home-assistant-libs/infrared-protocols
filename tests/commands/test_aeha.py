@@ -1,8 +1,14 @@
 """Tests for the AEHA physical layer."""
 
+from collections.abc import Callable
+
 import pytest
 
+from infrared_protocols.commands import Command
 from infrared_protocols.commands.aeha import AEHA_NOMINAL, AehaCommand, AehaTiming
+from infrared_protocols.commands.climate import ClimateMode
+from infrared_protocols.commands.friedrich import FriedrichCommand
+from infrared_protocols.commands.mistral import MistralCommand
 
 # Physical-layer constants are duplicated here rather than imported
 # so the tests are independent
@@ -251,3 +257,54 @@ def test_empty_payload_encodes_to_leader_and_trailer_only() -> None:
 
     assert timings == [_LEADER_MARK, -_LEADER_SPACE, _BIT_MARK, -_TRAILER_SPACE]
     assert AehaCommand._decode_data(timings) is None
+
+
+_DECODE_CASES = [
+    pytest.param(command, id=type(command).__name__ + "-" + str(vars(command)))
+    for command in [AehaCommand(data=bytes.fromhex("23cb2601"))]
+]
+
+
+@pytest.mark.parametrize("command", _DECODE_CASES)
+def test_decoder_round_trip_fields(command: AehaCommand) -> None:
+    """Decode edge-valued fields and preserve their protocol meaning."""
+    raw = command.get_raw_timings()
+    result = type(command).from_raw_timings(raw)
+    assert result is not None
+    assert result.get_raw_timings() == raw
+    assert result.data == command.data
+
+
+@pytest.mark.parametrize("command", _DECODE_CASES)
+@pytest.mark.parametrize("prefix", [0, 1, 5])
+def test_decoder_truncated(command: AehaCommand, prefix: int) -> None:
+    """A partial leader or payload cannot be a complete command."""
+    assert type(command).from_raw_timings(command.get_raw_timings()[:prefix]) is None
+
+
+@pytest.mark.parametrize(
+    "command,decoder",
+    [
+        pytest.param(
+            AehaCommand(data=b"\x01\x02"), AehaCommand.from_raw_timings, id="aeha"
+        ),
+        pytest.param(
+            MistralCommand(mode=ClimateMode.COOL, temperature=24),
+            MistralCommand.from_raw_timings,
+            id="mistral",
+        ),
+        pytest.param(
+            FriedrichCommand(mode=ClimateMode.COOL, temperature_f=72),
+            FriedrichCommand.from_raw_timings,
+            id="friedrich",
+        ),
+    ],
+)
+@pytest.mark.parametrize("index", [0, 1, 2, 3, -2, -1])
+def test_public_decoder_polarity(
+    command: Command, decoder: Callable[[list[int]], Command | None], index: int
+) -> None:
+    """Reject inverted mark or space polarity through the public AEHA decoders."""
+    raw = command.get_raw_timings()
+    raw[index] *= -1
+    assert decoder(raw) is None

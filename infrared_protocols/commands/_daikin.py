@@ -6,6 +6,7 @@ from .climate import (
     ClimateMode,
     ClimateState,
 )
+from .daikin_ac import DaikinAcFanSpeed
 
 _MODES = {
     ClimateMode.AUTO: 0,
@@ -47,7 +48,7 @@ def state_packet(
     mode: ClimateMode,
     temperature: float,
     power: bool,
-    fan: ClimateFan,
+    fan: ClimateFan | DaikinAcFanSpeed,
     swing_v: bool,
     swing_h: bool,
 ) -> bytearray:
@@ -71,7 +72,9 @@ def state_packet(
             selection(mode, _MODES) << 4 | 1 if power else 0,
             effective_temp,
             0,
-            selection(fan, _FANS) << 4 | (15 if swing_v else 0),
+            (int(fan) if isinstance(fan, DaikinAcFanSpeed) else selection(fan, _FANS))
+            << 4
+            | (15 if swing_v else 0),
             15 if swing_h else 0,
             0,
             6,
@@ -94,12 +97,11 @@ def parse_state(data: bytes) -> ClimateState:
     )
     if temperature is not None:
         temperature_value(temperature, 10, 30, 0.5)
-    fan_code = {4: 3, 6: 7}.get(data[8] >> 4, data[8] >> 4)
     return ClimateState(
         power=bool(data[5] & 1),
         mode=mode,
         temperature=temperature,
-        fan=decoded(fan_code, _FANS),
+        fan=DaikinAcFanSpeed(data[8] >> 4),
         swing_v=bool(data[8] & 15),
         swing_h=bool(data[9] & 15),
     )

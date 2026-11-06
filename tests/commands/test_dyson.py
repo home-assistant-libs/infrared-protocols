@@ -1,9 +1,13 @@
 """Tests for Dyson commands."""
 
+from collections.abc import Callable
+from itertools import product
+
 import pytest
 
 from infrared_protocols.commands.dyson import (
     DysonAm09Command,
+    DysonCommand,
     DysonCoolCommand,
     _DysonFanCommand,
 )
@@ -88,3 +92,83 @@ def test_dyson_command_get_raw_timings(
 
     assert timings == expected_raw_timings
     assert command.modulation == 38000
+
+
+_DECODE_CASES = [
+    pytest.param(command, id=type(command).__name__ + "-" + str(vars(command)))
+    for command in [
+        *[
+            cls(code=c)
+            for cls, c in product((DysonCoolCommand, DysonAm09Command), (0, 1, 255))
+        ]
+    ]
+]
+
+
+@pytest.mark.parametrize("factory", [DysonCoolCommand, DysonAm09Command, DysonCommand])
+def test_writable_dyson_button(
+    factory: type[DysonCoolCommand] | type[DysonAm09Command] | type[DysonCommand],
+) -> None:
+    """Changing the public button also changes the transmitted payload."""
+    sent = factory(code=1)
+    sent.code = 2
+    received = factory.from_raw_timings(sent.get_raw_timings())
+    assert received is not None
+    assert received.code == 2
+    assert received.button_code == sent.button_code
+    assert received.index == sent.index
+
+
+@pytest.mark.parametrize(
+    "sent,decoder",
+    [
+        pytest.param(
+            DysonCoolCommand(code=0x12),
+            DysonAm09Command.from_raw_timings,
+            id="cool-not-am09",
+        ),
+        pytest.param(
+            DysonAm09Command(code=0x12),
+            DysonCoolCommand.from_raw_timings,
+            id="am09-not-cool",
+        ),
+    ],
+)
+def test_dyson_family_prefix(
+    sent: DysonCoolCommand | DysonAm09Command,
+    decoder: Callable[[list[int]], DysonCoolCommand | DysonAm09Command | None],
+) -> None:
+    """A known payload from the other Dyson family is rejected."""
+    assert decoder(sent.get_raw_timings()) is None
+
+
+def test_dyson_shared_payload() -> None:
+    """Legacy button tables and the indexed API share one payload decoder."""
+    old = DysonCoolCommand(code=0x12)
+    received = DysonCommand.from_raw_timings(old.get_raw_timings())
+    assert received is not None
+    assert (received.button_code, received.index) == (old.button_code, old.index)
+    assert (received.code, received.index) == (0x1204, 2)
+    assert DysonCommand(code=0x1204, index=2, modulation=38000).modulation == 38000
+
+
+@pytest.mark.parametrize("command", _DECODE_CASES)
+def test_decoder_round_trip_fields(
+    command: DysonCoolCommand | DysonAm09Command,
+) -> None:
+    """Decode edge-valued fields and preserve their protocol meaning."""
+    raw = command.get_raw_timings()
+    result = type(command).from_raw_timings(raw)
+    assert result is not None
+    assert result.get_raw_timings() == raw
+    assert result.code == command.code
+    assert result.repeat_count == command.repeat_count
+
+
+@pytest.mark.parametrize("command", _DECODE_CASES)
+@pytest.mark.parametrize("prefix", [0, 1, 5])
+def test_decoder_truncated(
+    command: DysonCoolCommand | DysonAm09Command, prefix: int
+) -> None:
+    """A partial leader or payload cannot be a complete command."""
+    assert type(command).from_raw_timings(command.get_raw_timings()[:prefix]) is None

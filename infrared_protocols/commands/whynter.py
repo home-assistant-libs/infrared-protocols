@@ -53,6 +53,17 @@ class WhynterCommand(WordCommand):
         super().__init__(data=value)
 
     @property
+    def fahrenheit(self) -> bool:
+        """Return the remote's native temperature-unit flag."""
+        return bool(self.data & 1024)
+
+    @property
+    def temperature(self) -> int:
+        """Return the set point in the remote's native units."""
+        native = number(bits(self.data & 255, 8), lsb=True)
+        return native if self.fahrenheit else native + 16
+
+    @property
     def state(self) -> ClimateState:
         """Decode the carried state; off frames carry no mode."""
         if self.data >> 24 != 0x12:
@@ -73,19 +84,9 @@ class WhynterCommand(WordCommand):
         )
 
     @classmethod
-    def from_raw_timings(cls, timings: list[int]) -> Self | None:
-        """Decode a complete word and validate the state fields."""
-        from ._timing import Reader
-
-        reader = Reader(timings=timings)
-        try:
-            reader.expect(*cls.HEADER)
-            value = number(reader.read_bits(cls.TIMING, cls.WIDTH))
-            reader.expect(*cls.FOOTER)
-            reader.end()
-            result = cls.__new__(cls)
-            WordCommand.__init__(result, data=value)
-            _ = result.state
-            return result
-        except ValueError:
-            return None
+    def _from_data(cls, data: int) -> Self:
+        """Validate the state fields of a received word."""
+        result = cls.__new__(cls)
+        WordCommand.__init__(result, data=data)
+        _ = result.state
+        return result

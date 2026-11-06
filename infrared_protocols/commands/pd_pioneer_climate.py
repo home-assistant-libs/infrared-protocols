@@ -2,12 +2,12 @@
 
 from ._climate import ClimatePacket, FramePart
 from ._climate_fields import decoded, selection, temperature_value
-from ._timing import PulseTiming
 from .climate import (
     ClimateFan,
     ClimateMode,
     ClimateState,
 )
+from .pd_pioneer import PdPioneerCommand
 
 _MODES = {
     ClimateMode.HEAT: 1,
@@ -39,10 +39,13 @@ class PdPioneerClimateCommand(ClimatePacket):
     bursts from one press to from_raw_captures() to decode it.
     """
 
-    HEADER = (3120, -1560)
-    TIMING = PulseTiming(520, 312, 1066)
+    HEADER = PdPioneerCommand.HEADER
+    TIMING = PdPioneerCommand.TIMING
     LENGTH = 28
-    PARTS = (FramePart(14, HEADER, 10010), FramePart(14, HEADER, 10010))
+    PARTS = (
+        FramePart(14, HEADER, PdPioneerCommand.GAP),
+        FramePart(14, HEADER, PdPioneerCommand.GAP),
+    )
 
     def __init__(
         self,

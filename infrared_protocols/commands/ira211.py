@@ -88,19 +88,12 @@ class Ira211Command(Command):
     @override
     def get_raw_timings(self) -> list[int]:
         """Encode framed bytes and their checksum as merged NRZ runs."""
-        fields = _FIELDS[self.action]
         values = [int(self.action)]
-        if "t" in fields:
-            if self.temperature is None:
-                raise ValueError("temperature is required by this action")
+        if self.temperature is not None:
             values.extend([int(self.temperature), 5 if self.temperature % 1 else 0])
-        if "m" in fields:
-            if self.mode is None:
-                raise ValueError("mode is required by this action")
+        if self.mode is not None:
             values.append(int(self.mode))
-        if "f" in fields:
-            if self.fan is None:
-                raise ValueError("fan is required by this action")
+        if self.fan is not None:
             values.append(int(self.fan))
         wire = bytes([0x66] + [_reverse(value ^ 255) for value in values])
         wire += bytes([_checksum(wire)])

@@ -109,7 +109,7 @@ class PioneerCommand(Command):
         try:
             packets = frames(timings, period=PIONEER_FRAME_PERIOD_US)
             for index, frame in enumerate(packets):
-                if messages and len(frame) < 67 and index == len(packets) - 1:
+                if len(messages) >= 2 and len(frame) < 67 and index == len(packets) - 1:
                     break
                 reader = Reader(timings=frame)
                 reader.expect(9000, -4500)

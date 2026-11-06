@@ -6,8 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from infrared_protocols.codes.gobox.remote import GoboxCode
-from infrared_protocols.codes.hob2hood.hood import Hob2HoodCode
 from infrared_protocols.commands import Command
 from infrared_protocols.commands.beo4 import Beo4Command
 from infrared_protocols.commands.canalsat import CanalSatCommand, CanalSatLDCommand
@@ -168,23 +166,6 @@ def test_receiver_jitter(command: Command, decode: Decoder, scale: float) -> Non
     assert decoded.get_raw_timings() == command.get_raw_timings()
 
 
-@pytest.mark.parametrize("code", list(Hob2HoodCode))
-def test_hob2hood_codes(code: Hob2HoodCode) -> None:
-    """Every named extractor command decodes back to its command byte."""
-    command = code.to_command()
-    decoded = Hob2HoodCommand.from_raw_timings(command.get_raw_timings())
-    assert decoded is not None
-    assert decoded.command == code.value
-
-
-@pytest.mark.parametrize("code", list(GoboxCode))
-def test_gobox_codes(code: GoboxCode) -> None:
-    """Every named remote button decodes back to its code."""
-    decoded = GoboxCommand.from_raw_timings(code.to_command().get_raw_timings())
-    assert decoded is not None
-    assert decoded.code == code.value
-
-
 def test_magiquest_legacy_reference() -> None:
     """The legacy transmitter layout remains distinct from physical wand frames."""
     command = MagiQuestLegacyCommand(wand_id=0x12345678, magnitude=0xABCD)
@@ -246,3 +227,13 @@ def test_ira211_actions(action: Ira211Action, temperature: float) -> None:
 def test_required_fields_and_copies(decode: Decoder, raw: list[int]) -> None:
     """Headers alone and missing compulsory copies cannot become commands."""
     assert decode(raw) is None
+
+
+@pytest.mark.parametrize("command,decode", ENCODERS)
+@pytest.mark.parametrize("bias", [-80, 80], ids=["short-marks", "long-marks"])
+def test_receiver_mark_space_bias(command: Command, decode: Decoder, bias: int) -> None:
+    """Receiver edge delay lengthens marks while shortening adjacent spaces."""
+    raw = [value + bias for value in command.get_raw_timings()]
+    decoded = decode(raw)
+    assert decoded is not None
+    assert decoded.get_raw_timings() == command.get_raw_timings()

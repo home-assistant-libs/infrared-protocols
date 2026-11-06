@@ -9,11 +9,14 @@ from typing import NamedTuple, Protocol
 
 import pytest
 
-from infrared_protocols.commands.airton import AirtonCommand
+from infrared_protocols.commands.airton import AirtonCommand, AirtonDirection
 from infrared_protocols.commands.ballu import BalluCommand
 from infrared_protocols.commands.climate import ClimateFan, ClimateMode, ClimateState
 from infrared_protocols.commands.daikin_arc import DaikinArcCommand, DaikinHumidity
-from infrared_protocols.commands.daikin_brc import DaikinBrcCommand
+from infrared_protocols.commands.daikin_brc import (
+    DaikinBrcCommand,
+    DaikinBrcFahrenheitCommand,
+)
 from infrared_protocols.commands.delonghi import DelonghiCommand
 from infrared_protocols.commands.emmeti import EmmetiBlade, EmmetiCommand
 from infrared_protocols.commands.friedrich import (
@@ -21,7 +24,11 @@ from infrared_protocols.commands.friedrich import (
     FriedrichCommand,
     FriedrichUtilityCommand,
 )
-from infrared_protocols.commands.gree_models import GreeModel, GreeModelCommand
+from infrared_protocols.commands.gree_models import (
+    GreeFeature,
+    GreeModel,
+    GreeModelCommand,
+)
 from infrared_protocols.commands.haier_tundra import HaierTundraCommand
 from infrared_protocols.commands.hitachi import (
     HitachiAc344Command,
@@ -41,6 +48,9 @@ from infrared_protocols.commands.remko_ar715 import RemkoAr715Command
 from infrared_protocols.commands.tcl112 import Tcl112Command
 from infrared_protocols.commands.toshiba import (
     ToshibaCommand,
+    ToshibaMotion,
+    ToshibaPowerSelection,
+    ToshibaPreset,
     ToshibaRas25j2kvsgNdCommand,
     ToshibaRasB10n3kv2Command,
     ToshibaSeiyaCommand,
@@ -50,7 +60,11 @@ from infrared_protocols.commands.toshiba_48 import (
     ToshibaRacCommand,
     ToshibaRas2819Command,
 )
-from infrared_protocols.commands.whirlpool import WhirlpoolCommand
+from infrared_protocols.commands.whirlpool import (
+    HisenseArgCommand,
+    WhirlpoolCommand,
+    WhirlpoolDg11j191Command,
+)
 from infrared_protocols.commands.whynter import WhynterCommand
 from infrared_protocols.commands.zhlt01 import Zhlt01Command
 
@@ -78,6 +92,19 @@ class _Arguments:
     enabled: bool = False
     send_temperature: bool = True
     preset: str = "none"
+    sub_unit: int = 0
+    mode_button: bool = False
+    vertical_position: int = 0
+    dual_vanes: bool = False
+    direction: int = 0
+    display: bool = True
+    sleep: bool = False
+    boost: bool = False
+    features: int | None = None
+    economy: bool = False
+    power_selection: int = 0
+    action: int = 0
+    swing_toggle: bool = False
 
 
 class _ClimateCommand(Protocol):
@@ -103,8 +130,17 @@ class _Factory(NamedTuple):
 _FACTORIES: dict[str, _Factory] = {
     "ToshibaRas25j2kvsgNdCommand.climate": _Factory(
         lambda a: ToshibaRas25j2kvsgNdCommand.climate(
-            mode=a.mode, temperature=int(a.temperature), fan=a.fan
+            mode=a.mode,
+            temperature=int(a.temperature),
+            fan=a.fan,
+            power=a.power,
+            preset=ToshibaPreset(a.preset),
+            power_selection=ToshibaPowerSelection(a.power_selection),
         ),
+        ToshibaRas25j2kvsgNdCommand.from_raw_timings,
+    ),
+    "ToshibaRas25j2kvsgNdCommand.motion": _Factory(
+        lambda a: ToshibaRas25j2kvsgNdCommand.motion(action=ToshibaMotion(a.action)),
         ToshibaRas25j2kvsgNdCommand.from_raw_timings,
     ),
     "ToshibaRacCommand.comfort_sense": _Factory(
@@ -159,6 +195,7 @@ _FACTORIES: dict[str, _Factory] = {
             fan=a.fan,
             swing_v=a.swing_v,
             swing_h=a.swing_h,
+            boost=a.boost,
         ),
         Zhlt01Command.from_raw_timings,
     ),
@@ -214,8 +251,22 @@ _FACTORIES: dict[str, _Factory] = {
             power=a.power,
             fan=a.fan,
             swing=a.swing,
+            sub_unit=a.sub_unit,
+            mode_button=a.mode_button,
         ),
         DaikinBrcCommand.from_raw_timings,
+    ),
+    "DaikinBrcFahrenheitCommand": _Factory(
+        lambda a: DaikinBrcFahrenheitCommand(
+            mode=a.mode,
+            temperature=int(a.temperature),
+            fan=a.fan,
+            power=a.power,
+            swing=a.swing,
+            sub_unit=a.sub_unit,
+            mode_button=a.mode_button,
+        ),
+        DaikinBrcFahrenheitCommand.from_raw_timings,
     ),
     "HaierTundraCommand": _Factory(
         lambda a: HaierTundraCommand(
@@ -230,7 +281,13 @@ _FACTORIES: dict[str, _Factory] = {
     ),
     "AirtonCommand": _Factory(
         lambda a: AirtonCommand(
-            mode=a.mode, temperature=a.temperature, power=a.power, fan=a.fan
+            mode=a.mode,
+            temperature=a.temperature,
+            power=a.power,
+            fan=a.fan,
+            direction=AirtonDirection(a.direction),
+            display=a.display,
+            sleep=a.sleep,
         ),
         AirtonCommand.from_raw_timings,
     ),
@@ -251,6 +308,10 @@ _FACTORIES: dict[str, _Factory] = {
             power=a.power,
             fan=MitsubishiFan(a.native_fan),
             preset=MitsubishiPreset(a.preset),
+            fahrenheit=a.fahrenheit,
+            vertical_position=a.vertical_position,
+            horizontal_position=a.horizontal_position,
+            dual_vanes=a.dual_vanes,
             swing_v=a.swing_v,
             swing_h=a.swing_h,
         ),
@@ -263,6 +324,7 @@ _FACTORIES: dict[str, _Factory] = {
             fan=a.fan,
             power_toggle=a.power_toggle,
             off_command=a.off_command,
+            swing_toggle=a.swing_toggle,
         ),
         WhirlpoolCommand.from_raw_timings,
     ),
@@ -317,6 +379,7 @@ _FACTORIES: dict[str, _Factory] = {
             fan=a.fan,
             swing_v=a.swing_v,
             swing_h=a.swing_h,
+            economy=a.economy,
         ),
         PdPioneerClimateCommand.from_raw_timings,
     ),
@@ -377,9 +440,31 @@ def _gree_factory(model: GreeModel) -> _Factory:
             fan=a.fan,
             swing_v=a.swing_v,
             swing_h=a.swing_h,
+            fahrenheit=a.fahrenheit,
+            sleep=a.sleep,
+            features=GreeFeature(a.features) if a.features is not None else None,
         ),
         partial(GreeModelCommand.from_raw_timings, model=model),
     )
+
+
+def _whirlpool_factory(cls: type[WhirlpoolCommand]) -> _Factory:
+    return _Factory(
+        lambda a: cls(
+            mode=a.mode,
+            temperature=int(a.temperature),
+            fan=a.fan,
+            power_toggle=a.power_toggle,
+            off_command=a.off_command,
+            swing_toggle=a.swing_toggle,
+            swing_v=a.swing_v if cls.HISENSE else None,
+        ),
+        cls.from_raw_timings,
+    )
+
+
+for _whirlpool_class in (WhirlpoolDg11j191Command, HisenseArgCommand):
+    _FACTORIES[_whirlpool_class.__name__] = _whirlpool_factory(_whirlpool_class)
 
 
 for _model in GreeModel:

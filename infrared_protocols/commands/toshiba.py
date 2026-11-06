@@ -146,6 +146,8 @@ class ToshibaCommand(Command):
                 raise ValueError("unknown Toshiba motion format")
             ToshibaMotion(self.data[5])
             return ClimateState()
+        if len(self.data) == 9 and self.data[4] != 1:
+            raise ValueError("not a Toshiba climate command")
         mode_code = self.data[6] & 15
         power = mode_code != 7
         mode = decoded(mode_code, _MODES) if power else None
@@ -155,9 +157,7 @@ class ToshibaCommand(Command):
         fan_code = self.data[6] >> 5
         if fan_code > 6 or self.data[6] & 16 or self.data[5] & 15:
             raise ValueError("invalid Toshiba fan or temperature field")
-        fan = {3: ToshibaFan.LOW_PLUS, 5: ToshibaFan.MEDIUM_PLUS}.get(fan_code)
-        if fan is None:
-            fan = decoded(fan_code, _FANS)
+        fan = ToshibaFan(fan_code)
         return ClimateState(power=power, mode=mode, temperature=temp, fan=fan)
 
     @override

@@ -2,16 +2,12 @@
 
 from ._packet import PacketCommand
 from ._timing import PulseTiming
-from .pd_pioneer import PdPioneerCommand
 
 
-class PioneerWytCommand(PdPioneerCommand):
+class PioneerWytCommand(PacketCommand):
     """Pioneer WYT transport with unrestricted application bytes."""
 
-    def __init__(self, *, data: bytes, modulation: int = 38000) -> None:
-        """Accept any 13-byte WYT payload."""
-        PacketCommand.__init__(self, data=data, modulation=modulation)
-
+    LENGTHS = (13,)
     HEADER = (3100, -1650)
     TIMING = PulseTiming(500, 350, 1100)
     GAP = 0

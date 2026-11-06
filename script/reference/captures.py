@@ -36,6 +36,6 @@ def toshiba_states(source: Path) -> list[dict[str, object]]:
                 "power_selection": int(power or 0),
             }
         )
-    if not result:
-        raise ValueError("local checkout has no recorded WH-TA15PE states")
+    if not result or len(result) != table.count("{{"):
+        raise ValueError("recorded WH-TA15PE table contains unsupported rows")
     return result

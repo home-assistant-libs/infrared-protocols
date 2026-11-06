@@ -1,5 +1,7 @@
 """Tests for the Pioneer IR command encoder."""
 
+from itertools import product
+
 import pytest
 
 from infrared_protocols.commands.nec import NECCommand
@@ -145,3 +147,91 @@ def test_pioneer_command_rejects_out_of_range(kwargs: dict[str, int]) -> None:
     """Pioneer addresses and commands are all 8-bit."""
     with pytest.raises(ValueError):
         PioneerCommand(**kwargs)
+
+
+_DECODE_CASES = [
+    pytest.param(command, id=type(command).__name__ + "-" + str(vars(command)))
+    for command in [
+        *[
+            PioneerCommand(
+                address=165,
+                command=128,
+                preamble_address=a,
+                preamble_command=c,
+                repeat_count=r,
+            )
+            for a, c, r in product((0, 255), (0, 255), (0, 2))
+        ]
+    ]
+]
+
+
+@pytest.mark.parametrize(
+    "preamble_address,preamble_command,clipped",
+    [
+        pytest.param(None, None, 10, id="single-partial-third-frame"),
+        pytest.param(1, 3, 10, id="two-part-partial-button-repeat"),
+        pytest.param(1, 3, 78, id="two-part-partial-preamble-repeat"),
+    ],
+)
+def test_pioneer_clipped_final_repeat(
+    preamble_address: int | None, preamble_command: int | None, clipped: int
+) -> None:
+    """A valid command survives truncation of its last repeated frame."""
+    sent = PioneerCommand(
+        address=7,
+        command=2,
+        preamble_address=preamble_address,
+        preamble_command=preamble_command,
+        repeat_count=2,
+    )
+    received = PioneerCommand.from_raw_timings(sent.get_raw_timings()[:-clipped])
+    assert received is not None
+    assert (received.address, received.command) == (7, 2)
+    assert received.preamble_address == sent.preamble_address
+
+
+@pytest.mark.parametrize("repeat_count", [0, 2])
+def test_pioneer_single_frame(repeat_count: int) -> None:
+    """Pioneer commands without a preamble decode independently of two-part commands."""
+    from infrared_protocols.commands.pioneer import PioneerCommand
+
+    sent = PioneerCommand(address=0xA5, command=0x80, repeat_count=repeat_count)
+    received = PioneerCommand.from_raw_timings(sent.get_raw_timings())
+    assert received is not None
+    assert (received.address, received.command, received.repeat_count) == (
+        0xA5,
+        0x80,
+        repeat_count,
+    )
+    assert received.preamble_address is None
+    assert received.preamble_command is None
+
+
+@pytest.mark.parametrize("command", _DECODE_CASES)
+def test_decoder_round_trip_fields(command: PioneerCommand) -> None:
+    """Decode edge-valued fields and preserve their protocol meaning."""
+    raw = command.get_raw_timings()
+    result = type(command).from_raw_timings(raw)
+    assert result is not None
+    assert result.get_raw_timings() == raw
+    assert result.address == command.address
+    assert result.command == command.command
+    assert result.preamble_address == command.preamble_address
+    assert result.preamble_command == command.preamble_command
+    assert result.repeat_count == command.repeat_count
+
+
+@pytest.mark.parametrize("command", _DECODE_CASES)
+@pytest.mark.parametrize("prefix", [0, 1, 5])
+def test_decoder_truncated(command: PioneerCommand, prefix: int) -> None:
+    """A partial leader or payload cannot be a complete command."""
+    assert type(command).from_raw_timings(command.get_raw_timings()[:prefix]) is None
+
+
+def test_clipped_button_frame_is_not_a_preamble_command() -> None:
+    """A partial second part must not turn a preamble into a different button."""
+    sent = PioneerCommand(
+        address=0xA5, command=0x10, preamble_address=0xA5, preamble_command=0x99
+    )
+    assert PioneerCommand.from_raw_timings(sent.get_raw_timings()[:-10]) is None

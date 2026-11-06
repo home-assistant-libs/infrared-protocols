@@ -82,6 +82,8 @@ class MideaCommand(Command):
             temperature, 62 if fahrenheit else 17, 86 if fahrenheit else 30
         )
         mode_code = selection(mode, _MODES)
+        if not power:
+            mode, mode_code = ClimateMode.AUTO, _MODES[ClimateMode.AUTO]
         fan_code = selection(fan, _FANS)
         flags = (128 if power else 0) | (64 if sleep else 0) | fan_code << 3 | mode_code
         if fan_code == 0 and mode in (
@@ -111,6 +113,16 @@ class MideaCommand(Command):
         return bool(self.data[1] & 64) if self.data[0] == 0xA1 else None
 
     @property
+    def follow_me_temperature(self) -> int | None:
+        """Return the sensor report's Celsius temperature, when present."""
+        return self.data[4] - 1 if self.data[0] == 0xA4 else None
+
+    @property
+    def follow_me_beeper(self) -> bool | None:
+        """Return the sensor report's beeper flag, when present."""
+        return bool(self.data[3] & 128) if self.data[0] == 0xA4 else None
+
+    @property
     def state(self) -> ClimateState | None:
         """Read control state; special and sensor packets have no climate state."""
         if self.data[0] != 0xA1:
@@ -126,7 +138,7 @@ class MideaCommand(Command):
                 return None
         return ClimateState(
             power=bool(self.data[1] & 128),
-            mode=mode,
+            mode=mode if self.data[1] & 128 else None,
             temperature=None if mode == ClimateMode.FAN_ONLY else temperature,
             fan=decoded(self.data[1] >> 3 & 3, _FANS),
         )
