@@ -336,6 +336,11 @@ class ToshibaRas2819Command(Toshiba48Command):
     @property
     def temperature_candidates(self) -> tuple[int, ...]:
         """Return all set points matching the code; dry mode has collisions."""
+        _ = self.state
+        return self._temperature_candidates()
+
+    def _temperature_candidates(self) -> tuple[int, ...]:
+        """Find set points after the caller validates the packet."""
         code = self.first[4]
         if code == 0xE4 and self.first[2] != 0x1F or self.second is None:
             return ()
@@ -367,7 +372,7 @@ class ToshibaRas2819Command(Toshiba48Command):
         expected = self._extension(ClimateMode.AUTO if first[2] == 0x1F else mode, fan)
         if second != expected:
             raise ValueError("inconsistent RAS-2819T extension")
-        candidates = self.temperature_candidates
+        candidates = self._temperature_candidates()
         if mode != ClimateMode.FAN_ONLY and not candidates:
             raise ValueError("invalid RAS-2819T temperature")
         return ClimateState(

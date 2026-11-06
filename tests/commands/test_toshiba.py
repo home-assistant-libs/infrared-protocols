@@ -429,3 +429,41 @@ def test_rac_native_properties_validate_extension(attribute: str) -> None:
     command.rc_code_2 ^= 1
     with pytest.raises(ValueError, match="extension checksum"):
         getattr(command, attribute)
+
+
+@pytest.mark.parametrize(
+    "extension",
+    [
+        pytest.param(0, id="invalid-extension"),
+        pytest.param(None, id="missing-extension"),
+    ],
+)
+def test_ras2819_temperature_candidates_validate_extension(
+    extension: int | None,
+) -> None:
+    """Candidate set points must not bypass the full packet validation."""
+    command = ToshibaRas2819Command.climate(mode=ClimateMode.COOL, temperature=24)
+    command.rc_code_2 = extension
+    with pytest.raises(ValueError):
+        _ = command.temperature_candidates
+
+
+@pytest.mark.parametrize(
+    "mode,expected",
+    [
+        pytest.param(ClimateMode.COOL, (24,), id="unique"),
+        pytest.param(ClimateMode.DRY, (21, 24), id="ambiguous"),
+        pytest.param(ClimateMode.FAN_ONLY, (), id="no-target"),
+    ],
+)
+def test_ras2819_temperature_candidates(
+    mode: ClimateMode, expected: tuple[int, ...]
+) -> None:
+    """Validation preserves unique, ambiguous and absent set points."""
+    command = ToshibaRas2819Command.climate(mode=mode, temperature=24)
+    assert command.temperature_candidates == expected
+
+
+def test_ras2819_off_has_no_temperature_candidates() -> None:
+    """An absent extension is valid for the standalone power-off command."""
+    assert ToshibaRas2819Command.power_off().temperature_candidates == ()
