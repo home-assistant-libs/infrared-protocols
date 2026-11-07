@@ -32,7 +32,7 @@ class MistralState:
 
     power: bool | None = None
     mode: MistralMode | None = None
-    temperature: float | None = None
+    temperature: int | None = None
     fan: MistralFanSpeed | None = None
 
 
@@ -45,7 +45,7 @@ class MistralCommand(AehaClimatePacket[MistralState]):
         self,
         *,
         mode: MistralMode,
-        temperature: float,
+        temperature: int,
         power: bool = True,
         fan: MistralFanSpeed = MistralFanSpeed.AUTO,
     ) -> None:

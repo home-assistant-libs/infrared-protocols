@@ -2,6 +2,7 @@
 
 import pytest
 
+from infrared_protocols.commands.gree_ac import GreeAcCommand
 from infrared_protocols.commands.gree_models import (
     GreeAcFanSpeed,
     GreeAcMode,
@@ -243,7 +244,7 @@ def test_yx1ff_native_fan(fan: GreeYx1ffFanSpeed) -> None:
     command = GreeModelCommand(
         model=GreeModel.YX1FF, mode=GreeAcMode.COOL, temperature=24, fan=fan
     )
-    assert (command.data[0] >> 4 & 3) | (command.data[2] & 16) == int(fan)
+    assert (command.data[0] >> 4 & 3) | (command.data[2] & 16) == fan.value
     received = GreeModelCommand.from_raw_timings(
         command.get_raw_timings(), model=GreeModel.YX1FF
     )
@@ -262,5 +263,44 @@ def test_wrong_model_fan(
     model: GreeModel, fan: GreeAcFanSpeed | GreeYx1ffFanSpeed
 ) -> None:
     """Overlapping enum integers must not reinterpret another model's fan setting."""
-    with pytest.raises(ValueError, match="requires"):
+    with pytest.raises(TypeError, match="requires"):
         GreeModelCommand(model=model, mode=GreeAcMode.COOL, temperature=24, fan=fan)
+
+
+def test_model_fan_mapping_keys() -> None:
+    """A consumer can map both models without silently replacing another key."""
+    mapping = {fan: fan.name for fan in (*GreeAcFanSpeed, *GreeYx1ffFanSpeed)}
+    assert len(mapping) == 9
+    assert mapping[GreeAcFanSpeed.LOW] == "LOW"
+    assert mapping[GreeYx1ffFanSpeed.QUIET] == "QUIET"
+    assert mapping[GreeAcFanSpeed.HIGH] == "HIGH"
+    assert mapping[GreeYx1ffFanSpeed.MEDIUM] == "MEDIUM"
+
+
+def test_explicit_gree_layout_selection() -> None:
+    """Identical frames have different vane semantics on YAN and YB1F2."""
+    sent = GreeModelCommand(
+        model=GreeModel.YAN, mode=GreeAcMode.COOL, temperature=24, swing_v=True
+    )
+    yan = GreeModelCommand.from_raw_timings(sent.get_raw_timings(), model=GreeModel.YAN)
+    yb1f2 = GreeAcCommand.from_raw_timings(sent.get_raw_timings())
+    assert yan is not None
+    assert yb1f2 is not None
+    assert yan.state.swing_v is True
+    assert yb1f2.swing_v is False
+
+
+def test_gree_power_off_layouts() -> None:
+    """The captured YB1F2 keeps its mode; the named model encoder clears it."""
+    captured = GreeAcCommand(mode=GreeAcMode.HEAT, temperature=24, power=False)
+    variant = GreeModelCommand(
+        model=GreeModel.YAN, mode=GreeAcMode.HEAT, temperature=24, power=False
+    )
+    yb1f2 = GreeAcCommand.from_raw_timings(captured.get_raw_timings())
+    yan = GreeModelCommand.from_raw_timings(
+        variant.get_raw_timings(), model=GreeModel.YAN
+    )
+    assert yb1f2 is not None
+    assert yan is not None
+    assert yb1f2.mode is GreeAcMode.HEAT
+    assert yan.state.mode is None

@@ -2,7 +2,6 @@
 
 import pytest
 
-from infrared_protocols.commands._climate import ClimatePacket
 from infrared_protocols.commands.delonghi import (
     DelonghiCommand,
     DelonghiFanSpeed,
@@ -126,8 +125,14 @@ def test_invalid_fahrenheit(temperature: int) -> None:
 )
 def test_native_feature_bits(packet: str, boost: bool, sleep: bool) -> None:
     """Feature flags in received packets do not alter the mode or unit."""
-    sent = DelonghiCommand.__new__(DelonghiCommand)
-    ClimatePacket.__init__(sent, data=bytes.fromhex(packet))
+    sent = DelonghiCommand(
+        mode=DelonghiMode.COOL,
+        temperature=80,
+        is_fahrenheit=True,
+        boost=boost,
+        sleep=sleep,
+    )
+    assert sent.data == bytes.fromhex(packet)
     received = DelonghiCommand.from_raw_timings(sent.get_raw_timings())
     assert received is not None
     assert received.data == bytes.fromhex(packet)
@@ -135,3 +140,12 @@ def test_native_feature_bits(packet: str, boost: bool, sleep: bool) -> None:
     assert received.sleep is sleep
     assert received.state.mode is DelonghiMode.COOL
     assert received.state.is_fahrenheit is True
+    rebuilt = DelonghiCommand(
+        mode=DelonghiMode.COOL,
+        temperature=81,
+        is_fahrenheit=received.state.is_fahrenheit,
+        boost=received.boost,
+        sleep=received.sleep,
+    )
+    assert rebuilt.data[2] == received.data[2]
+    assert rebuilt.state.temperature == 81

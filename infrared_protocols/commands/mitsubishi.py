@@ -63,7 +63,7 @@ class MitsubishiCommand(ClimatePacket[MitsubishiState]):
         self,
         *,
         mode: MitsubishiMode,
-        temperature: float,
+        temperature: float | None = None,
         power: bool = True,
         fahrenheit_compatibility: bool = False,
         fan: MitsubishiFanSpeed = MitsubishiFanSpeed.AUTO,
@@ -81,8 +81,18 @@ class MitsubishiCommand(ClimatePacket[MitsubishiState]):
         With fahrenheit_compatibility=True, temperature is 61..88 °F and uses
         the remote's lookup table. Decoded state reports the wire Celsius value.
         """
-        if fahrenheit_compatibility:
-            temperature_value(temperature, 61, 88)
+        if temperature is not None:
+            temperature_value(
+                temperature,
+                61 if fahrenheit_compatibility else 16,
+                88 if fahrenheit_compatibility else 31,
+                1 if fahrenheit_compatibility else 0.5,
+            )
+        if mode == MitsubishiMode.DRY:
+            temperature = 24
+        elif temperature is None:
+            raise ValueError("temperature is required for this mode")
+        elif fahrenheit_compatibility:
             codes = (
                 0x00, 0x10, 0x01, 0x11, 0x02, 0x12, 0x03, 0x04,
                 0x05, 0x15, 0x06, 0x16, 0x07, 0x17, 0x08, 0x18,
@@ -91,8 +101,6 @@ class MitsubishiCommand(ClimatePacket[MitsubishiState]):
             )  # fmt: skip
             code = codes[int(temperature) - 61]
             temperature = 16 + (code & 15) + (0.5 if code & 16 else 0)
-        else:
-            temperature_value(temperature, 16, 31, 0.5)
         if not 0 <= vertical_position <= 5 or horizontal_position not in (
             1,
             2,
@@ -103,8 +111,7 @@ class MitsubishiCommand(ClimatePacket[MitsubishiState]):
         ):
             raise ValueError("invalid Mitsubishi vane position")
         mode_code = int(MitsubishiMode(mode))
-        effective_temp = 24 if mode == MitsubishiMode.DRY else temperature
-        temp_code = int(effective_temp) - 16 | (16 if effective_temp % 1 else 0)
+        temp_code = int(temperature) - 16 | (16 if temperature % 1 else 0)
         mode_aux = {MitsubishiMode.HEAT: 0, MitsubishiMode.DRY: 2}.get(mode, 6)
         vane_fan = (
             int(MitsubishiFanSpeed(fan))

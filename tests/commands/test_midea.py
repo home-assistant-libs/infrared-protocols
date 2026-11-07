@@ -157,10 +157,6 @@ def test_native_temperature(temperature: int, is_fahrenheit: bool) -> None:
     assert received.state is not None
     assert received.state.is_fahrenheit is is_fahrenheit
     assert received.state.temperature == temperature
-    assert received.state is not None
-    assert received.state.temperature == temperature
-    assert received.state is not None
-    assert received.state.is_fahrenheit is is_fahrenheit
 
 
 @pytest.mark.parametrize(

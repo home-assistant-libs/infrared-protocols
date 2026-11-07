@@ -534,7 +534,72 @@ def test_rac_rejects_alternate_auto_in_cool() -> None:
 
 def test_ras2819_rejects_ambiguous_fan_only() -> None:
     """Fan-only with code 0x1F is indistinguishable from a dry-mode command."""
-    with pytest.raises(ValueError, match="ambiguous"):
+    with pytest.raises(ValueError, match="AUTO_ALT"):
         ToshibaRas2819Command.climate(
             mode=Toshiba48Mode.FAN_ONLY, temperature=24, fan=Toshiba48FanSpeed.AUTO_ALT
         )
+
+
+def test_ras2819_rejects_alternate_heat() -> None:
+    """The alternate auto prefix identifies auto, dry or low-temperature cool."""
+    with pytest.raises(ValueError, match="AUTO_ALT"):
+        ToshibaRas2819Command.climate(
+            mode=Toshiba48Mode.HEAT, temperature=24, fan=Toshiba48FanSpeed.AUTO_ALT
+        )
+    with pytest.raises(ValueError, match="AUTO_ALT"):
+        ToshibaRas2819Command(
+            first=bytes.fromhex("c23d1fe04cb3"), second=bytes.fromhex("d5650000003a")
+        )
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [
+        pytest.param(ToshibaRacCommand, id="rac"),
+        pytest.param(ToshibaRas2819Command, id="ras2819"),
+    ],
+)
+def test_fan_only_without_setpoint(
+    factory: type[ToshibaRacCommand] | type[ToshibaRas2819Command],
+) -> None:
+    """Fan-only commands can be rebuilt from decoded state without a setpoint."""
+    sent = factory.climate(mode=Toshiba48Mode.FAN_ONLY)
+    received = factory.from_raw_timings(sent.get_raw_timings())
+    assert received is not None
+    state = received.state
+    assert state.temperature is None
+    assert state.mode is not None
+    rebuilt = factory.climate(
+        mode=state.mode, temperature=state.temperature, fan=state.fan
+    )
+    assert rebuilt.get_raw_timings() == received.get_raw_timings()
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [
+        pytest.param(ToshibaRacCommand, id="rac"),
+        pytest.param(ToshibaRas2819Command, id="ras2819"),
+    ],
+)
+def test_required_climate_temperature(
+    factory: type[ToshibaRacCommand] | type[ToshibaRas2819Command],
+) -> None:
+    """Cooling cannot encode an absent target temperature."""
+    with pytest.raises(ValueError, match="temperature"):
+        factory.climate(mode=Toshiba48Mode.COOL)
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [
+        pytest.param(ToshibaRacCommand, id="rac"),
+        pytest.param(ToshibaRas2819Command, id="ras2819"),
+    ],
+)
+def test_invalid_placeholder_temperature(
+    factory: type[ToshibaRacCommand] | type[ToshibaRas2819Command],
+) -> None:
+    """Fan-only accepts None, but rejects an invalid explicit target."""
+    with pytest.raises(ValueError, match="temperature"):
+        factory.climate(mode=Toshiba48Mode.FAN_ONLY, temperature=99)

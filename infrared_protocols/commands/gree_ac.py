@@ -1,4 +1,8 @@
-"""Gree air-conditioner IR protocol.
+"""Gree air-conditioner IR protocol for the captured YB1F2 layout.
+
+This API preserves the remote's latched swing axes and mode on power-off.
+For the other named remote layouts, select GreeModelCommand with an explicit
+GreeModel. Similar framing does not imply identical field semantics.
 
 A 9000/4500 leader, 620 marks, and 540 and 1600 spaces. Remotes vary around these
 values, so the decoder matches bits with a window wide enough to also take a 562

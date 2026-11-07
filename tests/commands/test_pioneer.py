@@ -235,3 +235,15 @@ def test_clipped_button_frame_is_not_a_preamble_command() -> None:
         address=0xA5, command=0x10, preamble_address=0xA5, preamble_command=0x99
     )
     assert PioneerCommand.from_raw_timings(sent.get_raw_timings()[:-10]) is None
+
+
+@pytest.mark.parametrize(
+    "length", [pytest.param(4, id="first-bit"), pytest.param(50, id="payload")]
+)
+def test_pioneer_alternation(length: int) -> None:
+    """A clipped preamble cannot replace the button part of the next repeat."""
+    command = PioneerCommand(
+        address=7, command=2, preamble_address=2, preamble_command=3, repeat_count=1
+    )
+    raw = command.get_raw_timings()
+    assert PioneerCommand.from_raw_timings(raw[:-67] + raw[:length]) is None

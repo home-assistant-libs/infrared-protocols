@@ -67,8 +67,8 @@ class PdPioneerClimateCommand(ClimatePacket[PdPioneerClimateState]):
     def __init__(
         self,
         *,
-        mode: PdPioneerClimateMode,
-        temperature: float,
+        mode: PdPioneerClimateMode | None,
+        temperature: float | None = None,
         power: bool = True,
         fan: PdPioneerClimateFanSpeed = PdPioneerClimateFanSpeed.AUTO,
         swing_v: bool = False,
@@ -76,7 +76,14 @@ class PdPioneerClimateCommand(ClimatePacket[PdPioneerClimateState]):
         economy: bool = False,
     ) -> None:
         """Build a whole state, including half-degree set points from 16..31 °C."""
-        temperature_value(temperature, 16, 31, 0.5)
+        if temperature is not None:
+            temperature_value(temperature, 16, 31, 0.5)
+        if not power:
+            temperature = 19
+        elif mode == PdPioneerClimateMode.FAN_ONLY:
+            temperature = 20
+        if temperature is None:
+            raise ValueError("temperature is required for this mode")
         fan_code = int(PdPioneerClimateFanSpeed(fan))
         odd_fan = _ODD_FANS[fan]
         odd = bytes(
@@ -95,13 +102,7 @@ class PdPioneerClimateCommand(ClimatePacket[PdPioneerClimateState]):
                 0,
             ]
         )
-        target = (
-            19
-            if not power
-            else 20
-            if mode == PdPioneerClimateMode.FAN_ONLY
-            else temperature
-        )
+        target = temperature
         even = bytes(
             [
                 0x23,

@@ -1,7 +1,7 @@
 """Gree remote-model variants, alongside the original GreeAcCommand API."""
 
 from dataclasses import dataclass
-from enum import IntEnum, IntFlag, StrEnum
+from enum import Enum, IntFlag, StrEnum
 from typing import Self, override
 
 from . import Command
@@ -10,7 +10,7 @@ from ._timing import PulseTiming, Reader, byte_bits, pack_bytes
 from .gree_ac import GreeAcFanSpeed, GreeAcMode
 
 
-class GreeYx1ffFanSpeed(IntEnum):
+class GreeYx1ffFanSpeed(Enum):
     """YX1FF fan bits, with the byte-2 turbo bit included for high speed."""
 
     AUTO = 0
@@ -97,9 +97,14 @@ def _checksum(data: bytes | bytearray) -> int:
 class GreeModelCommand(Command):
     """Named remote variants, separate from GreeAcCommand's captured layout.
 
+    Use GreeAcCommand for the captured YB1F2 layout, including latched swing
+    axes and a retained power-off mode. This class covers the named GreeModel
+    layouts and clears mode bits on power-off. GENERIC is the legacy basic
+    layout, not automatic model detection or a fallback for every Gree remote.
+
     YAC/YAG/YAW1F use absolute vane fields, YB1FA/YX1FF gate them with the
-    swing-enable bit, and legacy models accept either swing representation.
-    Select the configured remote model; overlapping captures cannot identify it.
+    swing-enable bit, and GENERIC/YAN/YAA/YAC1FB9 accept either representation.
+    The configured remote selects the decoder; shared framing cannot identify it.
     """
 
     def __init__(
@@ -144,15 +149,15 @@ class GreeModelCommand(Command):
             fan = GreeAcFanSpeed.HIGH
         if model == GreeModel.YX1FF:
             if fan is not None and not isinstance(fan, GreeYx1ffFanSpeed):
-                raise ValueError("YX1FF requires GreeYx1ffFanSpeed")
+                raise TypeError("YX1FF requires GreeYx1ffFanSpeed")
             fan = GreeYx1ffFanSpeed.AUTO if fan is None else fan
         else:
             if fan is not None and not isinstance(fan, GreeAcFanSpeed):
-                raise ValueError("this model requires GreeAcFanSpeed")
+                raise TypeError("this model requires GreeAcFanSpeed")
             fan = GreeAcFanSpeed.AUTO if fan is None else fan
         data = bytearray(
             [
-                (int(fan) & 3) << 4 | (int(GreeAcMode(mode)) | 8 if power else 0),
+                (fan.value & 3) << 4 | (int(GreeAcMode(mode)) | 8 if power else 0),
                 int(temperature) - 16,
                 feature_bits | layout.byte2,
                 layout.byte3,

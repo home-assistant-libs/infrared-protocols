@@ -129,3 +129,31 @@ def test_all_fan_levels_use_native_enum(fan: MitsubishiFanSpeed) -> None:
     """A family does not switch fan enum types when its level changes."""
     command = MitsubishiCommand(mode=MitsubishiMode.COOL, temperature=24, fan=fan)
     assert command.state.fan is fan
+
+
+def test_placeholder_state_rebuild() -> None:
+    """A decoded placeholder can be sent back without inventing a setpoint."""
+    sent = MitsubishiCommand(mode=MitsubishiMode.DRY)
+    received = MitsubishiCommand.from_raw_timings(sent.get_raw_timings())
+    assert received is not None
+    state = received.state
+    assert state.temperature is None
+    assert state.mode is not None
+    assert state.fan is not None
+    rebuilt = MitsubishiCommand(
+        mode=state.mode, temperature=state.temperature, fan=state.fan
+    )
+    assert rebuilt.get_raw_timings() == received.get_raw_timings()
+
+
+def test_required_setpoint() -> None:
+    """Cooling carries a target and cannot use the placeholder."""
+    with pytest.raises(ValueError, match="temperature"):
+        MitsubishiCommand(mode=MitsubishiMode.COOL)
+
+
+@pytest.mark.parametrize("temperature", [0, 99])
+def test_invalid_placeholder_temperature(temperature: int) -> None:
+    """An omitted target is valid, but an explicitly invalid target still fails."""
+    with pytest.raises(ValueError, match="temperature"):
+        MitsubishiCommand(mode=MitsubishiMode.DRY, temperature=temperature)

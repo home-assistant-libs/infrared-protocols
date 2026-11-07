@@ -34,7 +34,7 @@ class Zhlt01State:
 
     power: bool | None = None
     mode: Zhlt01Mode | None = None
-    temperature: float | None = None
+    temperature: int | None = None
     fan: Zhlt01FanSpeed | None = None
     swing_v: bool | None = None
     swing_h: bool | None = None
@@ -51,7 +51,7 @@ class Zhlt01Command(ClimatePacket[Zhlt01State]):
         self,
         *,
         mode: Zhlt01Mode,
-        temperature: float,
+        temperature: int,
         power: bool = True,
         fan: Zhlt01FanSpeed = Zhlt01FanSpeed.AUTO,
         swing_v: bool = False,

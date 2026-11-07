@@ -33,7 +33,7 @@ class NoblexState:
 
     power: bool | None = None
     mode: NoblexMode | None = None
-    temperature: float | None = None
+    temperature: int | None = None
     fan: NoblexFanSpeed | None = None
     swing_v: bool | None = None
 
@@ -62,7 +62,7 @@ class NoblexCommand(SplitClimateCommand[NoblexState]):
         self,
         *,
         mode: NoblexMode,
-        temperature: int,
+        temperature: int | None = None,
         power: bool = True,
         fan: NoblexFanSpeed = NoblexFanSpeed.AUTO,
         swing_v: bool = False,
@@ -72,7 +72,11 @@ class NoblexCommand(SplitClimateCommand[NoblexState]):
         ESPHome's transmitter currently ORs mode into a cool template, which
         changes auto/dry/heat codes. Here the mode field is assigned explicitly.
         """
-        temp = temperature_value(temperature, 16, 30)
+        temp = None if temperature is None else temperature_value(temperature, 16, 30)
+        if power and mode == NoblexMode.AUTO:
+            temp = 9
+        if temp is None:
+            raise ValueError("temperature is required for this mode")
         code = int(NoblexMode(mode)) if power else 4
         data = bytes(
             [
@@ -80,7 +84,7 @@ class NoblexCommand(SplitClimateCommand[NoblexState]):
                 | (16 if power else 0)
                 | int(NoblexFanSpeed(fan)) << 2
                 | (2 if swing_v else 0),
-                _reverse(9 if power and mode == NoblexMode.AUTO else temp),
+                _reverse(temp),
                 2 if power else 0,
                 10,
                 0x58 if swing_v else 0x50,

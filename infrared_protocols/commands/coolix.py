@@ -105,13 +105,17 @@ class CoolixCommand(Command):
         cls,
         *,
         mode: CoolixMode,
-        temperature: int,
+        temperature: int | None = None,
         fan: CoolixFanSpeed | None = None,
         sensor_temperature: int | None = None,
         zone_follow: bool = False,
     ) -> Self:
         """Build an on-state; power off and swing use separate button commands."""
-        temp = temperature_value(temperature, 17, 30)
+        temp = None if temperature is None else temperature_value(temperature, 17, 30)
+        if mode == CoolixMode.FAN_ONLY:
+            temp = 0
+        if temp is None:
+            raise ValueError("temperature is required for this mode")
         mode_code = selection(mode, _MODES)
         if fan is None:
             fan = (
@@ -119,6 +123,11 @@ class CoolixCommand(Command):
                 if mode in (CoolixMode.AUTO, CoolixMode.DRY)
                 else CoolixFanSpeed.AUTO
             )
+        auto = mode in (CoolixMode.AUTO, CoolixMode.DRY)
+        if auto and fan == CoolixFanSpeed.AUTO:
+            raise ValueError("auto and dry modes require AUTO_ALT instead of AUTO")
+        if not auto and fan == CoolixFanSpeed.AUTO_ALT:
+            raise ValueError("AUTO_ALT fan is only available in auto and dry modes")
         fan_code = int(CoolixFanSpeed(fan))
         temp_code = 14 if mode == CoolixMode.FAN_ONLY else _TEMPERATURES[temp]
         sensor = (

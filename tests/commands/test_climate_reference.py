@@ -3,7 +3,7 @@
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
-from enum import IntEnum
+from enum import Enum, IntEnum
 from functools import partial
 from pathlib import Path
 from typing import NamedTuple, Protocol
@@ -185,7 +185,7 @@ class _State(Protocol):
         ...
 
     @property
-    def fan(self) -> IntEnum | None:
+    def fan(self) -> Enum | None:
         """Return the decoded fan."""
         ...
 
@@ -246,7 +246,7 @@ _FACTORIES: dict[str, _Factory] = {
     "BalluCommand": _Factory(
         lambda a: BalluCommand(
             mode=BalluMode[a.mode],
-            temperature=a.temperature,
+            temperature=int(a.temperature),
             power=a.power,
             fan=BalluFanSpeed[a.fan],
             swing_v=a.swing_v,
@@ -257,7 +257,7 @@ _FACTORIES: dict[str, _Factory] = {
     "DelonghiCommand": _Factory(
         lambda a: DelonghiCommand(
             mode=DelonghiMode[a.mode],
-            temperature=a.temperature,
+            temperature=int(a.temperature),
             power=a.power,
             fan=DelonghiFanSpeed[a.fan],
         ),
@@ -276,7 +276,7 @@ _FACTORIES: dict[str, _Factory] = {
     "Zhlt01Command": _Factory(
         lambda a: Zhlt01Command(
             mode=Zhlt01Mode[a.mode],
-            temperature=a.temperature,
+            temperature=int(a.temperature),
             power=a.power,
             fan=Zhlt01FanSpeed[a.fan],
             swing_v=a.swing_v,
@@ -317,7 +317,7 @@ _FACTORIES: dict[str, _Factory] = {
     "MistralCommand": _Factory(
         lambda a: MistralCommand(
             mode=MistralMode[a.mode],
-            temperature=a.temperature,
+            temperature=int(a.temperature),
             power=a.power,
             fan=MistralFanSpeed[a.fan],
         ),
@@ -352,7 +352,7 @@ _FACTORIES: dict[str, _Factory] = {
     "HaierTundraCommand": _Factory(
         lambda a: HaierTundraCommand(
             mode=HaierTundraMode[a.mode],
-            temperature=a.temperature,
+            temperature=int(a.temperature),
             power=a.power,
             fan=HaierTundraFanSpeed[a.fan],
             swing_v=a.swing_v,
@@ -363,7 +363,7 @@ _FACTORIES: dict[str, _Factory] = {
     "AirtonCommand": _Factory(
         lambda a: AirtonCommand(
             mode=AirtonMode[a.mode],
-            temperature=a.temperature,
+            temperature=int(a.temperature),
             power=a.power,
             fan=AirtonFanSpeed[a.fan],
             direction=AirtonDirection(a.direction),

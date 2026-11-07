@@ -33,7 +33,7 @@ class EmmetiState:
 
     power: bool | None = None
     mode: EmmetiMode | None = None
-    temperature: float | None = None
+    temperature: int | None = None
     fan: EmmetiFanSpeed | None = None
     swing_v: bool | None = None
 

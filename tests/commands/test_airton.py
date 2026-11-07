@@ -2,7 +2,6 @@
 
 import pytest
 
-from infrared_protocols.commands._climate import ClimatePacket
 from infrared_protocols.commands.airton import (
     AirtonCommand,
     AirtonDirection,
@@ -94,22 +93,66 @@ def test_native_intermediate_fan(fan: AirtonFanSpeed, packet: str) -> None:
 @pytest.mark.parametrize(
     "packet,turbo,economy,health",
     [
-        pytest.param("d311090800842a", False, False, False, id="False-False-False"),
-        pytest.param("d31189080084aa", True, False, False, id="True-False-False"),
-        pytest.param("d3110908008529", False, True, False, id="False-True-False"),
-        pytest.param("d311090800c4ea", False, False, True, id="False-False-True"),
-        pytest.param("d311890800c569", True, True, True, id="True-True-True"),
+        pytest.param("d311090800842a", False, False, False, id="none"),
+        pytest.param("d31189080084aa", True, False, False, id="turbo"),
+        pytest.param("d3110908008529", False, True, False, id="economy"),
+        pytest.param("d311090800c4ea", False, False, True, id="health"),
+        pytest.param("d311890800c569", True, True, True, id="all"),
     ],
 )
 def test_native_auxiliary_bits(
     packet: str, turbo: bool, economy: bool, health: bool
 ) -> None:
     """Independent auxiliary bits remain available on received handheld packets."""
-    sent = AirtonCommand.__new__(AirtonCommand)
-    ClimatePacket.__init__(sent, data=bytes.fromhex(packet))
+    sent = AirtonCommand(
+        mode=AirtonMode.COOL,
+        temperature=24,
+        turbo=turbo,
+        economy=economy,
+        health=health,
+    )
+    assert sent.data == bytes.fromhex(packet)
     received = AirtonCommand.from_raw_timings(sent.get_raw_timings())
     assert received is not None
     assert received.data == bytes.fromhex(packet)
     assert received.turbo is turbo
     assert received.economy is economy
     assert received.health is health
+    rebuilt = AirtonCommand(
+        mode=AirtonMode.COOL,
+        temperature=25,
+        turbo=received.turbo,
+        economy=received.economy,
+        health=received.health,
+    )
+    assert rebuilt.data[2] == received.data[2]
+    assert rebuilt.data[5] == received.data[5]
+    assert rebuilt.state.temperature == 25
+
+
+def test_placeholder_state_rebuild() -> None:
+    """A decoded placeholder can be sent back without inventing a setpoint."""
+    sent = AirtonCommand(mode=AirtonMode.AUTO)
+    received = AirtonCommand.from_raw_timings(sent.get_raw_timings())
+    assert received is not None
+    state = received.state
+    assert state.temperature is None
+    assert state.mode is not None
+    assert state.fan is not None
+    rebuilt = AirtonCommand(
+        mode=state.mode, temperature=state.temperature, fan=state.fan
+    )
+    assert rebuilt.get_raw_timings() == received.get_raw_timings()
+
+
+def test_required_setpoint() -> None:
+    """Cooling carries a target and cannot use the placeholder."""
+    with pytest.raises(ValueError, match="temperature"):
+        AirtonCommand(mode=AirtonMode.COOL)
+
+
+@pytest.mark.parametrize("temperature", [0, 99])
+def test_invalid_placeholder_temperature(temperature: int) -> None:
+    """An omitted target is valid, but an explicitly invalid target still fails."""
+    with pytest.raises(ValueError, match="temperature"):
+        AirtonCommand(mode=AirtonMode.AUTO, temperature=temperature)

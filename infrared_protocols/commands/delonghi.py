@@ -49,10 +49,12 @@ class DelonghiCommand(ClimatePacket[DelonghiState]):
         self,
         *,
         mode: DelonghiMode,
-        temperature: float | None,
+        temperature: int | None,
         is_fahrenheit: bool = False,
         power: bool = True,
         fan: DelonghiFanSpeed = DelonghiFanSpeed.AUTO,
+        boost: bool = False,
+        sleep: bool = False,
     ) -> None:
         """Build a command: heat 13..27 °C, other modes 17..32 °C, or 64..90 °F.
 
@@ -80,7 +82,9 @@ class DelonghiCommand(ClimatePacket[DelonghiState]):
             [
                 0x53,
                 temp | int(DelonghiFanSpeed(fan)) << 5 | int(is_fahrenheit) << 7,
-                int(DelonghiMode(mode)) | 1 if power else 0,
+                (int(DelonghiMode(mode)) | 1 if power else 0)
+                | (16 if boost else 0)
+                | (32 if sleep else 0),
                 0,
                 0,
                 0,

@@ -38,7 +38,7 @@ class HitachiState:
 
     power: bool | None = None
     mode: HitachiMode | None = None
-    temperature: float | None = None
+    temperature: int | None = None
     fan: HitachiFanSpeed | None = None
     swing_v: bool | None = None
     swing_h: bool | None = None
@@ -139,6 +139,11 @@ class HitachiAc344Command(ClimatePacket[HitachiState]):
         for index in range(3, self.LENGTH, 2):
             data[index + 1] = data[index] ^ 255
         super().__init__(data=bytes(data))
+
+    @property
+    def horizontal_position(self) -> int:
+        """Return the native horizontal vane setting: 0 swings, 1..5 are fixed."""
+        return self.data[35] & 7
 
     @property
     def mildew_proof(self) -> bool:

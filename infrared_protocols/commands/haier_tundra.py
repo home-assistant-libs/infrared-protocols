@@ -33,7 +33,7 @@ class HaierTundraState:
 
     power: bool | None = None
     mode: HaierTundraMode | None = None
-    temperature: float | None = None
+    temperature: int | None = None
     fan: HaierTundraFanSpeed | None = None
     swing_v: bool | None = None
     swing_h: bool | None = None
@@ -76,7 +76,7 @@ class HaierTundraCommand(ClimatePacket[HaierTundraState]):
         self,
         *,
         mode: HaierTundraMode,
-        temperature: float,
+        temperature: int,
         power: bool = True,
         fan: HaierTundraFanSpeed = HaierTundraFanSpeed.AUTO,
         swing_v: bool = False,

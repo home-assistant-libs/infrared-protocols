@@ -24,4 +24,3 @@ def test_whynter_native_units(temperature: int, is_fahrenheit: bool) -> None:
     assert received is not None
     assert received.state.is_fahrenheit is is_fahrenheit
     assert received.state.temperature == temperature
-    assert received.state.is_fahrenheit is is_fahrenheit

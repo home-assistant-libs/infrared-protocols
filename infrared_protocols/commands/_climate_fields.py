@@ -2,9 +2,11 @@
 
 
 def temperature_value(
-    value: float, minimum: float, maximum: float, step: float = 1
+    value: float | None, minimum: float, maximum: float, step: float = 1
 ) -> int:
     """Validate a temperature and return its offset in steps."""
+    if value is None:
+        raise ValueError("temperature is required for this mode")
     if not minimum <= value <= maximum or (value - minimum) % step:
         raise ValueError(f"temperature must be {minimum}..{maximum} in steps of {step}")
     return round((value - minimum) / step)

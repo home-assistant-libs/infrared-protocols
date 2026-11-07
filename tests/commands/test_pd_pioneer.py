@@ -73,3 +73,41 @@ def test_fractional_temperature_limits(temperature: float) -> None:
     """Reject half-degree inputs outside the range and unsupported quarter degrees."""
     with pytest.raises(ValueError, match="temperature"):
         PdPioneerClimateCommand(mode=PdPioneerClimateMode.COOL, temperature=temperature)
+
+
+@pytest.mark.parametrize(
+    "mode,power",
+    [
+        pytest.param(PdPioneerClimateMode.FAN_ONLY, True, id="fan-only"),
+        pytest.param(None, False, id="off"),
+    ],
+)
+def test_placeholder_state_rebuild(
+    mode: PdPioneerClimateMode | None, power: bool
+) -> None:
+    """Neither fan-only nor shutdown carries a user-selected target."""
+    sent = PdPioneerClimateCommand(mode=mode, power=power)
+    received = PdPioneerClimateCommand.from_raw_timings(sent.get_raw_timings())
+    assert received is not None
+    state = received.state
+    assert state.temperature is None
+    assert state.power is not None
+    rebuilt = PdPioneerClimateCommand(
+        mode=state.mode, power=state.power, temperature=state.temperature
+    )
+    assert rebuilt.data == received.data
+
+
+def test_required_setpoint() -> None:
+    """Powered cooling needs a target in the even packet."""
+    with pytest.raises(ValueError, match="temperature"):
+        PdPioneerClimateCommand(mode=PdPioneerClimateMode.COOL)
+
+
+@pytest.mark.parametrize("power", [True, False])
+def test_invalid_placeholder_temperature(power: bool) -> None:
+    """Both fan-only and shutdown retain validation of explicit targets."""
+    with pytest.raises(ValueError, match="temperature"):
+        PdPioneerClimateCommand(
+            mode=PdPioneerClimateMode.FAN_ONLY, power=power, temperature=99
+        )

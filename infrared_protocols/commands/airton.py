@@ -35,7 +35,7 @@ class AirtonState:
 
     power: bool | None = None
     mode: AirtonMode | None = None
-    temperature: float | None = None
+    temperature: int | None = None
     fan: AirtonFanSpeed | None = None
     swing_v: bool | None = None
 
@@ -64,18 +64,30 @@ class AirtonCommand(ClimatePacket[AirtonState]):
         self,
         *,
         mode: AirtonMode,
-        temperature: float,
+        temperature: int | None = None,
         power: bool = True,
         fan: AirtonFanSpeed = AirtonFanSpeed.AUTO,
         direction: AirtonDirection = AirtonDirection.OFF,
         display: bool = True,
         sleep: bool = False,
+        turbo: bool = False,
+        economy: bool = False,
+        health: bool = True,
     ) -> None:
         """Build a state; automatic mode uses 25 °C and disallows sleep."""
-        temp = temperature_value(temperature, 16, 31)
+        temp = None if temperature is None else temperature_value(temperature, 16, 31)
+        if power and mode == AirtonMode.AUTO:
+            temp = 9
+        if temp is None:
+            raise ValueError("temperature is required for this mode")
         if sleep and mode in (AirtonMode.AUTO, AirtonMode.FAN_ONLY):
             raise ValueError("sleep is unavailable in automatic and fan-only modes")
-        settings = 0x40 | (128 if display else 0) | (2 if sleep else 0)
+        settings = (
+            (64 if health else 0)
+            | (128 if display else 0)
+            | (2 if sleep else 0)
+            | int(economy)
+        )
         settings |= 16 if power and mode == AirtonMode.HEAT else 0
         settings |= 4 if not power or mode != AirtonMode.AUTO else 0
         data = bytes(
@@ -84,8 +96,9 @@ class AirtonCommand(ClimatePacket[AirtonState]):
                 0x11,
                 int(AirtonMode(mode))
                 | (8 if power else 0)
-                | int(AirtonFanSpeed(fan)) << 4,
-                9 if power and mode == AirtonMode.AUTO else temp,
+                | int(AirtonFanSpeed(fan)) << 4
+                | (128 if turbo else 0),
+                temp,
                 AirtonDirection(direction),
                 settings,
             ]

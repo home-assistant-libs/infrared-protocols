@@ -68,3 +68,63 @@ def test_invalid_repeat_period(
     index = raw.index(min(raw))
     raw[index] *= 3
     assert type(command).from_raw_timings(raw) is None
+
+
+_COMMANDS = [
+    pytest.param(
+        PioneerCommand(address=7, command=2, repeat_count=2),
+        PioneerCommand(address=7, command=2, repeat_count=1),
+        id="pioneer",
+    ),
+    pytest.param(
+        PioneerCommand(
+            address=7, command=2, preamble_address=1, preamble_command=3, repeat_count=1
+        ),
+        PioneerCommand(address=7, command=2, preamble_address=1, preamble_command=3),
+        id="pioneer-two-part",
+    ),
+    pytest.param(
+        Samsung32Command(address=7, command=2, repeat_count=2),
+        Samsung32Command(address=7, command=2, repeat_count=1),
+        id="samsung",
+    ),
+]
+
+
+@pytest.mark.parametrize("command,expected", _COMMANDS)
+@pytest.mark.parametrize("length", range(1, 67))
+def test_matching_prefix(
+    command: PioneerCommand | Samsung32Command,
+    expected: PioneerCommand | Samsung32Command,
+    length: int,
+) -> None:
+    """A cut at any pulse boundary still leaves the complete earlier command."""
+    raw = command.get_raw_timings()
+    received = type(command).from_raw_timings(raw[:-67] + raw[-67:][:length])
+    assert received is not None
+    assert received.address == command.address
+    assert received.command == command.command
+    assert received.repeat_count == expected.repeat_count
+    assert received.get_raw_timings() == expected.get_raw_timings()
+
+
+@pytest.mark.parametrize(
+    "command", [pytest.param(case.values[0], id=case.id) for case in _COMMANDS]
+)
+@pytest.mark.parametrize(
+    "index,value",
+    [
+        pytest.param(0, 2000, id="leader-mark"),
+        pytest.param(1, -2000, id="leader-space"),
+        pytest.param(2, 1500, id="final-mark"),
+        pytest.param(3, -560, id="conflicting-first-bit"),
+    ],
+)
+def test_conflicting_prefix(
+    command: PioneerCommand | Samsung32Command, index: int, value: int
+) -> None:
+    """A cadence-correct trailing burst must match both the leader and payload."""
+    raw = command.get_raw_timings()
+    prefix = raw[-67:][: index + 1]
+    prefix[index] = value
+    assert type(command).from_raw_timings(raw[:-67] + prefix) is None

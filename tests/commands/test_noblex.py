@@ -29,3 +29,31 @@ def test_auto_has_no_set_point() -> None:
     assert received is not None
     assert received.state.mode is NoblexMode.AUTO
     assert received.state.temperature is None
+
+
+def test_placeholder_state_rebuild() -> None:
+    """A decoded placeholder can be sent back without inventing a setpoint."""
+    sent = NoblexCommand(mode=NoblexMode.AUTO)
+    received = NoblexCommand.from_raw_timings(sent.get_raw_timings())
+    assert received is not None
+    state = received.state
+    assert state.temperature is None
+    assert state.mode is not None
+    assert state.fan is not None
+    rebuilt = NoblexCommand(
+        mode=state.mode, temperature=state.temperature, fan=state.fan
+    )
+    assert rebuilt.get_raw_timings() == received.get_raw_timings()
+
+
+def test_required_setpoint() -> None:
+    """Cooling carries a target and cannot use the placeholder."""
+    with pytest.raises(ValueError, match="temperature"):
+        NoblexCommand(mode=NoblexMode.COOL)
+
+
+@pytest.mark.parametrize("temperature", [0, 99])
+def test_invalid_placeholder_temperature(temperature: int) -> None:
+    """An omitted target is valid, but an explicitly invalid target still fails."""
+    with pytest.raises(ValueError, match="temperature"):
+        NoblexCommand(mode=NoblexMode.AUTO, temperature=temperature)

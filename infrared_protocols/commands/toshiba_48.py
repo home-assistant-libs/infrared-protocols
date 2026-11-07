@@ -160,14 +160,22 @@ class ToshibaRacCommand(Toshiba48Command):
         cls,
         *,
         mode: Toshiba48Mode,
-        temperature: int,
+        temperature: int | None = None,
         fan: Toshiba48FanSpeed | None = None,
         is_fahrenheit: bool = False,
     ) -> Self:
         """Build an on-state, using 16..30 °C or 60..86 °F."""
-        index = temperature_value(
-            temperature, 60 if is_fahrenheit else 16, 86 if is_fahrenheit else 30
+        index = (
+            None
+            if temperature is None
+            else temperature_value(
+                temperature, 60 if is_fahrenheit else 16, 86 if is_fahrenheit else 30
+            )
         )
+        if mode == Toshiba48Mode.FAN_ONLY:
+            index = 0
+        if index is None:
+            raise ValueError("temperature is required for this mode")
         auto = mode in (Toshiba48Mode.AUTO, Toshiba48Mode.DRY)
         if fan is None:
             fan = Toshiba48FanSpeed.AUTO_ALT if auto else Toshiba48FanSpeed.AUTO
@@ -182,7 +190,7 @@ class ToshibaRacCommand(Toshiba48Command):
         fan1 = int(Toshiba48FanSpeed(fan))
         if mode in (Toshiba48Mode.AUTO, Toshiba48Mode.DRY):
             if fan != Toshiba48FanSpeed.AUTO_ALT:
-                raise ValueError("automatic and dry modes require automatic fan")
+                raise ValueError("automatic and dry modes require AUTO_ALT fan")
             fan1, fan2 = 0x1F, 0x65
         elif fan == Toshiba48FanSpeed.AUTO_ALT:
             raise ValueError("RAC alternate automatic fan requires auto or dry mode")
@@ -297,18 +305,27 @@ class ToshibaRas2819Command(Toshiba48Command):
         cls,
         *,
         mode: Toshiba48Mode,
-        temperature: int,
+        temperature: int | None = None,
         fan: Toshiba48FanSpeed | None = None,
     ) -> Self:
         """Build an 18..30 °C state; automatic/dry modes use automatic fan."""
-        index = temperature_value(temperature, 18, 30)
+        index = None if temperature is None else temperature_value(temperature, 18, 30)
+        if mode == Toshiba48Mode.FAN_ONLY:
+            index = 0
+        if index is None:
+            raise ValueError("temperature is required for this mode")
         auto = mode in (Toshiba48Mode.AUTO, Toshiba48Mode.DRY)
         if fan is None:
             fan = Toshiba48FanSpeed.AUTO_ALT if auto else Toshiba48FanSpeed.AUTO
         if auto and fan != Toshiba48FanSpeed.AUTO_ALT:
-            raise ValueError("automatic and dry modes require automatic fan")
-        if mode == Toshiba48Mode.FAN_ONLY and fan == Toshiba48FanSpeed.AUTO_ALT:
-            raise ValueError("alternate automatic fan is ambiguous with dry mode")
+            raise ValueError("automatic and dry modes require AUTO_ALT fan")
+        if (
+            mode in (Toshiba48Mode.HEAT, Toshiba48Mode.FAN_ONLY)
+            and fan == Toshiba48FanSpeed.AUTO_ALT
+        ):
+            raise ValueError(
+                "AUTO_ALT fan is only available in auto, dry and cool modes"
+            )
         temp = _TEMPS_C[index + 2] << 4
         temp |= selection(mode, _MODES)
         if mode == Toshiba48Mode.DRY:
@@ -397,6 +414,10 @@ class ToshibaRas2819Command(Toshiba48Command):
             else decoded(first[4] & 15, _MODES)
         )
         fan = Toshiba48FanSpeed(first[2])
+        if mode == Toshiba48Mode.HEAT and fan == Toshiba48FanSpeed.AUTO_ALT:
+            raise ValueError(
+                "AUTO_ALT fan is only available in auto, dry and cool modes"
+            )
         if mode in (Toshiba48Mode.AUTO, Toshiba48Mode.DRY) and first[2] != 0x1F:
             raise ValueError("RAS-2819T auto and dry require automatic fan")
         expected = self._extension(mode, fan)

@@ -33,7 +33,7 @@ class BalluState:
 
     power: bool | None = None
     mode: BalluMode | None = None
-    temperature: float | None = None
+    temperature: int | None = None
     fan: BalluFanSpeed | None = None
     swing_v: bool | None = None
     swing_h: bool | None = None
@@ -50,7 +50,7 @@ class BalluCommand(ClimatePacket[BalluState]):
         self,
         *,
         mode: BalluMode,
-        temperature: float,
+        temperature: int,
         power: bool = True,
         fan: BalluFanSpeed = BalluFanSpeed.AUTO,
         swing_v: bool = False,

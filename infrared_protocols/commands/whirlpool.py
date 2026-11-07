@@ -36,7 +36,7 @@ class WhirlpoolState:
 
     power: bool | None = None
     mode: WhirlpoolMode | None = None
-    temperature: float | None = None
+    temperature: int | None = None
     fan: WhirlpoolFanSpeed | None = None
     swing_v: bool | None = None
 
@@ -55,7 +55,7 @@ class WhirlpoolCommand(ClimatePacket[WhirlpoolState]):
         self,
         *,
         mode: WhirlpoolMode,
-        temperature: int,
+        temperature: int | None = None,
         power_toggle: bool = False,
         fan: WhirlpoolFanSpeed = WhirlpoolFanSpeed.AUTO,
         swing_toggle: bool = False,
@@ -67,7 +67,15 @@ class WhirlpoolCommand(ClimatePacket[WhirlpoolState]):
         Hisense ARG uses absolute swing_v; DG11J1 uses swing_toggle. An HA
         integration must retain the assumed power and DG11J1 swing state.
         """
-        temp = temperature_value(temperature, self.MIN_TEMP, self.MIN_TEMP + 14)
+        temp = (
+            None
+            if temperature is None
+            else temperature_value(temperature, self.MIN_TEMP, self.MIN_TEMP + 14)
+        )
+        if self.HISENSE and mode == WhirlpoolMode.FAN_ONLY and not off_command:
+            temp = 7
+        if temp is None:
+            raise ValueError("temperature is required for this mode")
         if self.HISENSE and swing_toggle or not self.HISENSE and swing_v is not None:
             raise ValueError("swing semantics do not match the selected model")
         data = bytearray(21)

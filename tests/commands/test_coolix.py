@@ -27,6 +27,12 @@ from infrared_protocols.commands.coolix import (
             [17, 24, 30],
             CoolixFanSpeed,
         )
+        if not (
+            mode in (CoolixMode.AUTO, CoolixMode.DRY)
+            and fan == CoolixFanSpeed.AUTO
+            or mode not in (CoolixMode.AUTO, CoolixMode.DRY)
+            and fan == CoolixFanSpeed.AUTO_ALT
+        )
     ],
 )
 def test_coolix_state(
@@ -83,7 +89,11 @@ def test_coolix_unknown_state() -> None:
     assert sent.state is None
 
 
-@pytest.mark.parametrize("fan", list(CoolixFanSpeed))
+@pytest.mark.parametrize(
+    "fan",
+    [fan for fan in CoolixFanSpeed if fan != CoolixFanSpeed.AUTO_ALT],
+    ids=lambda fan: fan.name,
+)
 def test_native_fan_rebuild(fan: CoolixFanSpeed) -> None:
     """Distinct fan nibbles survive state readback and rebuilding."""
     word = 0xB21F40 | int(fan) << 13
@@ -143,3 +153,47 @@ def test_zone_follow_sensor(word: int, sensor_temperature: int | None) -> None:
 def test_inconsistent_zone_flags(word: int) -> None:
     """A single zone-follow flag is not a recognized climate state."""
     assert CoolixCommand(first=word).state is None
+
+
+@pytest.mark.parametrize(
+    "mode,fan",
+    [
+        pytest.param(CoolixMode.AUTO, CoolixFanSpeed.AUTO, id="auto-wrong-auto"),
+        pytest.param(CoolixMode.DRY, CoolixFanSpeed.AUTO, id="dry-wrong-auto"),
+        pytest.param(CoolixMode.COOL, CoolixFanSpeed.AUTO_ALT, id="cool-alternate"),
+        pytest.param(CoolixMode.HEAT, CoolixFanSpeed.AUTO_ALT, id="heat-alternate"),
+        pytest.param(CoolixMode.FAN_ONLY, CoolixFanSpeed.AUTO_ALT, id="fan-alternate"),
+    ],
+)
+def test_automatic_fan_mode_mismatch(mode: CoolixMode, fan: CoolixFanSpeed) -> None:
+    """Encoding rejects automatic fan codes the remote changes for this mode."""
+    with pytest.raises(ValueError, match="AUTO_ALT"):
+        CoolixCommand.climate(mode=mode, temperature=24, fan=fan)
+
+
+def test_receive_alternate_auto_cool() -> None:
+    """Received native codes remain readable even when the encoder limits them."""
+    command = CoolixCommand(first=0xB21F40)
+    assert command.state is not None
+    assert command.state.fan is CoolixFanSpeed.AUTO_ALT
+    assert command.state.mode is CoolixMode.COOL
+
+
+def test_placeholder_state_rebuild() -> None:
+    """Fan-only can be rebuilt from its absent setpoint."""
+    sent = CoolixCommand.climate(mode=CoolixMode.FAN_ONLY)
+    state = sent.state
+    assert state is not None
+    assert state.mode is not None
+    assert state.temperature is None
+    rebuilt = CoolixCommand.climate(
+        mode=state.mode, temperature=state.temperature, fan=state.fan
+    )
+    assert rebuilt.get_raw_timings() == sent.get_raw_timings()
+
+
+@pytest.mark.parametrize("temperature", [0, 99])
+def test_invalid_placeholder_temperature(temperature: int) -> None:
+    """An omitted target is valid, but an explicitly invalid target still fails."""
+    with pytest.raises(ValueError, match="temperature"):
+        CoolixCommand.climate(mode=CoolixMode.FAN_ONLY, temperature=temperature)

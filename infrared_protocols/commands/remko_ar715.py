@@ -32,7 +32,7 @@ class RemkoAr715State:
 
     power: bool | None = None
     mode: RemkoAr715Mode | None = None
-    temperature: float | None = None
+    temperature: int | None = None
     fan: RemkoAr715FanSpeed | None = None
     swing_v: bool | None = None
 
