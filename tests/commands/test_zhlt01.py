@@ -2,22 +2,21 @@
 
 import pytest
 
-from infrared_protocols.commands.climate import ClimateFan, ClimateMode
-from infrared_protocols.commands.zhlt01 import Zhlt01Command
+from infrared_protocols.commands.zhlt01 import Zhlt01Command, Zhlt01FanSpeed, Zhlt01Mode
 
 
 @pytest.mark.parametrize(
     "boost,fan,expected",
     [
-        (True, ClimateFan.LOW, ClimateFan.HIGH),
-        (False, ClimateFan.QUIET, ClimateFan.QUIET),
+        (True, Zhlt01FanSpeed.LOW, Zhlt01FanSpeed.HIGH),
+        (False, Zhlt01FanSpeed.QUIET, Zhlt01FanSpeed.QUIET),
     ],
 )
 def test_zhlt_boost_and_quiet(
-    boost: bool, fan: ClimateFan, expected: ClimateFan
+    boost: bool, fan: Zhlt01FanSpeed, expected: Zhlt01FanSpeed
 ) -> None:
     """Boost overrides speed while quiet retains the dedicated low-bit code."""
-    sent = Zhlt01Command(mode=ClimateMode.COOL, temperature=24, fan=fan, boost=boost)
+    sent = Zhlt01Command(mode=Zhlt01Mode.COOL, temperature=24, fan=fan, boost=boost)
     received = Zhlt01Command.from_raw_timings(sent.get_raw_timings())
     assert received is not None
     assert received.boost == boost
@@ -26,7 +25,7 @@ def test_zhlt_boost_and_quiet(
 
 def test_natural_wind_moves_vane() -> None:
     """A natural-wind vane setting is motion, not a fixed position."""
-    sent = Zhlt01Command(mode=ClimateMode.COOL, temperature=24)
+    sent = Zhlt01Command(mode=Zhlt01Mode.COOL, temperature=24)
     data = bytearray(sent.data)
     data[7] = 0x12
     data[6] = data[7] ^ 255

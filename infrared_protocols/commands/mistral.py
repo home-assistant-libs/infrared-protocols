@@ -1,29 +1,60 @@
 """Mistral MHFE1126A / MR112C AEHA climate commands."""
 
+from dataclasses import dataclass
+from enum import IntEnum
+
 from ._aeha_climate import AehaClimatePacket
 from ._climate_fields import decoded, selection, temperature_value
-from .climate import (
-    ClimateFan,
-    ClimateMode,
-    ClimateState,
-)
+
+
+class MistralMode(IntEnum):
+    """Mistral operating modes."""
+
+    COOL = 0x3
+    DRY = 0x2
+    FAN_ONLY = 0x1
+    HEAT = 0x6
+    AUTO = 0x8
+
+
+class MistralFanSpeed(IntEnum):
+    """Mistral fan speeds."""
+
+    AUTO = 0x2500
+    LOW = 0x2202
+    MEDIUM = 0x2403
+    HIGH = 0x2505
+
+
+@dataclass(frozen=True, kw_only=True)
+class MistralState:
+    """Settings carried by a Mistral packet, using its native enums and units."""
+
+    power: bool | None = None
+    mode: MistralMode | None = None
+    temperature: float | None = None
+    fan: MistralFanSpeed | None = None
+    swing_v: bool | None = None
+    swing_h: bool | None = None
+    is_fahrenheit: bool = False
+
 
 _MODES = {
-    ClimateMode.COOL: 3,
-    ClimateMode.DRY: 2,
-    ClimateMode.FAN_ONLY: 1,
-    ClimateMode.HEAT: 6,
-    ClimateMode.AUTO: 8,
+    MistralMode.COOL: 3,
+    MistralMode.DRY: 2,
+    MistralMode.FAN_ONLY: 1,
+    MistralMode.HEAT: 6,
+    MistralMode.AUTO: 8,
 }
 _FANS = {
-    ClimateFan.AUTO: 0x2500,
-    ClimateFan.LOW: 0x2202,
-    ClimateFan.MEDIUM: 0x2403,
-    ClimateFan.HIGH: 0x2505,
+    MistralFanSpeed.AUTO: 0x2500,
+    MistralFanSpeed.LOW: 0x2202,
+    MistralFanSpeed.MEDIUM: 0x2403,
+    MistralFanSpeed.HIGH: 0x2505,
 }
 
 
-class MistralCommand(AehaClimatePacket):
+class MistralCommand(AehaClimatePacket[MistralState]):
     """Mistral full state; data includes the AEHA address bytes in wire order."""
 
     LENGTH = 14
@@ -31,10 +62,10 @@ class MistralCommand(AehaClimatePacket):
     def __init__(
         self,
         *,
-        mode: ClimateMode,
+        mode: MistralMode,
         temperature: float,
         power: bool = True,
-        fan: ClimateFan = ClimateFan.AUTO,
+        fan: MistralFanSpeed = MistralFanSpeed.AUTO,
     ) -> None:
         """Build a whole-degree 16..30 °C state."""
         selection(mode, _MODES)
@@ -65,9 +96,9 @@ class MistralCommand(AehaClimatePacket):
         return sum(data[i] for i in (3, 5, 6, 7, 8, 10)) & 255
 
     @classmethod
-    def parse(cls, data: bytes) -> ClimateState:
+    def parse(cls, data: bytes) -> MistralState:
         """Validate the frame signature and recover the state."""
-        super().parse(data)
+        cls._validate_packet(data)
         if (
             data[:3] != b"\x4c\x34\x6a"
             or data[4] != 16
@@ -77,7 +108,7 @@ class MistralCommand(AehaClimatePacket):
             raise ValueError("invalid Mistral signature")
         temperature = 159 - data[7]
         temperature_value(temperature, 16, 30)
-        return ClimateState(
+        return MistralState(
             power=bool(data[5]),
             mode=decoded(data[6], _MODES) if bool(data[5]) else None,
             temperature=temperature,

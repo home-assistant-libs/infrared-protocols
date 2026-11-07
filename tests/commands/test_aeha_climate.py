@@ -3,19 +3,19 @@
 import pytest
 
 from infrared_protocols.commands._aeha_climate import AehaClimatePacket
-from infrared_protocols.commands.climate import ClimateMode
 from infrared_protocols.commands.friedrich import (
     FriedrichButton,
     FriedrichCommand,
+    FriedrichMode,
     FriedrichUtilityCommand,
 )
-from infrared_protocols.commands.mistral import MistralCommand
+from infrared_protocols.commands.mistral import MistralCommand, MistralMode
 
 
 @pytest.fixture(
     params=[
         pytest.param(
-            FriedrichCommand(mode=ClimateMode.COOL, temperature_f=72),
+            FriedrichCommand(mode=FriedrichMode.COOL, temperature=72),
             id="friedrich",
         ),
         pytest.param(
@@ -23,7 +23,7 @@ from infrared_protocols.commands.mistral import MistralCommand
             id="friedrich-utility",
         ),
         pytest.param(
-            MistralCommand(mode=ClimateMode.COOL, temperature=22),
+            MistralCommand(mode=MistralMode.COOL, temperature=22),
             id="mistral",
         ),
     ],

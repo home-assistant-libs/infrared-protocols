@@ -1,28 +1,57 @@
 """Haier Tundra 112-bit state and button commands."""
 
+from dataclasses import dataclass
 from enum import IntEnum
 
 from ._climate import ClimatePacket
 from ._climate_fields import decoded, selection, temperature_value
-from .climate import (
-    ClimateFan,
-    ClimateMode,
-    ClimateState,
-)
 from .haier import HaierCommand
 
+
+class HaierTundraMode(IntEnum):
+    """HaierTundra operating modes."""
+
+    AUTO = 0x0
+    COOL = 0x1
+    DRY = 0x2
+    HEAT = 0x4
+    FAN_ONLY = 0x6
+
+
+class HaierTundraFanSpeed(IntEnum):
+    """HaierTundra fan speeds."""
+
+    AUTO = 0x5
+    HIGH = 0x1
+    MEDIUM = 0x2
+    LOW = 0x3
+
+
+@dataclass(frozen=True, kw_only=True)
+class HaierTundraState:
+    """Settings carried by a HaierTundra packet, using its native enums and units."""
+
+    power: bool | None = None
+    mode: HaierTundraMode | None = None
+    temperature: float | None = None
+    fan: HaierTundraFanSpeed | None = None
+    swing_v: bool | None = None
+    swing_h: bool | None = None
+    is_fahrenheit: bool = False
+
+
 _MODES = {
-    ClimateMode.AUTO: 0,
-    ClimateMode.COOL: 1,
-    ClimateMode.DRY: 2,
-    ClimateMode.HEAT: 4,
-    ClimateMode.FAN_ONLY: 6,
+    HaierTundraMode.AUTO: 0,
+    HaierTundraMode.COOL: 1,
+    HaierTundraMode.DRY: 2,
+    HaierTundraMode.HEAT: 4,
+    HaierTundraMode.FAN_ONLY: 6,
 }
 _FANS = {
-    ClimateFan.AUTO: 5,
-    ClimateFan.HIGH: 1,
-    ClimateFan.MEDIUM: 2,
-    ClimateFan.LOW: 3,
+    HaierTundraFanSpeed.AUTO: 5,
+    HaierTundraFanSpeed.HIGH: 1,
+    HaierTundraFanSpeed.MEDIUM: 2,
+    HaierTundraFanSpeed.LOW: 3,
 }
 
 
@@ -51,7 +80,7 @@ class HaierButton(IntEnum):
     SELF_CLEAN = 25
 
 
-class HaierTundraCommand(ClimatePacket):
+class HaierTundraCommand(ClimatePacket[HaierTundraState]):
     """Tundra state; LIGHT_TOGGLE changes the light without reporting its state."""
 
     HEADER = HaierCommand.HEADER
@@ -62,10 +91,10 @@ class HaierTundraCommand(ClimatePacket):
     def __init__(
         self,
         *,
-        mode: ClimateMode,
+        mode: HaierTundraMode,
         temperature: float,
         power: bool = True,
-        fan: ClimateFan = ClimateFan.AUTO,
+        fan: HaierTundraFanSpeed = HaierTundraFanSpeed.AUTO,
         swing_v: bool = False,
         swing_h: bool = False,
         unit: HaierUnit = HaierUnit.A,
@@ -81,12 +110,12 @@ class HaierTundraCommand(ClimatePacket):
             quiet
             and turbo
             or (quiet or turbo)
-            and (not power or mode not in (ClimateMode.COOL, ClimateMode.HEAT))
+            and (not power or mode not in (HaierTundraMode.COOL, HaierTundraMode.HEAT))
         ):
             raise ValueError(
                 "quiet and turbo are exclusive and require cooling or heating"
             )
-        vertical = 12 if swing_v else 10 if mode == ClimateMode.HEAT else 2
+        vertical = 12 if swing_v else 10 if mode == HaierTundraMode.HEAT else 2
         data = bytes(
             [
                 HaierUnit(unit),
@@ -132,14 +161,14 @@ class HaierTundraCommand(ClimatePacket):
         return HaierUnit(self.data[0])
 
     @classmethod
-    def parse(cls, data: bytes) -> ClimateState:
+    def parse(cls, data: bytes) -> HaierTundraState:
         """Read common state after checksum and identifier validation."""
-        super().parse(data)
+        cls._validate_packet(data)
         HaierUnit(data[0])
         HaierButton(data[12])
         temperature = (data[1] >> 4) + 16
         temperature_value(temperature, 16, 30)
-        return ClimateState(
+        return HaierTundraState(
             power=bool(data[4] & 64),
             mode=decoded(data[7] >> 5, _MODES) if bool(data[4] & 64) else None,
             temperature=temperature,

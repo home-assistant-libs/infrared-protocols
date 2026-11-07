@@ -1,5 +1,7 @@
 """Whirlpool DG11J1 and Hisense ARG commands with explicit power toggles."""
 
+from dataclasses import dataclass
+from enum import IntEnum
 from functools import reduce
 from operator import xor
 from typing import ClassVar, Self, override
@@ -7,28 +9,56 @@ from typing import ClassVar, Self, override
 from ._climate import ClimatePacket, FramePart
 from ._climate_fields import decoded, selection, temperature_value
 from ._timing import PulseTiming, Reader, byte_bits, pack_bytes
-from .climate import (
-    ClimateFan,
-    ClimateMode,
-    ClimateState,
-)
+
+
+class WhirlpoolMode(IntEnum):
+    """Whirlpool operating modes."""
+
+    HEAT = 0x0
+    AUTO = 0x1
+    COOL = 0x2
+    DRY = 0x3
+    FAN_ONLY = 0x4
+
+
+class WhirlpoolFanSpeed(IntEnum):
+    """Whirlpool fan speeds."""
+
+    AUTO = 0x0
+    HIGH = 0x1
+    MEDIUM = 0x2
+    LOW = 0x3
+
+
+@dataclass(frozen=True, kw_only=True)
+class WhirlpoolState:
+    """Settings carried by a Whirlpool packet, using its native enums and units."""
+
+    power: bool | None = None
+    mode: WhirlpoolMode | None = None
+    temperature: float | None = None
+    fan: WhirlpoolFanSpeed | None = None
+    swing_v: bool | None = None
+    swing_h: bool | None = None
+    is_fahrenheit: bool = False
+
 
 _MODES = {
-    ClimateMode.HEAT: 0,
-    ClimateMode.AUTO: 1,
-    ClimateMode.COOL: 2,
-    ClimateMode.DRY: 3,
-    ClimateMode.FAN_ONLY: 4,
+    WhirlpoolMode.HEAT: 0,
+    WhirlpoolMode.AUTO: 1,
+    WhirlpoolMode.COOL: 2,
+    WhirlpoolMode.DRY: 3,
+    WhirlpoolMode.FAN_ONLY: 4,
 }
 _FANS = {
-    ClimateFan.AUTO: 0,
-    ClimateFan.HIGH: 1,
-    ClimateFan.MEDIUM: 2,
-    ClimateFan.LOW: 3,
+    WhirlpoolFanSpeed.AUTO: 0,
+    WhirlpoolFanSpeed.HIGH: 1,
+    WhirlpoolFanSpeed.MEDIUM: 2,
+    WhirlpoolFanSpeed.LOW: 3,
 }
 
 
-class WhirlpoolCommand(ClimatePacket):
+class WhirlpoolCommand(ClimatePacket[WhirlpoolState]):
     """DG11J1-3A state; power and swing bits request toggles, not absolute states."""
 
     HEADER = (9000, -4494)
@@ -41,10 +71,10 @@ class WhirlpoolCommand(ClimatePacket):
     def __init__(
         self,
         *,
-        mode: ClimateMode,
+        mode: WhirlpoolMode,
         temperature: int,
         power_toggle: bool = False,
-        fan: ClimateFan = ClimateFan.AUTO,
+        fan: WhirlpoolFanSpeed = WhirlpoolFanSpeed.AUTO,
         swing_toggle: bool = False,
         swing_v: bool | None = None,
         off_command: bool = False,
@@ -66,7 +96,7 @@ class WhirlpoolCommand(ClimatePacket):
             (1 if power_toggle else 0)
             if off_command
             else 23
-            if mode == ClimateMode.AUTO
+            if mode == WhirlpoolMode.AUTO
             else 6
         )
         if swing_v if self.HISENSE else swing_toggle:
@@ -76,7 +106,7 @@ class WhirlpoolCommand(ClimatePacket):
             data[11], data[12], data[15] = 128, 24, 1 if power_toggle else 2
             if off_command:
                 data[3] = temp << 4 | 2
-            elif mode == ClimateMode.AUTO:
+            elif mode == WhirlpoolMode.AUTO:
                 data[3] = 0x71
                 data[2] |= (
                     0x30
@@ -87,11 +117,11 @@ class WhirlpoolCommand(ClimatePacket):
                     if temp == 8
                     else 0x20
                 )
-            elif mode == ClimateMode.FAN_ONLY:
+            elif mode == WhirlpoolMode.FAN_ONLY:
                 data[3] = 0x74
-                if fan == ClimateFan.AUTO:
+                if fan == WhirlpoolFanSpeed.AUTO:
                     data[2] |= 2
-            elif mode == ClimateMode.DRY:
+            elif mode == WhirlpoolMode.DRY:
                 data[2] &= ~3
         data[13] = reduce(xor, data[2:13], 0)
         data[20] = reduce(xor, data[14:20], 0)
@@ -110,7 +140,7 @@ class WhirlpoolCommand(ClimatePacket):
     @property
     def temperature_candidates(self) -> tuple[int, ...]:
         """Return all set points consistent with an ambiguous Hisense auto code."""
-        if self.HISENSE and self.state.mode == ClimateMode.AUTO:
+        if self.HISENSE and self.state.mode == WhirlpoolMode.AUTO:
             return {
                 0x30: tuple(range(16, 22)),
                 0x50: (22,),
@@ -155,7 +185,7 @@ class WhirlpoolCommand(ClimatePacket):
             return None
 
     @classmethod
-    def parse(cls, data: bytes) -> ClimateState:
+    def parse(cls, data: bytes) -> WhirlpoolState:
         """Verify both XOR checksums, without inventing an absolute power state."""
         if (
             len(data) not in (14, cls.LENGTH)
@@ -168,11 +198,11 @@ class WhirlpoolCommand(ClimatePacket):
         mode = decoded(data[3] & 15, _MODES)
         temperature: int | None = (data[3] >> 4) + cls.MIN_TEMP
         temperature_value(temperature, cls.MIN_TEMP, cls.MIN_TEMP + 14)
-        if cls.HISENSE and mode == ClimateMode.AUTO:
+        if cls.HISENSE and mode == WhirlpoolMode.AUTO:
             temperature = {0x50: 22, 0x40: 24}.get(data[2] & 0x70)
-        if cls.HISENSE and mode == ClimateMode.FAN_ONLY:
+        if cls.HISENSE and mode == WhirlpoolMode.FAN_ONLY:
             temperature = None
-        return ClimateState(
+        return WhirlpoolState(
             mode=None
             if len(data) == 21
             and (
@@ -181,7 +211,7 @@ class WhirlpoolCommand(ClimatePacket):
                 and data[3] & 15 == 0
                 or cls.HISENSE
                 and data[15] == 1
-                and mode == ClimateMode.COOL
+                and mode == WhirlpoolMode.COOL
             )
             else mode,
             temperature=temperature,

@@ -3,9 +3,11 @@
 import pytest
 
 from infrared_protocols.commands._timing import byte_bits
-from infrared_protocols.commands.climate import ClimateMode
 from infrared_protocols.commands.pd_pioneer import PdPioneerCommand
-from infrared_protocols.commands.pd_pioneer_climate import PdPioneerClimateCommand
+from infrared_protocols.commands.pd_pioneer_climate import (
+    PdPioneerClimateCommand,
+    PdPioneerClimateMode,
+)
 
 
 @pytest.mark.parametrize(
@@ -21,7 +23,7 @@ from infrared_protocols.commands.pd_pioneer_climate import PdPioneerClimateComma
 def test_pd_half_degree_economy(temperature: float, wire_temperature: int) -> None:
     """Both state bursts retain fractional targets and the economy flag."""
     sent = PdPioneerClimateCommand(
-        mode=ClimateMode.COOL, temperature=temperature, economy=True
+        mode=PdPioneerClimateMode.COOL, temperature=temperature, economy=True
     )
     received = PdPioneerClimateCommand.from_raw_timings(sent.get_raw_timings())
     assert received is not None
@@ -70,4 +72,4 @@ def test_pd_type_zero_rejected() -> None:
 def test_fractional_temperature_limits(temperature: float) -> None:
     """Reject half-degree inputs outside the range and unsupported quarter degrees."""
     with pytest.raises(ValueError, match="temperature"):
-        PdPioneerClimateCommand(mode=ClimateMode.COOL, temperature=temperature)
+        PdPioneerClimateCommand(mode=PdPioneerClimateMode.COOL, temperature=temperature)

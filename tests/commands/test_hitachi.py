@@ -2,11 +2,12 @@
 
 import pytest
 
-from infrared_protocols.commands.climate import ClimateFan, ClimateMode
 from infrared_protocols.commands.hitachi import (
     HitachiAc344Command,
     HitachiAc424Command,
     HitachiButton,
+    HitachiFanSpeed,
+    HitachiMode,
 )
 
 
@@ -21,28 +22,28 @@ def test_hitachi_receive_auto_maximum(
     cls: type[HitachiAc344Command], mode_code: int
 ) -> None:
     """Receive-only mode and speed codes remain explicit rather than rejected."""
-    sent = cls(mode=ClimateMode.COOL, temperature=24)
+    sent = cls(mode=HitachiMode.COOL, temperature=24)
     data = bytearray(sent.data)
     data[25] = 0x60 | mode_code
     data[26] = data[25] ^ 255
     sent.data = bytes(data)
     received = cls.from_raw_timings(sent.get_raw_timings())
     assert received is not None
-    assert received.state.mode == ClimateMode.AUTO
-    assert received.state.fan == ClimateFan.MAXIMUM
+    assert received.state.mode == HitachiMode.AUTO
+    assert received.state.fan == HitachiFanSpeed.MAXIMUM
 
 
 def test_hitachi_mildew_and_quiet() -> None:
     """Mildew shutdown and quiet operation use distinct auxiliary bytes."""
     off = HitachiAc344Command(
-        mode=ClimateMode.COOL,
+        mode=HitachiMode.COOL,
         temperature=24,
         power=False,
         mildew_proof=True,
         button=HitachiButton.MILDEW_PROOF,
     )
     quiet = HitachiAc344Command(
-        mode=ClimateMode.COOL, temperature=24, fan=ClimateFan.QUIET
+        mode=HitachiMode.COOL, temperature=24, fan=HitachiFanSpeed.QUIET
     )
     assert off.data[9] == 0xA5
     assert quiet.data[9] == 0x98
@@ -56,12 +57,12 @@ def test_hitachi_mildew_and_quiet() -> None:
 def test_unknown_button_rejected() -> None:
     """An unsupported button cannot be encoded."""
     with pytest.raises(ValueError):
-        HitachiAc344Command(mode=ClimateMode.COOL, temperature=24, button=255)  # type: ignore[arg-type]
+        HitachiAc344Command(mode=HitachiMode.COOL, temperature=24, button=255)  # type: ignore[arg-type]
 
 
 def test_unknown_received_button() -> None:
     """A valid checksum cannot legitimize an unsupported action identifier."""
-    sent = HitachiAc344Command(mode=ClimateMode.COOL, temperature=24)
+    sent = HitachiAc344Command(mode=HitachiMode.COOL, temperature=24)
     sent.data = bytes.fromhex(
         "01100040bfff00cc33926d22dd609f00ff00ff00ff00ff00ff53acf10e01fe01fe807f03fc00ff00ff00ff"
     )

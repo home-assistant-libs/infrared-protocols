@@ -1,21 +1,49 @@
 """Remko AR715 / ClimaButler 52-bit air-conditioner commands."""
 
+from dataclasses import dataclass
+from enum import IntEnum
 from typing import Self
 
 from ._climate_fields import decoded, selection, temperature_value
 from ._timing import PulseTiming, Reader, number
 from ._word import WordCommand
-from .climate import (
-    ClimateFan,
-    ClimateMode,
-    ClimateState,
-)
+
+
+class RemkoAr715Mode(IntEnum):
+    """RemkoAr715 operating modes."""
+
+    COOL = 0x80
+    DRY = 0xA4
+    FAN_ONLY = 0xA3
+
+
+class RemkoAr715FanSpeed(IntEnum):
+    """RemkoAr715 fan speeds."""
+
+    AUTO = 0x80
+    LOW = 0xA2
+    MEDIUM = 0x91
+    HIGH = 0x88
+
+
+@dataclass(frozen=True, kw_only=True)
+class RemkoAr715State:
+    """Settings carried by a RemkoAr715 packet, using its native enums and units."""
+
+    power: bool | None = None
+    mode: RemkoAr715Mode | None = None
+    temperature: float | None = None
+    fan: RemkoAr715FanSpeed | None = None
+    swing_v: bool | None = None
+    swing_h: bool | None = None
+    is_fahrenheit: bool = False
+
 
 _FANS = {
-    ClimateFan.AUTO: 0x80,
-    ClimateFan.LOW: 0xA2,
-    ClimateFan.MEDIUM: 0x91,
-    ClimateFan.HIGH: 0x88,
+    RemkoAr715FanSpeed.AUTO: 0x80,
+    RemkoAr715FanSpeed.LOW: 0xA2,
+    RemkoAr715FanSpeed.MEDIUM: 0x91,
+    RemkoAr715FanSpeed.HIGH: 0x88,
 }
 
 
@@ -30,20 +58,20 @@ class RemkoAr715Command(WordCommand):
     def __init__(
         self,
         *,
-        mode: ClimateMode,
+        mode: RemkoAr715Mode,
         temperature: int,
         power: bool = True,
-        fan: ClimateFan = ClimateFan.AUTO,
+        fan: RemkoAr715FanSpeed = RemkoAr715FanSpeed.AUTO,
         swing_v: bool = False,
     ) -> None:
         """Build a whole-degree 16..30 °C state."""
         temp = temperature_value(temperature, 16, 30)
-        if mode == ClimateMode.COOL:
+        if mode == RemkoAr715Mode.COOL:
             mode_fan = selection(fan, _FANS)
-        elif mode in (ClimateMode.DRY, ClimateMode.FAN_ONLY):
-            if fan != ClimateFan.AUTO:
+        elif mode in (RemkoAr715Mode.DRY, RemkoAr715Mode.FAN_ONLY):
+            if fan != RemkoAr715FanSpeed.AUTO:
                 raise ValueError("dry and fan-only commands do not carry a fan speed")
-            mode_fan = 0xA4 if mode == ClimateMode.DRY else 0xA3
+            mode_fan = 0xA4 if mode == RemkoAr715Mode.DRY else 0xA3
         else:
             raise ValueError("Remko supports cool, dry and fan-only modes")
         value = (
@@ -57,7 +85,7 @@ class RemkoAr715Command(WordCommand):
         super().__init__(data=value)
 
     @property
-    def state(self) -> ClimateState:
+    def state(self) -> RemkoAr715State:
         """Validate the nibble checksum and extract the state."""
         value = self.data
         if (
@@ -71,14 +99,14 @@ class RemkoAr715Command(WordCommand):
         mode_fan = value >> 8 & 255
         temperature = (value >> 4 & 15) + 16
         temperature_value(temperature, 16, 30)
-        mode = {0xA4: ClimateMode.DRY, 0xA3: ClimateMode.FAN_ONLY}.get(
-            mode_fan, ClimateMode.COOL
+        mode = {0xA4: RemkoAr715Mode.DRY, 0xA3: RemkoAr715Mode.FAN_ONLY}.get(
+            mode_fan, RemkoAr715Mode.COOL
         )
-        return ClimateState(
+        return RemkoAr715State(
             power=bool(power_code),
             mode=mode,
             temperature=temperature,
-            fan=decoded(mode_fan, _FANS) if mode == ClimateMode.COOL else None,
+            fan=decoded(mode_fan, _FANS) if mode == RemkoAr715Mode.COOL else None,
             swing_v=swing_code == 5,
         )
 

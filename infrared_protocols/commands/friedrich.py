@@ -1,29 +1,59 @@
 """Friedrich MW12Y3H state and utility commands over AEHA."""
 
+from dataclasses import dataclass
 from enum import IntEnum
 
 from ._aeha_climate import AehaClimatePacket
 from ._climate_fields import decoded, selection, temperature_value
 from ._timing import bits, number
-from .climate import (
-    ClimateFan,
-    ClimateMode,
-    ClimateState,
-)
+
+
+class FriedrichMode(IntEnum):
+    """Friedrich operating modes."""
+
+    AUTO = 0x0
+    COOL = 0x80
+    DRY = 0x40
+    FAN_ONLY = 0xC0
+    HEAT = 0x20
+
+
+class FriedrichFanSpeed(IntEnum):
+    """Friedrich fan speeds."""
+
+    AUTO = 0x0
+    HIGH = 0x80
+    MEDIUM = 0x40
+    LOW = 0xC0
+    QUIET = 0x20
+
+
+@dataclass(frozen=True, kw_only=True)
+class FriedrichState:
+    """Settings carried by a Friedrich packet, using its native enums and units."""
+
+    power: bool | None = None
+    mode: FriedrichMode | None = None
+    temperature: float | None = None
+    fan: FriedrichFanSpeed | None = None
+    swing_v: bool | None = None
+    swing_h: bool | None = None
+    is_fahrenheit: bool = False
+
 
 _MODES = {
-    ClimateMode.AUTO: 0,
-    ClimateMode.COOL: 0x80,
-    ClimateMode.DRY: 0x40,
-    ClimateMode.FAN_ONLY: 0xC0,
-    ClimateMode.HEAT: 0x20,
+    FriedrichMode.AUTO: 0,
+    FriedrichMode.COOL: 0x80,
+    FriedrichMode.DRY: 0x40,
+    FriedrichMode.FAN_ONLY: 0xC0,
+    FriedrichMode.HEAT: 0x20,
 }
 _FANS = {
-    ClimateFan.AUTO: 0,
-    ClimateFan.HIGH: 0x80,
-    ClimateFan.MEDIUM: 0x40,
-    ClimateFan.LOW: 0xC0,
-    ClimateFan.QUIET: 0x20,
+    FriedrichFanSpeed.AUTO: 0,
+    FriedrichFanSpeed.HIGH: 0x80,
+    FriedrichFanSpeed.MEDIUM: 0x40,
+    FriedrichFanSpeed.LOW: 0xC0,
+    FriedrichFanSpeed.QUIET: 0x20,
 }
 
 
@@ -31,7 +61,7 @@ def _reverse(value: int, width: int = 8) -> int:
     return number(bits(value & ((1 << width) - 1), width), lsb=True)
 
 
-class FriedrichCommand(AehaClimatePacket):
+class FriedrichCommand(AehaClimatePacket[FriedrichState]):
     """Power-on state with a native Fahrenheit set point."""
 
     LENGTH = 16
@@ -40,14 +70,17 @@ class FriedrichCommand(AehaClimatePacket):
     def __init__(
         self,
         *,
-        mode: ClimateMode,
-        temperature_f: int,
-        fan: ClimateFan = ClimateFan.AUTO,
+        mode: FriedrichMode,
+        temperature: int,
+        is_fahrenheit: bool = True,
+        fan: FriedrichFanSpeed = FriedrichFanSpeed.AUTO,
         swing_v: bool = False,
         economy: bool = False,
     ) -> None:
         """Build a state in even degrees: heat 60..88 °F, other modes 64..88 °F."""
-        temperature_value(temperature_f, 60 if mode == ClimateMode.HEAT else 64, 88, 2)
+        if not is_fahrenheit:
+            raise ValueError("this remote only supports Fahrenheit set points")
+        temperature_value(temperature, 60 if mode == FriedrichMode.HEAT else 64, 88, 2)
         data = bytes(
             [
                 0x28,
@@ -58,7 +91,7 @@ class FriedrichCommand(AehaClimatePacket):
                 0x7F,
                 0x90,
                 12,
-                128 | _reverse((temperature_f - 60) // 2, 4),
+                128 | _reverse((temperature - 60) // 2, 4),
                 selection(mode, _MODES),
                 selection(fan, _FANS) | (8 if swing_v else 0),
                 0,
@@ -75,7 +108,12 @@ class FriedrichCommand(AehaClimatePacket):
         return _reverse(208 - sum(_reverse(value) for value in data[8:]))
 
     @property
-    def temperature_f(self) -> int:
+    def is_fahrenheit(self) -> bool:
+        """Return the fixed native temperature unit."""
+        return True
+
+    @property
+    def temperature(self) -> int:
         """Return the native Fahrenheit set point."""
         return 60 + _reverse(self.data[8] & 15, 4) * 2
 
@@ -85,9 +123,9 @@ class FriedrichCommand(AehaClimatePacket):
         return not bool(self.data[14] & 4)
 
     @classmethod
-    def parse(cls, data: bytes) -> ClimateState:
+    def parse(cls, data: bytes) -> FriedrichState:
         """Validate signature, checksum and settings."""
-        super().parse(data)
+        cls._validate_packet(data)
         if (
             data[:8] != bytes([0x28, 0xC6, 0, 8, 8, 0x7F, 0x90, 12])
             or data[8] & 0xF0 != 128
@@ -95,11 +133,12 @@ class FriedrichCommand(AehaClimatePacket):
             raise ValueError("invalid Friedrich signature")
         mode = decoded(data[9], _MODES)
         temp_f = 60 + _reverse(data[8] & 15, 4) * 2
-        temperature_value(temp_f, 60 if mode == ClimateMode.HEAT else 64, 88, 2)
-        return ClimateState(
+        temperature_value(temp_f, 60 if mode == FriedrichMode.HEAT else 64, 88, 2)
+        return FriedrichState(
             power=True,
             mode=mode,
-            temperature=(temp_f - 32) * 5 / 9,
+            temperature=temp_f,
+            is_fahrenheit=True,
             fan=decoded(data[10] & ~8, _FANS),
             swing_v=bool(data[10] & 8),
         )
@@ -111,7 +150,7 @@ class FriedrichButton(IntEnum):
     POWER_OFF = 0x40
 
 
-class FriedrichUtilityCommand(AehaClimatePacket):
+class FriedrichUtilityCommand(AehaClimatePacket[FriedrichState]):
     """Short power-off packet."""
 
     LENGTH = 7
@@ -128,7 +167,7 @@ class FriedrichUtilityCommand(AehaClimatePacket):
         return FriedrichButton(self.data[5])
 
     @classmethod
-    def parse(cls, data: bytes) -> ClimateState:
+    def parse(cls, data: bytes) -> FriedrichState:
         """Validate the signature and command complement."""
         if (
             len(data) != 7
@@ -137,6 +176,6 @@ class FriedrichUtilityCommand(AehaClimatePacket):
         ):
             raise ValueError("invalid Friedrich utility packet")
         button = FriedrichButton(data[5])
-        return ClimateState(
+        return FriedrichState(
             power=False if button == FriedrichButton.POWER_OFF else None
         )

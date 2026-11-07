@@ -1,22 +1,21 @@
 """Mitsubishi Electric 144-bit state commands."""
 
+from dataclasses import dataclass
 from enum import IntEnum, StrEnum
 
 from ._climate import ClimatePacket
 from ._climate_fields import decoded, selection, temperature_value
 from ._timing import PulseTiming
-from .climate import (
-    ClimateMode,
-    ClimateState,
-)
 
-_MODES = {
-    ClimateMode.HEAT: 8,
-    ClimateMode.DRY: 16,
-    ClimateMode.COOL: 24,
-    ClimateMode.AUTO: 32,
-    ClimateMode.FAN_ONLY: 56,
-}
+
+class MitsubishiMode(IntEnum):
+    """Mitsubishi operating modes."""
+
+    HEAT = 0x8
+    DRY = 0x10
+    COOL = 0x18
+    AUTO = 0x20
+    FAN_ONLY = 0x38
 
 
 class MitsubishiFan(IntEnum):
@@ -30,6 +29,28 @@ class MitsubishiFan(IntEnum):
     QUIET = 5
 
 
+@dataclass(frozen=True, kw_only=True)
+class MitsubishiState:
+    """Settings carried by a Mitsubishi packet, using its native enums and units."""
+
+    power: bool | None = None
+    mode: MitsubishiMode | None = None
+    temperature: float | None = None
+    fan: MitsubishiFan | None = None
+    swing_v: bool | None = None
+    swing_h: bool | None = None
+    is_fahrenheit: bool = False
+
+
+_MODES = {
+    MitsubishiMode.HEAT: 8,
+    MitsubishiMode.DRY: 16,
+    MitsubishiMode.COOL: 24,
+    MitsubishiMode.AUTO: 32,
+    MitsubishiMode.FAN_ONLY: 56,
+}
+
+
 class MitsubishiPreset(StrEnum):
     """Optional model-dependent operating presets."""
 
@@ -39,7 +60,7 @@ class MitsubishiPreset(StrEnum):
     POWERFUL = "powerful"
 
 
-class MitsubishiCommand(ClimatePacket):
+class MitsubishiCommand(ClimatePacket[MitsubishiState]):
     """Two identical 18-byte packets form one transmission."""
 
     HEADER = (3500, -1700)
@@ -51,10 +72,10 @@ class MitsubishiCommand(ClimatePacket):
     def __init__(
         self,
         *,
-        mode: ClimateMode,
+        mode: MitsubishiMode,
         temperature: float,
         power: bool = True,
-        fahrenheit: bool = False,
+        is_fahrenheit: bool = False,
         fan: MitsubishiFan = MitsubishiFan.AUTO,
         swing_v: bool = False,
         swing_h: bool = False,
@@ -67,10 +88,10 @@ class MitsubishiCommand(ClimatePacket):
 
         Vertical positions are 0 (auto) through 5 (down). Horizontal positions
         are 1..5 (left to right) or 8 (split). Dry mode sends 24 °C.
-        With fahrenheit=True, temperature is 61..88 °F and uses the remote's
+        With is_fahrenheit=True, temperature is 61..88 °F and uses the remote's
         lookup table. Decoded state reports the corresponding wire Celsius value.
         """
-        if fahrenheit:
+        if is_fahrenheit:
             temperature_value(temperature, 61, 88)
             codes = (
                 0x00, 0x10, 0x01, 0x11, 0x02, 0x12, 0x03, 0x04,
@@ -92,9 +113,9 @@ class MitsubishiCommand(ClimatePacket):
         ):
             raise ValueError("invalid Mitsubishi vane position")
         mode_code = selection(mode, _MODES)
-        effective_temp = 24 if mode == ClimateMode.DRY else temperature
+        effective_temp = 24 if mode == MitsubishiMode.DRY else temperature
         temp_code = int(effective_temp) - 16 | (16 if effective_temp % 1 else 0)
-        mode_aux = {ClimateMode.HEAT: 0, ClimateMode.DRY: 2}.get(mode, 6)
+        mode_aux = {MitsubishiMode.HEAT: 0, MitsubishiMode.DRY: 2}.get(mode, 6)
         vane_fan = (
             int(MitsubishiFan(fan)) | ((7 if swing_v else vertical_position) << 3) | 64
         )
@@ -131,6 +152,16 @@ class MitsubishiCommand(ClimatePacket):
         super().__init__(data=data + bytes([self.checksum(data)]))
 
     @property
+    def is_fahrenheit(self) -> bool:
+        """The packet carries Celsius; Fahrenheit input is converted before encoding."""
+        return False
+
+    @property
+    def temperature(self) -> float | None:
+        """Return the wire Celsius set point, excluding the dry-mode placeholder."""
+        return self.state.temperature
+
+    @property
     def fan(self) -> MitsubishiFan:
         """Return the native fan level without assuming a unit's speed count."""
         return MitsubishiFan(self.data[9] & 7)
@@ -162,19 +193,19 @@ class MitsubishiCommand(ClimatePacket):
         return True if self.data[16] & 0x38 else None
 
     @classmethod
-    def parse(cls, data: bytes) -> ClimateState:
+    def parse(cls, data: bytes) -> MitsubishiState:
         """Check packet identity and recover common state fields."""
-        super().parse(data)
+        cls._validate_packet(data)
         if data[:5] != bytes([0x23, 0xCB, 0x26, 1, 0]):
             raise ValueError("invalid Mitsubishi signature")
         temperature = 16 + (data[7] & 15) + (0.5 if data[7] & 16 else 0)
         temperature_value(temperature, 16, 31.5, 0.5)
         fan = MitsubishiFan(data[9] & 7)
         mode = decoded(data[6] & 0x38, _MODES)
-        return ClimateState(
+        return MitsubishiState(
             power=bool(data[5] & 32),
             mode=mode,
-            temperature=None if mode == ClimateMode.DRY else temperature,
+            temperature=None if mode == MitsubishiMode.DRY else temperature,
             fan=fan,
             swing_v=data[9] & 0x38 == 0x38,
             swing_h=data[8] & 0xF0 == 0xC0,

@@ -1,13 +1,4 @@
-"""Decoded climate vocabulary; state temperatures are degrees Celsius.
-
-Constructor units are protocol-specific and documented by each command.
-This is an opt-in projection for the new state-packet families, not a replacement
-for existing per-module IntEnum APIs. Integrations must select a remote model
-and map its supported capabilities; protocols with toggles cannot be treated as
-absolute state setters. Existing native APIs retain their wire-valued enums.
-Families with native fan enums return that enum for every level, preserving all
-speeds without changing the value's type between levels.
-"""
+"""Test-only Celsius and named-setting vocabulary used by the external fixtures."""
 
 from dataclasses import dataclass
 from enum import IntEnum, StrEnum

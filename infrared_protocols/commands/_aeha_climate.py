@@ -8,7 +8,7 @@ from .aeha import AehaCommand
 _REVERSED = bytes(int(f"{value:08b}"[::-1], 2) for value in range(256))
 
 
-class AehaClimatePacket(ClimatePacket):
+class AehaClimatePacket[StateT](ClimatePacket[StateT]):
     """Keep model payload fields while sharing AEHA's encoder and receiver windows."""
 
     HEADER = (AehaCommand.TIMING.leader_mark, -AehaCommand.TIMING.leader_space)

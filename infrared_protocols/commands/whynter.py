@@ -1,23 +1,51 @@
 """Whynter 32-bit portable air-conditioner commands."""
 
+from dataclasses import dataclass
+from enum import IntEnum
 from typing import Self
 
 from ._climate_fields import decoded, selection, temperature_value
 from ._timing import PulseTiming, bits, number
 from ._word import WordCommand
-from .climate import (
-    ClimateFan,
-    ClimateMode,
-    ClimateState,
-)
+
+
+class WhynterMode(IntEnum):
+    """Whynter operating modes."""
+
+    FAN_ONLY = 0x1
+    DRY = 0x2
+    HEAT = 0x4
+    COOL = 0x8
+
+
+class WhynterFanSpeed(IntEnum):
+    """Whynter fan speeds."""
+
+    HIGH = 0x1
+    MEDIUM = 0x2
+    LOW = 0x4
+
+
+@dataclass(frozen=True, kw_only=True)
+class WhynterState:
+    """Settings carried by a Whynter packet, using its native enums and units."""
+
+    power: bool | None = None
+    mode: WhynterMode | None = None
+    temperature: float | None = None
+    fan: WhynterFanSpeed | None = None
+    swing_v: bool | None = None
+    swing_h: bool | None = None
+    is_fahrenheit: bool = False
+
 
 _MODES = {
-    ClimateMode.FAN_ONLY: 1,
-    ClimateMode.DRY: 2,
-    ClimateMode.HEAT: 4,
-    ClimateMode.COOL: 8,
+    WhynterMode.FAN_ONLY: 1,
+    WhynterMode.DRY: 2,
+    WhynterMode.HEAT: 4,
+    WhynterMode.COOL: 8,
 }
-_FANS = {ClimateFan.HIGH: 1, ClimateFan.MEDIUM: 2, ClimateFan.LOW: 4}
+_FANS = {WhynterFanSpeed.HIGH: 1, WhynterFanSpeed.MEDIUM: 2, WhynterFanSpeed.LOW: 4}
 
 
 class WhynterCommand(WordCommand):
@@ -31,29 +59,29 @@ class WhynterCommand(WordCommand):
     def __init__(
         self,
         *,
-        mode: ClimateMode,
+        mode: WhynterMode,
         temperature: int,
         power: bool = True,
-        fan: ClimateFan = ClimateFan.HIGH,
-        fahrenheit: bool = False,
+        fan: WhynterFanSpeed = WhynterFanSpeed.HIGH,
+        is_fahrenheit: bool = False,
     ) -> None:
         """Build a state; Fahrenheit uses 61..89, Celsius uses 16..32."""
         temperature_value(
-            temperature, 61 if fahrenheit else 16, 89 if fahrenheit else 32
+            temperature, 61 if is_fahrenheit else 16, 89 if is_fahrenheit else 32
         )
-        temp = temperature if fahrenheit else temperature - 16
+        temp = temperature if is_fahrenheit else temperature - 16
         value = (
             0x12000000
             | selection(fan, _FANS) << 20
             | (selection(mode, _MODES) << 16 if power else 0)
         )
         value |= (
-            int(power) << 8 | int(fahrenheit) << 10 | number(bits(temp, 8), lsb=True)
+            int(power) << 8 | int(is_fahrenheit) << 10 | number(bits(temp, 8), lsb=True)
         )
         super().__init__(data=value)
 
     @property
-    def fahrenheit(self) -> bool:
+    def is_fahrenheit(self) -> bool:
         """Return the remote's native temperature-unit flag."""
         return bool(self.data & 1024)
 
@@ -61,25 +89,24 @@ class WhynterCommand(WordCommand):
     def temperature(self) -> int:
         """Return the set point in the remote's native units."""
         native = number(bits(self.data & 255, 8), lsb=True)
-        return native if self.fahrenheit else native + 16
+        return native if self.is_fahrenheit else native + 16
 
     @property
-    def state(self) -> ClimateState:
+    def state(self) -> WhynterState:
         """Decode the carried state; off frames carry no mode."""
         if self.data >> 24 != 0x12:
             raise ValueError("invalid Whynter signature")
         temperature_value(
             self.temperature,
-            61 if self.fahrenheit else 16,
-            89 if self.fahrenheit else 32,
+            61 if self.is_fahrenheit else 16,
+            89 if self.is_fahrenheit else 32,
         )
         mode_code = self.data >> 16 & 15
-        return ClimateState(
+        return WhynterState(
             power=bool(self.data & 256),
             mode=decoded(mode_code, _MODES) if mode_code else None,
-            temperature=(self.temperature - 32) * 5 / 9
-            if self.fahrenheit
-            else self.temperature,
+            temperature=self.temperature,
+            is_fahrenheit=self.is_fahrenheit,
             fan=decoded(self.data >> 20 & 7, _FANS),
         )
 

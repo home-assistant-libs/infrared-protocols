@@ -1,36 +1,67 @@
 """Parker Davis/Pioneer climate state in paired odd and even bursts."""
 
+from dataclasses import dataclass
+from enum import IntEnum
+
 from ._climate import ClimatePacket, FramePart
 from ._climate_fields import decoded, selection, temperature_value
-from .climate import (
-    ClimateFan,
-    ClimateMode,
-    ClimateState,
-)
 from .pd_pioneer import PdPioneerCommand
 
+
+class PdPioneerClimateMode(IntEnum):
+    """PdPioneerClimate operating modes."""
+
+    HEAT = 0x1
+    DRY = 0x2
+    COOL = 0x3
+    FAN_ONLY = 0x7
+    AUTO = 0x8
+
+
+class PdPioneerClimateFanSpeed(IntEnum):
+    """PdPioneerClimate fan speeds."""
+
+    AUTO = 0x0
+    LOW = 0x2
+    MEDIUM = 0x3
+    HIGH = 0x5
+
+
+@dataclass(frozen=True, kw_only=True)
+class PdPioneerClimateState:
+    """Pioneer settings with native mode and fan selections."""
+
+    power: bool | None = None
+    mode: PdPioneerClimateMode | None = None
+    temperature: float | None = None
+    fan: PdPioneerClimateFanSpeed | None = None
+    swing_v: bool | None = None
+    swing_h: bool | None = None
+    is_fahrenheit: bool = False
+
+
 _MODES = {
-    ClimateMode.HEAT: 1,
-    ClimateMode.DRY: 2,
-    ClimateMode.COOL: 3,
-    ClimateMode.FAN_ONLY: 7,
-    ClimateMode.AUTO: 8,
+    PdPioneerClimateMode.HEAT: 1,
+    PdPioneerClimateMode.DRY: 2,
+    PdPioneerClimateMode.COOL: 3,
+    PdPioneerClimateMode.FAN_ONLY: 7,
+    PdPioneerClimateMode.AUTO: 8,
 }
 _FANS = {
-    ClimateFan.AUTO: 0,
-    ClimateFan.LOW: 2,
-    ClimateFan.MEDIUM: 3,
-    ClimateFan.HIGH: 5,
+    PdPioneerClimateFanSpeed.AUTO: 0,
+    PdPioneerClimateFanSpeed.LOW: 2,
+    PdPioneerClimateFanSpeed.MEDIUM: 3,
+    PdPioneerClimateFanSpeed.HIGH: 5,
 }
 _ODD_FANS = {
-    ClimateFan.AUTO: (0x40, 0x20),
-    ClimateFan.LOW: (0x60, 0x40),
-    ClimateFan.MEDIUM: (0x40, 0x60),
-    ClimateFan.HIGH: (0x40, 0xC0),
+    PdPioneerClimateFanSpeed.AUTO: (0x40, 0x20),
+    PdPioneerClimateFanSpeed.LOW: (0x60, 0x40),
+    PdPioneerClimateFanSpeed.MEDIUM: (0x40, 0x60),
+    PdPioneerClimateFanSpeed.HIGH: (0x40, 0xC0),
 }
 
 
-class PdPioneerClimateCommand(ClimatePacket):
+class PdPioneerClimateCommand(ClimatePacket[PdPioneerClimateState]):
     """Both bursts are needed to recover horizontal and vertical swing.
 
     Decoding requires all sections in one capture. Configure the receiver idle
@@ -50,10 +81,10 @@ class PdPioneerClimateCommand(ClimatePacket):
     def __init__(
         self,
         *,
-        mode: ClimateMode,
+        mode: PdPioneerClimateMode,
         temperature: float,
         power: bool = True,
-        fan: ClimateFan = ClimateFan.AUTO,
+        fan: PdPioneerClimateFanSpeed = PdPioneerClimateFanSpeed.AUTO,
         swing_v: bool = False,
         swing_h: bool = False,
         economy: bool = False,
@@ -79,7 +110,11 @@ class PdPioneerClimateCommand(ClimatePacket):
             ]
         )
         target = (
-            19 if not power else 20 if mode == ClimateMode.FAN_ONLY else temperature
+            19
+            if not power
+            else 20
+            if mode == PdPioneerClimateMode.FAN_ONLY
+            else temperature
         )
         even = bytes(
             [
@@ -108,7 +143,7 @@ class PdPioneerClimateCommand(ClimatePacket):
         return self.data[19] == 0x25
 
     @classmethod
-    def parse(cls, data: bytes) -> ClimateState:
+    def parse(cls, data: bytes) -> PdPioneerClimateState:
         """Check both burst types, checksums and duplicated fan/swing fields."""
         if len(data) != cls.LENGTH:
             raise ValueError("incomplete Pioneer state")
@@ -131,10 +166,12 @@ class PdPioneerClimateCommand(ClimatePacket):
         temp = 31 - even[7] + (0.5 if even[12] & 4 else 0)
         temperature_value(temp, 16, 31, 0.5)
         power = even[5] != 0xA0
-        return ClimateState(
+        return PdPioneerClimateState(
             power=power,
             mode=mode if power else None,
-            temperature=temp if power and mode != ClimateMode.FAN_ONLY else None,
+            temperature=temp
+            if power and mode != PdPioneerClimateMode.FAN_ONLY
+            else None,
             fan=fan,
             swing_v=bool(odd[7] & 8),
             swing_h=odd[7] & 0x90 == 0x90,

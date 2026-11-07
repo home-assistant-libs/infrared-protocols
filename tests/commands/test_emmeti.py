@@ -2,15 +2,19 @@
 
 import pytest
 
-from infrared_protocols.commands.climate import ClimateMode, ClimateState
-from infrared_protocols.commands.emmeti import EmmetiBlade, EmmetiCommand
+from infrared_protocols.commands.emmeti import (
+    EmmetiBlade,
+    EmmetiCommand,
+    EmmetiMode,
+    EmmetiState,
+)
 
 
 @pytest.mark.parametrize("blade", list(EmmetiBlade))
 @pytest.mark.parametrize("temperature", [16, 22, 30])
 def test_emmeti_blades(blade: EmmetiBlade, temperature: int) -> None:
     """Every supported vane position and range is readable from a decoded command."""
-    sent = EmmetiCommand(mode=ClimateMode.COOL, temperature=temperature, blade=blade)
+    sent = EmmetiCommand(mode=EmmetiMode.COOL, temperature=temperature, blade=blade)
     received = EmmetiCommand.from_raw_timings(sent.get_raw_timings())
     assert received is not None
     assert received.blade == blade
@@ -19,8 +23,8 @@ def test_emmeti_blades(blade: EmmetiBlade, temperature: int) -> None:
 
 def test_emmeti_other_off_state() -> None:
     """Power-off is identified by the power bit, beyond the fixed off packet."""
-    sent = EmmetiCommand(mode=ClimateMode.COOL, temperature=22)
+    sent = EmmetiCommand(mode=EmmetiMode.COOL, temperature=22)
     sent.data &= ~(1 << 63)
     received = EmmetiCommand.from_raw_timings(sent.get_raw_timings())
     assert received is not None
-    assert received.state == ClimateState(power=False)
+    assert received.state == EmmetiState(power=False)

@@ -4,10 +4,9 @@ from typing import ClassVar, Self, override
 
 from ._timing import Reader, bits, capture_gap_options, join_captures, number
 from ._word import WordCommand
-from .climate import ClimateState
 
 
-class SplitClimateCommand(WordCommand):
+class SplitClimateCommand[StateT](WordCommand):
     """A 67-bit word transmitted as 35 and 32 bits."""
 
     WIDTH = 67
@@ -36,7 +35,7 @@ class SplitClimateCommand(WordCommand):
         return None
 
     @property
-    def state(self) -> ClimateState:
+    def state(self) -> StateT:
         """Validate and decode the protocol-specific word."""
         raise NotImplementedError
 

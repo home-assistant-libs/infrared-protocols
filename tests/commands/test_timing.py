@@ -2,14 +2,13 @@
 
 import pytest
 
-from infrared_protocols.commands.climate import ClimateMode
-from infrared_protocols.commands.friedrich import FriedrichCommand
+from infrared_protocols.commands.friedrich import FriedrichCommand, FriedrichMode
 from infrared_protocols.commands.kaseikyo import KaseikyoCommand
 from infrared_protocols.commands.magiquest import (
     MagiQuestCommand,
 )
-from infrared_protocols.commands.mistral import MistralCommand
-from infrared_protocols.commands.mitsubishi import MitsubishiCommand
+from infrared_protocols.commands.mistral import MistralCommand, MistralMode
+from infrared_protocols.commands.mitsubishi import MitsubishiCommand, MitsubishiMode
 from infrared_protocols.commands.pioneer import PioneerCommand
 from infrared_protocols.commands.roomba import RoombaCommand
 from infrared_protocols.commands.samsung import Samsung32Command
@@ -22,14 +21,14 @@ from infrared_protocols.commands.samsung import Samsung32Command
             KaseikyoCommand(address=0x2002, data=b"\xa0\x01\xff"), id="kaseikyo"
         ),
         pytest.param(
-            MitsubishiCommand(mode=ClimateMode.COOL, temperature=23), id="mitsubishi"
+            MitsubishiCommand(mode=MitsubishiMode.COOL, temperature=23), id="mitsubishi"
         ),
         pytest.param(
-            FriedrichCommand(mode=ClimateMode.COOL, temperature_f=72),
+            FriedrichCommand(mode=FriedrichMode.COOL, temperature=72),
             id="friedrich-aeha",
         ),
         pytest.param(
-            MistralCommand(mode=ClimateMode.COOL, temperature=23), id="mistral-aeha"
+            MistralCommand(mode=MistralMode.COOL, temperature=23), id="mistral-aeha"
         ),
         pytest.param(Samsung32Command(address=7, command=2), id="samsung"),
         pytest.param(PioneerCommand(address=7, command=2), id="pioneer"),

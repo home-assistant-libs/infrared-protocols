@@ -376,7 +376,7 @@ def cases():
         extra(
             f"daikin_brc:units:{fahrenheit}:{temp}",
             "daikin_brc",
-            "DaikinBrcFahrenheitCommand" if fahrenheit else "DaikinBrcCommand",
+            "DaikinBrcCommand",
             dict(
                 mode="cool",
                 temperature=temp,
@@ -384,6 +384,7 @@ def cases():
                 swing=False,
                 sub_unit=3,
                 mode_button=True,
+                fahrenheit=fahrenheit,
             ),
             fan=3,
             temperature=(temp - 32) * 5 / 9 if fahrenheit else temp,
@@ -567,12 +568,10 @@ def expected_state(factory, args):
                 args.get("fan", "auto")
             ],
         )
-    if factory in ("DaikinBrcCommand", "DaikinBrcFahrenheitCommand"):
+    if factory == "DaikinBrcCommand":
         state.update(swing_v=args["swing"], swing_h=args["swing"])
         if power and mode in ("dry", "fan_only"):
             state["temperature"] = None
-        elif factory == "DaikinBrcFahrenheitCommand":
-            state["temperature"] = (temp - 32) * 5 / 9
     if factory == "DelonghiCommand" and not power:
         state["temperature"] = None
     if factory == "HaierTundraCommand" and not power:

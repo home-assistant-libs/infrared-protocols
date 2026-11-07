@@ -3,12 +3,13 @@
 import pytest
 
 from infrared_protocols.commands._timing import byte_bits
-from infrared_protocols.commands.climate import ClimateMode, ClimateState
 from infrared_protocols.commands.daikin_ac import DaikinAcFanSpeed
 from infrared_protocols.commands.daikin_arc import (
+    DaikinAcMode,
     DaikinArcCommand,
     DaikinArcQueryCommand,
     DaikinArcSensorResponse,
+    DaikinArcState,
     DaikinHumidity,
 )
 
@@ -18,7 +19,7 @@ from infrared_protocols.commands.daikin_arc import (
 def test_arc_humidity(humidity: DaikinHumidity, power: bool) -> None:
     """All humidity selections survive both sections and their checksums."""
     sent = DaikinArcCommand(
-        mode=ClimateMode.COOL,
+        mode=DaikinAcMode.COOL,
         temperature=23,
         humidity=humidity,
         humidity_changed=True,
@@ -38,7 +39,7 @@ def test_arc_query() -> None:
     )
     assert received is not None
     assert received.data == bytes.fromhex("11da27008487203d")
-    assert received.state == ClimateState()
+    assert received.state == DaikinArcState()
 
 
 @pytest.mark.parametrize(
@@ -68,8 +69,8 @@ def test_arc_sensor_reply(known_bits: int, trailing: list[int]) -> None:
     assert DaikinArcSensorResponse.from_raw_timings(raw[:-8]) is None
 
 
-@pytest.mark.parametrize("mode", list(ClimateMode))
-def test_arc_off_setpoint(mode: ClimateMode) -> None:
+@pytest.mark.parametrize("mode", list(DaikinAcMode))
+def test_arc_off_setpoint(mode: DaikinAcMode) -> None:
     """The off command carries 25 C even when it equals the fan-only sentinel."""
     sent = DaikinArcCommand(mode=mode, temperature=25, power=False)
     received = DaikinArcCommand.from_raw_timings(sent.get_raw_timings())
@@ -80,7 +81,7 @@ def test_arc_off_setpoint(mode: ClimateMode) -> None:
 @pytest.mark.parametrize("fan", list(DaikinAcFanSpeed))
 def test_arc_native_fan_levels(fan: DaikinAcFanSpeed) -> None:
     """Every native speed retains its type and can be sent back unchanged."""
-    sent = DaikinArcCommand(mode=ClimateMode.COOL, temperature=24, fan=fan)
+    sent = DaikinArcCommand(mode=DaikinAcMode.COOL, temperature=24, fan=fan)
     received = DaikinArcCommand.from_raw_timings(sent.get_raw_timings())
     assert received is not None
     assert received.fan is fan

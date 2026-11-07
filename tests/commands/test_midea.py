@@ -4,44 +4,49 @@ from itertools import product
 
 import pytest
 
-from infrared_protocols.commands.climate import ClimateFan, ClimateMode, ClimateState
-from infrared_protocols.commands.midea import MideaCommand
+from infrared_protocols.commands.midea import (
+    MideaCommand,
+    MideaFanSpeed,
+    MideaMode,
+    MideaState,
+)
 
 
 @pytest.mark.parametrize(
-    "mode,power,fahrenheit,temperature,expected_mode,expected",
+    "mode,power,is_fahrenheit,temperature,expected_mode,expected",
     [
         pytest.param(
             mode,
             power,
-            fahrenheit,
+            is_fahrenheit,
             temp,
             mode if power else None,
-            None if power and mode == ClimateMode.FAN_ONLY else expected,
-            id=f"{mode}-{power}-{temp}-fahrenheit{fahrenheit}",
+            None if power and mode == MideaMode.FAN_ONLY else expected,
+            id=f"{mode}-{power}-{temp}-is_fahrenheit{is_fahrenheit}",
         )
-        for mode, power, (fahrenheit, temp, expected) in product(
-            ClimateMode, (False, True), [(False, 21, 21), (True, 68, 20)]
+        for mode, power, (is_fahrenheit, temp, expected) in product(
+            MideaMode, (False, True), [(False, 21, 21), (True, 68, 68)]
         )
     ],
 )
 def test_midea_state(
-    mode: ClimateMode,
+    mode: MideaMode,
     power: bool,
-    fahrenheit: bool,
+    is_fahrenheit: bool,
     temperature: int,
-    expected_mode: ClimateMode | None,
+    expected_mode: MideaMode | None,
     expected: float | None,
 ) -> None:
-    """Native Fahrenheit codes decode to Celsius and off remains explicit."""
+    """Native temperatures retain their units and off remains explicit."""
     command = MideaCommand.climate(
-        mode=mode, temperature=temperature, power=power, fahrenheit=fahrenheit
+        mode=mode, temperature=temperature, power=power, is_fahrenheit=is_fahrenheit
     )
-    assert command.state == ClimateState(
+    assert command.state == MideaState(
         power=power,
         mode=expected_mode,
         temperature=expected,
-        fan=ClimateFan.AUTO,
+        is_fahrenheit=is_fahrenheit,
+        fan=MideaFanSpeed.AUTO,
     )
 
 
@@ -59,26 +64,28 @@ def test_midea_follow_me() -> None:
 @pytest.mark.parametrize(
     "mode,temp,fan,packet",
     [
-        pytest.param(ClimateMode.COOL, 24, ClimateFan.LOW, "a18847ffff", id="cool-low"),
         pytest.param(
-            ClimateMode.COOL, 24, ClimateFan.MEDIUM, "a19047ffff", id="cool-medium"
+            MideaMode.COOL, 24, MideaFanSpeed.LOW, "a18847ffff", id="cool-low"
         ),
         pytest.param(
-            ClimateMode.COOL, 24, ClimateFan.AUTO, "a1a047ffff", id="cool-auto"
+            MideaMode.COOL, 24, MideaFanSpeed.MEDIUM, "a19047ffff", id="cool-medium"
         ),
         pytest.param(
-            ClimateMode.HEAT, 24, ClimateFan.AUTO, "a1a347ffff", id="heat-auto"
+            MideaMode.COOL, 24, MideaFanSpeed.AUTO, "a1a047ffff", id="cool-auto"
         ),
         pytest.param(
-            ClimateMode.HEAT, 24, ClimateFan.HIGH, "a19b47ffff", id="heat-high"
+            MideaMode.HEAT, 24, MideaFanSpeed.AUTO, "a1a347ffff", id="heat-auto"
         ),
         pytest.param(
-            ClimateMode.FAN_ONLY, 24, ClimateFan.AUTO, "a1a45fffff", id="fan-auto"
+            MideaMode.HEAT, 24, MideaFanSpeed.HIGH, "a19b47ffff", id="heat-high"
+        ),
+        pytest.param(
+            MideaMode.FAN_ONLY, 24, MideaFanSpeed.AUTO, "a1a45fffff", id="fan-auto"
         ),
     ],
 )
 def test_midea_control_bytes(
-    mode: ClimateMode, temp: int, fan: ClimateFan, packet: str
+    mode: MideaMode, temp: int, fan: MideaFanSpeed, packet: str
 ) -> None:
     """Known control bytes constrain the tables independently of decoding."""
     sent = MideaCommand.climate(mode=mode, temperature=temp, fan=fan)
@@ -99,7 +106,7 @@ def test_midea_unknown_state() -> None:
 
 def test_midea_sleep_decode() -> None:
     """Sleep is readable after receiving an ordinary control packet."""
-    sent = MideaCommand.climate(mode=ClimateMode.COOL, temperature=23, sleep=True)
+    sent = MideaCommand.climate(mode=MideaMode.COOL, temperature=23, sleep=True)
     received = MideaCommand.from_raw_timings(sent.get_raw_timings())
     assert received is not None
     assert received.sleep is True
@@ -114,7 +121,7 @@ def test_captured_off_placeholder() -> None:
     assert command.state.power is False
     assert command.state.mode is None
     assert (
-        MideaCommand.climate(mode=ClimateMode.COOL, temperature=24, power=False).data
+        MideaCommand.climate(mode=MideaMode.COOL, temperature=24, power=False).data
         == command.data
     )
 
@@ -130,23 +137,24 @@ def test_incomplete_packet_rejected() -> None:
 
 
 @pytest.mark.parametrize(
-    "temperature,fahrenheit,celsius",
+    "temperature,is_fahrenheit",
     [
-        pytest.param(17, False, 17, id="c-min"),
-        pytest.param(30, False, 30, id="c-max"),
-        pytest.param(62, True, (62 - 32) * 5 / 9, id="f-min"),
-        pytest.param(75, True, (75 - 32) * 5 / 9, id="f-normal"),
-        pytest.param(86, True, (86 - 32) * 5 / 9, id="f-max"),
+        pytest.param(17, False, id="c-min"),
+        pytest.param(30, False, id="c-max"),
+        pytest.param(62, True, id="f-min"),
+        pytest.param(75, True, id="f-normal"),
+        pytest.param(86, True, id="f-max"),
     ],
 )
-def test_native_temperature(temperature: int, fahrenheit: bool, celsius: float) -> None:
-    """Native unit metadata survives decoding alongside normalized Celsius."""
+def test_native_temperature(temperature: int, is_fahrenheit: bool) -> None:
+    """Native temperature and unit metadata survive decoding together."""
     command = MideaCommand.climate(
-        mode=ClimateMode.COOL, temperature=temperature, fahrenheit=fahrenheit
+        mode=MideaMode.COOL, temperature=temperature, is_fahrenheit=is_fahrenheit
     )
     received = MideaCommand.from_raw_timings(command.get_raw_timings())
     assert received is not None
-    assert received.fahrenheit is fahrenheit
+    assert received.is_fahrenheit is is_fahrenheit
     assert received.temperature == temperature
     assert received.state is not None
-    assert received.state.temperature == celsius
+    assert received.state.temperature == temperature
+    assert received.state.is_fahrenheit is is_fahrenheit

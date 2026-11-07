@@ -1,15 +1,45 @@
 """Midea 48-bit packets followed by an inverted packet."""
 
+from dataclasses import dataclass
+from enum import IntEnum
 from typing import Self, override
 
 from . import Command
 from ._climate_fields import decoded, selection, temperature_value
 from ._timing import PulseTiming, Reader, byte_bits, pack_bytes
-from .climate import (
-    ClimateFan,
-    ClimateMode,
-    ClimateState,
-)
+
+
+class MideaMode(IntEnum):
+    """Midea operating modes."""
+
+    COOL = 0x0
+    DRY = 0x1
+    AUTO = 0x2
+    HEAT = 0x3
+    FAN_ONLY = 0x4
+
+
+class MideaFanSpeed(IntEnum):
+    """Midea fan speeds."""
+
+    AUTO = 0x0
+    LOW = 0x1
+    MEDIUM = 0x2
+    HIGH = 0x3
+
+
+@dataclass(frozen=True, kw_only=True)
+class MideaState:
+    """Settings carried by a Midea packet, using its native enums and units."""
+
+    power: bool | None = None
+    mode: MideaMode | None = None
+    temperature: float | None = None
+    fan: MideaFanSpeed | None = None
+    swing_v: bool | None = None
+    swing_h: bool | None = None
+    is_fahrenheit: bool = False
+
 
 _TIMING = PulseTiming(560, 560, 1680)
 
@@ -70,32 +100,32 @@ class MideaCommand(Command):
     def climate(
         cls,
         *,
-        mode: ClimateMode,
+        mode: MideaMode,
         temperature: int,
         power: bool = True,
-        fan: ClimateFan = ClimateFan.AUTO,
+        fan: MideaFanSpeed = MideaFanSpeed.AUTO,
         sleep: bool = False,
-        fahrenheit: bool = False,
+        is_fahrenheit: bool = False,
     ) -> Self:
         """Build a control packet; temperature is 17..30 °C or 62..86 °F."""
         temp = temperature_value(
-            temperature, 62 if fahrenheit else 17, 86 if fahrenheit else 30
+            temperature, 62 if is_fahrenheit else 17, 86 if is_fahrenheit else 30
         )
         mode_code = selection(mode, _MODES)
         if not power:
-            mode, mode_code = ClimateMode.AUTO, _MODES[ClimateMode.AUTO]
+            mode, mode_code = MideaMode.AUTO, _MODES[MideaMode.AUTO]
         fan_code = selection(fan, _FANS)
         flags = (128 if power else 0) | (64 if sleep else 0) | fan_code << 3 | mode_code
         if fan_code == 0 and mode in (
-            ClimateMode.COOL,
-            ClimateMode.HEAT,
-            ClimateMode.FAN_ONLY,
+            MideaMode.COOL,
+            MideaMode.HEAT,
+            MideaMode.FAN_ONLY,
         ):
             flags |= 32
-        temp_code = 31 if mode == ClimateMode.FAN_ONLY else temp
+        temp_code = 31 if mode == MideaMode.FAN_ONLY else temp
         return cls(
             data=bytes(
-                [0xA1, flags, 0x40 | (32 if fahrenheit else 0) | temp_code, 255, 255]
+                [0xA1, flags, 0x40 | (32 if is_fahrenheit else 0) | temp_code, 255, 255]
             )
         )
 
@@ -108,16 +138,16 @@ class MideaCommand(Command):
         )
 
     @property
-    def fahrenheit(self) -> bool | None:
+    def is_fahrenheit(self) -> bool | None:
         """Return the control packet's native units, absent on standalone actions."""
         return bool(self.data[2] & 32) if self.data[0] == 0xA1 else None
 
     @property
     def temperature(self) -> int | None:
         """Return the native set point, absent on fan-only and standalone actions."""
-        if self.data[0] != 0xA1 or self.data[1] & 7 == _MODES[ClimateMode.FAN_ONLY]:
+        if self.data[0] != 0xA1 or self.data[1] & 7 == _MODES[MideaMode.FAN_ONLY]:
             return None
-        return (self.data[2] & 31) + (62 if self.fahrenheit else 17)
+        return (self.data[2] & 31) + (62 if self.is_fahrenheit else 17)
 
     @property
     def sleep(self) -> bool | None:
@@ -135,7 +165,7 @@ class MideaCommand(Command):
         return bool(self.data[3] & 128) if self.data[0] == 0xA4 else None
 
     @property
-    def state(self) -> ClimateState | None:
+    def state(self) -> MideaState | None:
         """Read control state; special and sensor packets have no climate state."""
         if self.data[0] != 0xA1:
             return None
@@ -143,29 +173,30 @@ class MideaCommand(Command):
             return None
         mode = decoded(self.data[1] & 7, _MODES)
         temp = self.data[2] & 31
-        fahrenheit = bool(self.data[2] & 32)
-        temperature = (temp + 62 - 32) * 5 / 9 if fahrenheit else temp + 17
-        if mode != ClimateMode.FAN_ONLY:
-            if temp > (24 if fahrenheit else 13):
+        is_fahrenheit = bool(self.data[2] & 32)
+        temperature = temp + (62 if is_fahrenheit else 17)
+        if mode != MideaMode.FAN_ONLY:
+            if temp > (24 if is_fahrenheit else 13):
                 return None
-        return ClimateState(
+        return MideaState(
             power=bool(self.data[1] & 128),
             mode=mode if self.data[1] & 128 else None,
-            temperature=None if mode == ClimateMode.FAN_ONLY else temperature,
+            temperature=None if mode == MideaMode.FAN_ONLY else temperature,
+            is_fahrenheit=is_fahrenheit,
             fan=decoded(self.data[1] >> 3 & 3, _FANS),
         )
 
 
 _MODES = {
-    ClimateMode.COOL: 0,
-    ClimateMode.DRY: 1,
-    ClimateMode.AUTO: 2,
-    ClimateMode.HEAT: 3,
-    ClimateMode.FAN_ONLY: 4,
+    MideaMode.COOL: 0,
+    MideaMode.DRY: 1,
+    MideaMode.AUTO: 2,
+    MideaMode.HEAT: 3,
+    MideaMode.FAN_ONLY: 4,
 }
 _FANS = {
-    ClimateFan.AUTO: 0,
-    ClimateFan.LOW: 1,
-    ClimateFan.MEDIUM: 2,
-    ClimateFan.HIGH: 3,
+    MideaFanSpeed.AUTO: 0,
+    MideaFanSpeed.LOW: 1,
+    MideaFanSpeed.MEDIUM: 2,
+    MideaFanSpeed.HIGH: 3,
 }

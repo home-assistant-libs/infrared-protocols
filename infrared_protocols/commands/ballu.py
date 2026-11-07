@@ -1,30 +1,61 @@
 """Ballu YKR-K/002E state commands."""
 
+from dataclasses import dataclass
+from enum import IntEnum
+
 from ._climate import ClimatePacket
 from ._climate_fields import decoded, selection, temperature_value
 from ._timing import PulseTiming
-from .climate import (
-    ClimateFan,
-    ClimateMode,
-    ClimateState,
-)
+
+
+class BalluMode(IntEnum):
+    """Ballu operating modes."""
+
+    AUTO = 0x0
+    COOL = 0x1
+    DRY = 0x2
+    HEAT = 0x4
+    FAN_ONLY = 0x6
+
+
+class BalluFanSpeed(IntEnum):
+    """Ballu fan speeds."""
+
+    AUTO = 0x5
+    HIGH = 0x1
+    MEDIUM = 0x2
+    LOW = 0x3
+
+
+@dataclass(frozen=True, kw_only=True)
+class BalluState:
+    """Settings carried by a Ballu packet, using its native enums and units."""
+
+    power: bool | None = None
+    mode: BalluMode | None = None
+    temperature: float | None = None
+    fan: BalluFanSpeed | None = None
+    swing_v: bool | None = None
+    swing_h: bool | None = None
+    is_fahrenheit: bool = False
+
 
 _MODES = {
-    ClimateMode.AUTO: 0,
-    ClimateMode.COOL: 1,
-    ClimateMode.DRY: 2,
-    ClimateMode.HEAT: 4,
-    ClimateMode.FAN_ONLY: 6,
+    BalluMode.AUTO: 0,
+    BalluMode.COOL: 1,
+    BalluMode.DRY: 2,
+    BalluMode.HEAT: 4,
+    BalluMode.FAN_ONLY: 6,
 }
 _FANS = {
-    ClimateFan.AUTO: 5,
-    ClimateFan.HIGH: 1,
-    ClimateFan.MEDIUM: 2,
-    ClimateFan.LOW: 3,
+    BalluFanSpeed.AUTO: 5,
+    BalluFanSpeed.HIGH: 1,
+    BalluFanSpeed.MEDIUM: 2,
+    BalluFanSpeed.LOW: 3,
 }
 
 
-class BalluCommand(ClimatePacket):
+class BalluCommand(ClimatePacket[BalluState]):
     """Ballu full-state command, with independent horizontal and vertical swing."""
 
     HEADER = (9000, -4500)
@@ -34,10 +65,10 @@ class BalluCommand(ClimatePacket):
     def __init__(
         self,
         *,
-        mode: ClimateMode,
+        mode: BalluMode,
         temperature: float,
         power: bool = True,
-        fan: ClimateFan = ClimateFan.AUTO,
+        fan: BalluFanSpeed = BalluFanSpeed.AUTO,
         swing_v: bool = False,
         swing_h: bool = False,
     ) -> None:
@@ -63,14 +94,14 @@ class BalluCommand(ClimatePacket):
         super().__init__(data=data + bytes([self.checksum(data)]))
 
     @classmethod
-    def parse(cls, data: bytes) -> ClimateState:
+    def parse(cls, data: bytes) -> BalluState:
         """Read the common state after validating the signature and checksum."""
-        super().parse(data)
+        cls._validate_packet(data)
         if data[0] != 0xC3:
             raise ValueError("invalid Ballu signature")
         temperature = (data[1] >> 3) + 8
         temperature_value(temperature, 16, 32)
-        return ClimateState(
+        return BalluState(
             power=bool(data[9] & 32),
             mode=decoded(data[6] >> 5, _MODES) if bool(data[9] & 32) else None,
             temperature=temperature,

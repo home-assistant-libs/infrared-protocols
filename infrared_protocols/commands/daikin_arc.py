@@ -5,10 +5,102 @@ from enum import IntEnum
 from typing import Self
 
 from ._climate import ClimatePacket, FramePart
-from ._daikin import checked, parse_state, state_packet, validate_sections
+from ._climate_fields import decoded, selection, temperature_value
+from ._daikin import checked, validate_sections
 from ._timing import PulseTiming, Reader, pack_bytes
-from .climate import ClimateFan, ClimateMode, ClimateState
-from .daikin_ac import DaikinAcFanSpeed
+from .daikin_ac import DaikinAcFanSpeed, DaikinAcMode
+
+
+@dataclass(frozen=True, kw_only=True)
+class DaikinArcState:
+    """Settings carried by a DaikinArc packet, using its native enums and units."""
+
+    power: bool | None = None
+    mode: DaikinAcMode | None = None
+    temperature: float | None = None
+    fan: DaikinAcFanSpeed | None = None
+    swing_v: bool | None = None
+    swing_h: bool | None = None
+    is_fahrenheit: bool = False
+
+
+_MODES = {
+    DaikinAcMode.AUTO: 0,
+    DaikinAcMode.DRY: 2,
+    DaikinAcMode.COOL: 3,
+    DaikinAcMode.HEAT: 4,
+    DaikinAcMode.FAN_ONLY: 6,
+}
+
+_FANS = {
+    DaikinAcFanSpeed.AUTO: 10,
+    DaikinAcFanSpeed.SILENT: 11,
+    DaikinAcFanSpeed.LEVEL_1: 3,
+    DaikinAcFanSpeed.LEVEL_3: 5,
+    DaikinAcFanSpeed.LEVEL_5: 7,
+}
+
+
+def state_packet(
+    *,
+    mode: DaikinAcMode,
+    temperature: float,
+    power: bool,
+    fan: DaikinAcFanSpeed,
+    swing_v: bool,
+    swing_h: bool,
+) -> bytearray:
+    """Build common state fields, before variant-specific bytes and checksum."""
+    selection(mode, _MODES)
+    temperature_value(temperature, 10, 30, 0.5)
+    effective_temp = (
+        0xC0
+        if power and mode == DaikinAcMode.DRY
+        else 0x32
+        if power and mode == DaikinAcMode.FAN_ONLY
+        else int(temperature * 2)
+    )
+    return bytearray(
+        [
+            0x11,
+            0xDA,
+            0x27,
+            0,
+            0,
+            selection(mode, _MODES) << 4 | 1 if power else 0,
+            effective_temp,
+            0,
+            (int(DaikinAcFanSpeed(fan))) << 4 | (15 if swing_v else 0),
+            15 if swing_h else 0,
+            0,
+            6,
+            0x60,
+            0,
+            0,
+            0xC0,
+            0,
+            0,
+        ]
+    )
+
+
+def parse_state(data: bytes) -> DaikinArcState:
+    """Extract common state without reporting sentinel temperatures as set points."""
+    power = bool(data[5] & 1)
+    mode = decoded(data[5] >> 4, _MODES) if power else None
+    temperature = (
+        None if data[6] == 0xC0 or mode == DaikinAcMode.FAN_ONLY else data[6] / 2
+    )
+    if temperature is not None:
+        temperature_value(temperature, 10, 30, 0.5)
+    return DaikinArcState(
+        power=bool(data[5] & 1),
+        mode=mode,
+        temperature=temperature,
+        fan=DaikinAcFanSpeed(data[8] >> 4),
+        swing_v=bool(data[8] & 15),
+        swing_h=bool(data[9] & 15),
+    )
 
 
 class DaikinHumidity(IntEnum):
@@ -21,7 +113,7 @@ class DaikinHumidity(IntEnum):
     AUTO = 255
 
 
-class DaikinArcCommand(ClimatePacket):
+class DaikinArcCommand(ClimatePacket[DaikinArcState]):
     """Two-section ARC state with humidity selection.
 
     Decoding requires all sections in one capture. Configure the receiver idle
@@ -38,10 +130,10 @@ class DaikinArcCommand(ClimatePacket):
     def __init__(
         self,
         *,
-        mode: ClimateMode,
+        mode: DaikinAcMode,
         temperature: float,
         power: bool = True,
-        fan: ClimateFan | DaikinAcFanSpeed = ClimateFan.AUTO,
+        fan: DaikinAcFanSpeed = DaikinAcFanSpeed.AUTO,
         swing_v: bool = False,
         swing_h: bool = False,
         humidity: DaikinHumidity = DaikinHumidity.OFF,
@@ -57,7 +149,7 @@ class DaikinArcCommand(ClimatePacket):
             swing_h=swing_h,
         )
         state[5] |= 8
-        if mode == ClimateMode.AUTO and power:
+        if mode == DaikinAcMode.AUTO and power:
             state[6] = 0xC0
         state[7] = DaikinHumidity(humidity)
         state[14:18] = bytes([10, 0xC4, 0x80, 0x24])
@@ -102,7 +194,7 @@ class DaikinArcCommand(ClimatePacket):
         return DaikinHumidity(self.data[27])
 
     @classmethod
-    def parse(cls, data: bytes) -> ClimateState:
+    def parse(cls, data: bytes) -> DaikinArcState:
         """Validate both frame checksums and decode common settings."""
         validate_sections(data, (20, 19))
         if data[4] != 2 or data[24] != 0:
@@ -111,7 +203,7 @@ class DaikinArcCommand(ClimatePacket):
         return parse_state(data[20:])
 
 
-class DaikinArcQueryCommand(ClimatePacket):
+class DaikinArcQueryCommand(ClimatePacket[DaikinArcState]):
     """ARC sensor query packet."""
 
     HEADER = DaikinArcCommand.HEADER
@@ -123,12 +215,12 @@ class DaikinArcQueryCommand(ClimatePacket):
         super().__init__(data=checked(bytes([0x11, 0xDA, 0x27, 0, 0x84, 0x87, 0x20])))
 
     @classmethod
-    def parse(cls, data: bytes) -> ClimateState:
+    def parse(cls, data: bytes) -> DaikinArcState:
         """Recognize a sensor query without inventing climate state."""
         validate_sections(data, (8,))
         if data[4:7] != bytes([0x84, 0x87, 0x20]):
             raise ValueError("invalid Daikin query")
-        return ClimateState()
+        return DaikinArcState()
 
 
 @dataclass(frozen=True, kw_only=True)

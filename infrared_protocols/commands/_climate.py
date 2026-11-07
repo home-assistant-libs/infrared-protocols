@@ -12,7 +12,6 @@ from ._timing import (
     join_captures,
     pack_bytes,
 )
-from .climate import ClimateState
 
 
 @dataclass(frozen=True)
@@ -24,8 +23,8 @@ class FramePart:
     gap: int = 0
 
 
-class ClimatePacket(Command):
-    """Preserve all received bytes, including settings outside the common state."""
+class ClimatePacket[StateT](Command):
+    """Preserve all received bytes, including settings outside the decoded state."""
 
     HEADER: ClassVar[tuple[int, ...]]
     TIMING: ClassVar[PulseTiming]
@@ -38,22 +37,26 @@ class ClimatePacket(Command):
     data: bytes
 
     def __init__(self, *, data: bytes, modulation: int = 38000) -> None:
-        """Validate the complete wire packet and extract its common state."""
+        """Validate the complete wire packet and extract its decoded state."""
         super().__init__(modulation=modulation)
         self.data = bytes(data)
         self.parse(self.data)
 
     @property
-    def state(self) -> ClimateState:
+    def state(self) -> StateT:
         """Decode the current payload, including changes made after construction."""
         return self.parse(self.data)
 
     @classmethod
-    def parse(cls, data: bytes) -> ClimateState:
+    def parse(cls, data: bytes) -> StateT:
+        """Decode the protocol-specific state."""
+        raise NotImplementedError
+
+    @classmethod
+    def _validate_packet(cls, data: bytes) -> None:
         """Validate packet size and checksum before reading fields."""
         if len(data) != cls.LENGTH or cls.checksum(data[:-1]) != data[-1]:
             raise ValueError("invalid climate packet length or checksum")
-        return ClimateState()
 
     @staticmethod
     def checksum(data: bytes) -> int:

@@ -2,57 +2,52 @@
 
 import pytest
 
-from infrared_protocols.commands.climate import ClimateMode
 from infrared_protocols.commands.daikin_brc import (
     DaikinBrcCommand,
-    DaikinBrcFahrenheitCommand,
+    DaikinBrcMode,
 )
 
 
 @pytest.mark.parametrize("sub_unit", [0, 1])
 @pytest.mark.parametrize("mode_button", [False, True])
 def test_brc_fahrenheit(sub_unit: int, mode_button: bool) -> None:
-    """The constructor uses native Fahrenheit; common state exposes exact Celsius."""
-    sent = DaikinBrcFahrenheitCommand(
-        mode=ClimateMode.COOL,
+    """The constructor and decoded state use native Fahrenheit."""
+    sent = DaikinBrcCommand(
+        mode=DaikinBrcMode.COOL,
         temperature=72,
+        is_fahrenheit=True,
         sub_unit=sub_unit,
         mode_button=mode_button,
     )
-    received = DaikinBrcFahrenheitCommand.from_raw_timings(sent.get_raw_timings())
+    received = DaikinBrcCommand.from_raw_timings(sent.get_raw_timings())
     assert received is not None
-    assert received.state.temperature == pytest.approx(22.222222)
+    assert received.state.temperature == 72
+    assert received.state.is_fahrenheit is True
     assert received.sub_unit == sub_unit
     assert received.mode_button == mode_button
 
 
-@pytest.mark.parametrize("mode", list(ClimateMode))
+@pytest.mark.parametrize("mode", list(DaikinBrcMode))
 @pytest.mark.parametrize(
-    "sender,receiver,temp",
-    [
-        pytest.param(
-            DaikinBrcCommand, DaikinBrcFahrenheitCommand, 24, id="celsius-as-fahrenheit"
-        ),
-        pytest.param(
-            DaikinBrcFahrenheitCommand, DaikinBrcCommand, 72, id="fahrenheit-as-celsius"
-        ),
-    ],
+    "temperature,is_fahrenheit",
+    [pytest.param(24, False, id="celsius"), pytest.param(72, True, id="fahrenheit")],
 )
-def test_brc_distinct_temperature_variants(
-    sender: type[DaikinBrcCommand],
-    receiver: type[DaikinBrcCommand],
-    temp: int,
-    mode: ClimateMode,
+def test_brc_temperature_units(
+    temperature: int, is_fahrenheit: bool, mode: DaikinBrcMode
 ) -> None:
-    """Non-overlapping temperature encodings identify the configured variant."""
-    raw = sender(mode=mode, temperature=temp).get_raw_timings()
-    assert sender.from_raw_timings(raw) is not None
-    assert receiver.from_raw_timings(raw) is None
+    """The receiver identifies native units from the disjoint wire ranges."""
+    sent = DaikinBrcCommand(
+        mode=mode, temperature=temperature, is_fahrenheit=is_fahrenheit
+    )
+    received = DaikinBrcCommand.from_raw_timings(sent.get_raw_timings())
+    assert received is not None
+    assert received.is_fahrenheit is is_fahrenheit
+    assert received.state == sent.state
 
 
 def test_brc_rejects_fractional_celsius_wire_value() -> None:
     """An odd temperature byte is not a valid whole-degree Celsius set point."""
-    sent = DaikinBrcCommand(mode=ClimateMode.COOL, temperature=24)
+    sent = DaikinBrcCommand(mode=DaikinBrcMode.COOL, temperature=24)
     data = bytearray(sent.data)
     data[17] += 1
     data[-1] = (data[-1] + 1) & 255
@@ -61,24 +56,30 @@ def test_brc_rejects_fractional_celsius_wire_value() -> None:
 
 
 @pytest.mark.parametrize(
-    "cls,temperature,fahrenheit,celsius",
+    "temperature,is_fahrenheit",
     [
-        pytest.param(DaikinBrcCommand, 24, False, 24, id="celsius"),
-        pytest.param(
-            DaikinBrcFahrenheitCommand, 75, True, (75 - 32) * 5 / 9, id="fahrenheit"
-        ),
+        pytest.param(16, False, id="celsius-minimum"),
+        pytest.param(24, False, id="celsius"),
+        pytest.param(32, False, id="celsius-maximum"),
+        pytest.param(60, True, id="fahrenheit-minimum"),
+        pytest.param(75, True, id="fahrenheit"),
+        pytest.param(90, True, id="fahrenheit-maximum"),
     ],
 )
-def test_native_temperature(
-    cls: type[DaikinBrcCommand], temperature: int, fahrenheit: bool, celsius: float
-) -> None:
+def test_native_temperature(temperature: int, is_fahrenheit: bool) -> None:
     """BRC readback retains native units and an exact native set point."""
-    command = cls(mode=ClimateMode.COOL, temperature=temperature)
-    received = cls.from_raw_timings(command.get_raw_timings())
+    command = DaikinBrcCommand(
+        mode=DaikinBrcMode.COOL, temperature=temperature, is_fahrenheit=is_fahrenheit
+    )
+    received = DaikinBrcCommand.from_raw_timings(command.get_raw_timings())
     assert received is not None
-    assert received.fahrenheit is fahrenheit
+    assert received.is_fahrenheit is is_fahrenheit
     assert received.temperature == temperature
-    assert received.state.temperature == celsius
+    assert received.state.temperature == temperature
     assert isinstance(received.temperature, int)
-    rebuilt = cls(mode=ClimateMode.COOL, temperature=received.temperature)
+    rebuilt = DaikinBrcCommand(
+        mode=DaikinBrcMode.COOL,
+        temperature=received.temperature,
+        is_fahrenheit=received.is_fahrenheit,
+    )
     assert rebuilt.get_raw_timings() == command.get_raw_timings()

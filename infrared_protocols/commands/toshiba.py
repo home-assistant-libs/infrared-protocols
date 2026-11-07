@@ -1,5 +1,6 @@
 """Toshiba variable-length climate packets and native remote variants."""
 
+from dataclasses import dataclass
 from enum import IntEnum, StrEnum
 from functools import reduce
 from operator import xor
@@ -8,26 +9,16 @@ from typing import ClassVar, Self, override
 from . import Command
 from ._climate_fields import decoded, selection, temperature_value
 from ._timing import PulseTiming, Reader, byte_bits, pack_bytes
-from .climate import (
-    ClimateFan,
-    ClimateMode,
-    ClimateState,
-)
 
-_MODES = {
-    ClimateMode.AUTO: 0,
-    ClimateMode.COOL: 1,
-    ClimateMode.DRY: 2,
-    ClimateMode.HEAT: 3,
-    ClimateMode.FAN_ONLY: 4,
-}
-_FANS = {
-    ClimateFan.AUTO: 0,
-    ClimateFan.QUIET: 1,
-    ClimateFan.LOW: 2,
-    ClimateFan.MEDIUM: 4,
-    ClimateFan.HIGH: 6,
-}
+
+class ToshibaMode(IntEnum):
+    """Toshiba operating modes."""
+
+    AUTO = 0x0
+    COOL = 0x1
+    DRY = 0x2
+    HEAT = 0x3
+    FAN_ONLY = 0x4
 
 
 class ToshibaFan(IntEnum):
@@ -40,6 +31,35 @@ class ToshibaFan(IntEnum):
     MEDIUM = 4
     MEDIUM_PLUS = 5
     HIGH = 6
+
+
+@dataclass(frozen=True, kw_only=True)
+class ToshibaState:
+    """Settings carried by a Toshiba packet, using its native enums and units."""
+
+    power: bool | None = None
+    mode: ToshibaMode | None = None
+    temperature: float | None = None
+    fan: ToshibaFan | None = None
+    swing_v: bool | None = None
+    swing_h: bool | None = None
+    is_fahrenheit: bool = False
+
+
+_MODES = {
+    ToshibaMode.AUTO: 0,
+    ToshibaMode.COOL: 1,
+    ToshibaMode.DRY: 2,
+    ToshibaMode.HEAT: 3,
+    ToshibaMode.FAN_ONLY: 4,
+}
+_FANS = {
+    ToshibaFan.AUTO: 0,
+    ToshibaFan.QUIET: 1,
+    ToshibaFan.LOW: 2,
+    ToshibaFan.MEDIUM: 4,
+    ToshibaFan.HIGH: 6,
+}
 
 
 class ToshibaMotion(IntEnum):
@@ -113,14 +133,14 @@ class ToshibaCommand(Command):
     def climate(
         cls,
         *,
-        mode: ClimateMode,
+        mode: ToshibaMode,
         temperature: int,
         power: bool = True,
-        fan: ClimateFan | ToshibaFan = ClimateFan.AUTO,
+        fan: ToshibaFan = ToshibaFan.AUTO,
     ) -> Self:
         """Build a generic whole-degree 17..30 °C state."""
         temp = temperature_value(temperature, 17, 30)
-        fan_code = int(fan) if isinstance(fan, ToshibaFan) else selection(fan, _FANS)
+        fan_code = int(ToshibaFan(fan))
         payload = bytes(
             [
                 1,
@@ -132,7 +152,7 @@ class ToshibaCommand(Command):
         return cls(data=_packet(payload))
 
     @property
-    def state(self) -> ClimateState:
+    def state(self) -> ToshibaState:
         """Decode basic mode, fan and temperature; motion packets carry no state."""
         data = self.data
         if (
@@ -147,7 +167,7 @@ class ToshibaCommand(Command):
             if self.data[4] != 0x21:
                 raise ValueError("unknown Toshiba motion format")
             ToshibaMotion(self.data[5])
-            return ClimateState()
+            return ToshibaState()
         if len(self.data) == 9 and self.data[4] != 1:
             raise ValueError("not a Toshiba climate command")
         mode_code = self.data[6] & 15
@@ -160,7 +180,7 @@ class ToshibaCommand(Command):
         if fan_code > 6 or self.data[6] & 16 or self.data[5] & 15:
             raise ValueError("invalid Toshiba fan or temperature field")
         fan = ToshibaFan(fan_code)
-        return ClimateState(power=power, mode=mode, temperature=temp, fan=fan)
+        return ToshibaState(power=power, mode=mode, temperature=temp, fan=fan)
 
     @override
     def get_raw_timings(self) -> list[int]:
@@ -224,28 +244,28 @@ class ToshibaSeiyaCommand(ToshibaCommand):
     def climate(
         cls,
         *,
-        mode: ClimateMode,
+        mode: ToshibaMode,
         temperature: int,
         power: bool = True,
-        fan: ClimateFan | ToshibaFan = ClimateFan.AUTO,
+        fan: ToshibaFan = ToshibaFan.AUTO,
         swing: ToshibaSeiyaSwing = ToshibaSeiyaSwing.UNCHANGED,
     ) -> Self:
         """Build a Seiya state; send swing requests only when a change is intended."""
         temp = temperature_value(temperature, 17, 30)
-        fan_code = int(fan) if isinstance(fan, ToshibaFan) else selection(fan, _FANS)
+        fan_code = int(ToshibaFan(fan))
         code = selection(mode, _MODES) | fan_code << 5 if power else 7
         return cls(
             data=_packet(bytes([1, temp << 4, code, 0, 0x21, ToshibaSeiyaSwing(swing)]))
         )
 
     @property
-    def state(self) -> ClimateState:
+    def state(self) -> ToshibaState:
         """Validate Seiya auxiliary fields and recover common settings."""
         state = super().state
         if self.data[4] != 1 or self.data[7:9] != b"\x00\x21":
             raise ValueError("invalid Seiya feature fields")
         ToshibaSeiyaSwing(self.data[9])
-        return ClimateState(
+        return ToshibaState(
             power=state.power,
             mode=state.mode,
             temperature=state.temperature,
@@ -265,7 +285,7 @@ class ToshibaRas25j2kvsgNdCommand(ToshibaCommand):
     LENGTHS = (7, 9, 10, 11, 12)
 
     @property
-    def state(self) -> ClimateState:
+    def state(self) -> ToshibaState:
         """Validate the selected extended packet layout and decode basic state."""
         state = super().state
         data = self.data
@@ -293,11 +313,11 @@ class ToshibaRas25j2kvsgNdCommand(ToshibaCommand):
         if len(data) != 9 and data[7] & 3:
             raise ValueError("fireplace cannot be combined with another preset")
         if (data[7] & 3 or len(data) == 10 and data[8] == 4) and (
-            state.mode != ClimateMode.HEAT or not state.power
+            state.mode != ToshibaMode.HEAT or not state.power
         ):
             raise ValueError("heating preset outside heat mode")
-        if state.mode == ClimateMode.FAN_ONLY:
-            return ClimateState(power=state.power, mode=state.mode, fan=state.fan)
+        if state.mode == ToshibaMode.FAN_ONLY:
+            return ToshibaState(power=state.power, mode=state.mode, fan=state.fan)
         return state
 
     @property
@@ -356,10 +376,10 @@ class ToshibaRas25j2kvsgNdCommand(ToshibaCommand):
     def climate(
         cls,
         *,
-        mode: ClimateMode,
+        mode: ToshibaMode,
         temperature: int,
         power: bool = True,
-        fan: ClimateFan | ToshibaFan = ClimateFan.AUTO,
+        fan: ToshibaFan = ToshibaFan.AUTO,
         preset: ToshibaPreset = ToshibaPreset.NONE,
         power_selection: ToshibaPowerSelection = ToshibaPowerSelection.PERCENT_100,
     ) -> Self:
@@ -378,12 +398,12 @@ class ToshibaRas25j2kvsgNdCommand(ToshibaCommand):
             ToshibaPreset.FROST_PROTECTION,
             ToshibaPreset.FIREPLACE_1,
             ToshibaPreset.FIREPLACE_2,
-        ) and (mode != ClimateMode.HEAT or not power):
+        ) and (mode != ToshibaMode.HEAT or not power):
             raise ValueError("heating presets require heat mode and power on")
         if power_selection >= 3 and preset != ToshibaPreset.NONE:
             raise ValueError("silent power selection cannot be combined with a preset")
-        fan_code = int(fan) if isinstance(fan, ToshibaFan) else selection(fan, _FANS)
-        if mode == ClimateMode.DRY and fan_code:
+        fan_code = int(ToshibaFan(fan))
+        if mode == ToshibaMode.DRY and fan_code:
             raise ValueError("dry mode requires automatic fan")
         sleep_hours = {
             ToshibaPreset.SLEEP_1H: 1,

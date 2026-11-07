@@ -1,26 +1,57 @@
 """Noblex split-frame climate commands with a four-bit checksum."""
 
+from dataclasses import dataclass
+from enum import IntEnum
+
 from ._climate_fields import decoded, selection, temperature_value
 from ._split_climate import SplitClimateCommand
 from ._timing import PulseTiming, bits, byte_bits, number, pack_bytes
-from .climate import (
-    ClimateFan,
-    ClimateMode,
-    ClimateState,
-)
+
+
+class NoblexMode(IntEnum):
+    """Noblex operating modes."""
+
+    AUTO = 0x0
+    COOL = 0x4
+    DRY = 0x2
+    FAN_ONLY = 0x6
+    HEAT = 0x1
+
+
+class NoblexFanSpeed(IntEnum):
+    """Noblex fan speeds."""
+
+    AUTO = 0x0
+    LOW = 0x2
+    MEDIUM = 0x1
+    HIGH = 0x3
+
+
+@dataclass(frozen=True, kw_only=True)
+class NoblexState:
+    """Settings carried by a Noblex packet, using its native enums and units."""
+
+    power: bool | None = None
+    mode: NoblexMode | None = None
+    temperature: float | None = None
+    fan: NoblexFanSpeed | None = None
+    swing_v: bool | None = None
+    swing_h: bool | None = None
+    is_fahrenheit: bool = False
+
 
 _MODES = {
-    ClimateMode.AUTO: 0,
-    ClimateMode.COOL: 4,
-    ClimateMode.DRY: 2,
-    ClimateMode.FAN_ONLY: 6,
-    ClimateMode.HEAT: 1,
+    NoblexMode.AUTO: 0,
+    NoblexMode.COOL: 4,
+    NoblexMode.DRY: 2,
+    NoblexMode.FAN_ONLY: 6,
+    NoblexMode.HEAT: 1,
 }
 _FANS = {
-    ClimateFan.AUTO: 0,
-    ClimateFan.LOW: 2,
-    ClimateFan.MEDIUM: 1,
-    ClimateFan.HIGH: 3,
+    NoblexFanSpeed.AUTO: 0,
+    NoblexFanSpeed.LOW: 2,
+    NoblexFanSpeed.MEDIUM: 1,
+    NoblexFanSpeed.HIGH: 3,
 }
 
 
@@ -32,7 +63,7 @@ def _checksum(data: bytes) -> int:
     return _reverse(sum(_reverse(value) for value in data) & 15) >> 4
 
 
-class NoblexCommand(SplitClimateCommand):
+class NoblexCommand(SplitClimateCommand[NoblexState]):
     """Noblex absolute state; the divider replaces a fixed one bit.
 
     Decoding requires all sections in one capture. Configure the receiver idle
@@ -47,10 +78,10 @@ class NoblexCommand(SplitClimateCommand):
     def __init__(
         self,
         *,
-        mode: ClimateMode,
+        mode: NoblexMode,
         temperature: int,
         power: bool = True,
-        fan: ClimateFan = ClimateFan.AUTO,
+        fan: NoblexFanSpeed = NoblexFanSpeed.AUTO,
         swing_v: bool = False,
     ) -> None:
         """Build a state using the receiver's mode fields, with 25 °C in auto.
@@ -66,7 +97,7 @@ class NoblexCommand(SplitClimateCommand):
                 | (16 if power else 0)
                 | selection(fan, _FANS) << 2
                 | (2 if swing_v else 0),
-                _reverse(9 if power and mode == ClimateMode.AUTO else temp),
+                _reverse(9 if power and mode == NoblexMode.AUTO else temp),
                 2 if power else 0,
                 10,
                 0x58 if swing_v else 0x50,
@@ -81,7 +112,7 @@ class NoblexCommand(SplitClimateCommand):
         )
 
     @property
-    def state(self) -> ClimateState:
+    def state(self) -> NoblexState:
         """Reconstruct the omitted fixed bit and verify the checksum."""
         values = bits(self.data, self.WIDTH)
         data = pack_bytes(values[:35] + [1] + values[35:63], lsb=False)
@@ -95,10 +126,10 @@ class NoblexCommand(SplitClimateCommand):
         temp = (_reverse(data[1]) & 15) + 16
         temperature_value(temp, 16, 30)
         mode = decoded(data[0] >> 5, _MODES) if data[0] & 16 else None
-        return ClimateState(
+        return NoblexState(
             power=bool(data[0] & 16),
             mode=mode,
-            temperature=None if mode == ClimateMode.AUTO else temp,
+            temperature=None if mode == NoblexMode.AUTO else temp,
             fan=decoded(data[0] >> 2 & 3, _FANS),
             swing_v=bool(data[0] & 2),
         )

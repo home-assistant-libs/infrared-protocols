@@ -1,15 +1,45 @@
 """Coolix 24-bit words transmitted with inverted copies of each byte."""
 
+from dataclasses import dataclass
+from enum import IntEnum
 from typing import Self, override
 
 from . import Command
 from ._climate_fields import decoded, selection, temperature_value
 from ._timing import PulseTiming, Reader, bits, byte_bits, pack_bytes
-from .climate import (
-    ClimateFan,
-    ClimateMode,
-    ClimateState,
-)
+
+
+class CoolixMode(IntEnum):
+    """Coolix operating modes."""
+
+    COOL = 0x0
+    DRY = 0x4
+    AUTO = 0x8
+    HEAT = 0xC
+    FAN_ONLY = 0xE4
+
+
+class CoolixFanSpeed(IntEnum):
+    """Coolix fan speeds."""
+
+    AUTO = 0xB
+    LOW = 0x9
+    MEDIUM = 0x5
+    HIGH = 0x3
+
+
+@dataclass(frozen=True, kw_only=True)
+class CoolixState:
+    """Settings carried by a Coolix packet, using its native enums and units."""
+
+    power: bool | None = None
+    mode: CoolixMode | None = None
+    temperature: float | None = None
+    fan: CoolixFanSpeed | None = None
+    swing_v: bool | None = None
+    swing_h: bool | None = None
+    is_fahrenheit: bool = False
+
 
 _TIMING = PulseTiming(560, 560, 1680)
 
@@ -70,62 +100,64 @@ class CoolixCommand(Command):
 
     @classmethod
     def climate(
-        cls, *, mode: ClimateMode, temperature: int, fan: ClimateFan = ClimateFan.AUTO
+        cls,
+        *,
+        mode: CoolixMode,
+        temperature: int,
+        fan: CoolixFanSpeed = CoolixFanSpeed.AUTO,
     ) -> Self:
         """Build an on-state; power off and swing use separate button commands."""
         temp = temperature_value(temperature, 17, 30)
         mode_code = selection(mode, _MODES)
-        if mode in (ClimateMode.AUTO, ClimateMode.DRY):
-            if fan != ClimateFan.AUTO:
+        if mode in (CoolixMode.AUTO, CoolixMode.DRY):
+            if fan != CoolixFanSpeed.AUTO:
                 raise ValueError("automatic and dry modes require automatic fan")
             fan_code = 1
         else:
             fan_code = selection(fan, _FANS)
-        temp_code = 14 if mode == ClimateMode.FAN_ONLY else _TEMPERATURES[temp]
+        temp_code = 14 if mode == CoolixMode.FAN_ONLY else _TEMPERATURES[temp]
         word = 0xB20F00 | fan_code << 12 | temp_code << 4 | mode_code
         return cls(first=word, second=word)
 
     @property
-    def state(self) -> ClimateState | None:
+    def state(self) -> CoolixState | None:
         """Decode the last state packet; button commands carry no full state."""
         value = self.second if self.second is not None else self.first
         if value == 0xB27BE0:
-            return ClimateState(power=False)
+            return CoolixState(power=False)
         if value & 0xFF0F03 != 0xB20F00:
             return None
         fan_code, temp_code = value >> 12 & 15, value >> 4 & 15
         mode_code = value & 12
         mode = (
-            ClimateMode.FAN_ONLY
+            CoolixMode.FAN_ONLY
             if mode_code == 4 and temp_code == 14
             else decoded(mode_code, _MODES)
         )
         if (
             temp_code not in _TEMPERATURES
-            and mode != ClimateMode.FAN_ONLY
+            and mode != CoolixMode.FAN_ONLY
             or fan_code not in (*_FANS.values(), 1)
         ):
             return None
         temperature = (
-            None
-            if mode == ClimateMode.FAN_ONLY
-            else _TEMPERATURES.index(temp_code) + 17
+            None if mode == CoolixMode.FAN_ONLY else _TEMPERATURES.index(temp_code) + 17
         )
-        fan = ClimateFan.AUTO if fan_code == 1 else decoded(fan_code, _FANS)
-        return ClimateState(power=True, mode=mode, temperature=temperature, fan=fan)
+        fan = CoolixFanSpeed.AUTO if fan_code == 1 else decoded(fan_code, _FANS)
+        return CoolixState(power=True, mode=mode, temperature=temperature, fan=fan)
 
 
 _MODES = {
-    ClimateMode.COOL: 0,
-    ClimateMode.DRY: 4,
-    ClimateMode.AUTO: 8,
-    ClimateMode.HEAT: 12,
-    ClimateMode.FAN_ONLY: 4,
+    CoolixMode.COOL: 0,
+    CoolixMode.DRY: 4,
+    CoolixMode.AUTO: 8,
+    CoolixMode.HEAT: 12,
+    CoolixMode.FAN_ONLY: 4,
 }
 _FANS = {
-    ClimateFan.AUTO: 11,
-    ClimateFan.LOW: 9,
-    ClimateFan.MEDIUM: 5,
-    ClimateFan.HIGH: 3,
+    CoolixFanSpeed.AUTO: 11,
+    CoolixFanSpeed.LOW: 9,
+    CoolixFanSpeed.MEDIUM: 5,
+    CoolixFanSpeed.HIGH: 3,
 }
 _TEMPERATURES = (0, 1, 3, 2, 6, 7, 5, 4, 12, 13, 9, 8, 10, 11)

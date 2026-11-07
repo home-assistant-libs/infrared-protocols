@@ -3,9 +3,8 @@
 import pytest
 
 from infrared_protocols.commands.aeha import AEHA_NOMINAL, AehaCommand, AehaTiming
-from infrared_protocols.commands.climate import ClimateMode
-from infrared_protocols.commands.friedrich import FriedrichCommand
-from infrared_protocols.commands.mistral import MistralCommand
+from infrared_protocols.commands.friedrich import FriedrichCommand, FriedrichMode
+from infrared_protocols.commands.mistral import MistralCommand, MistralMode
 
 # Physical-layer constants are duplicated here rather than imported
 # so the tests are independent
@@ -263,11 +262,11 @@ def test_empty_payload_encodes_to_leader_and_trailer_only() -> None:
     [
         pytest.param(AehaCommand(data=b"\x01\x02"), id="aeha"),
         pytest.param(
-            MistralCommand(mode=ClimateMode.COOL, temperature=24),
+            MistralCommand(mode=MistralMode.COOL, temperature=24),
             id="mistral",
         ),
         pytest.param(
-            FriedrichCommand(mode=ClimateMode.COOL, temperature_f=72),
+            FriedrichCommand(mode=FriedrichMode.COOL, temperature=72),
             id="friedrich",
         ),
     ],

@@ -1,28 +1,57 @@
 """Emmeti split-frame climate commands."""
 
+from dataclasses import dataclass
 from enum import IntEnum
 
 from ._climate_fields import decoded, selection, temperature_value
 from ._split_climate import SplitClimateCommand
 from ._timing import PulseTiming, bits, number
-from .climate import (
-    ClimateFan,
-    ClimateMode,
-    ClimateState,
-)
+
+
+class EmmetiMode(IntEnum):
+    """Emmeti operating modes."""
+
+    AUTO = 0x0
+    COOL = 0x1
+    DRY = 0x2
+    FAN_ONLY = 0x3
+    HEAT = 0x4
+
+
+class EmmetiFanSpeed(IntEnum):
+    """Emmeti fan speeds."""
+
+    AUTO = 0x0
+    LOW = 0x1
+    MEDIUM = 0x2
+    HIGH = 0x3
+
+
+@dataclass(frozen=True, kw_only=True)
+class EmmetiState:
+    """Settings carried by an Emmeti packet, using its native enums and units."""
+
+    power: bool | None = None
+    mode: EmmetiMode | None = None
+    temperature: float | None = None
+    fan: EmmetiFanSpeed | None = None
+    swing_v: bool | None = None
+    swing_h: bool | None = None
+    is_fahrenheit: bool = False
+
 
 _MODES = {
-    ClimateMode.AUTO: 0,
-    ClimateMode.COOL: 1,
-    ClimateMode.DRY: 2,
-    ClimateMode.FAN_ONLY: 3,
-    ClimateMode.HEAT: 4,
+    EmmetiMode.AUTO: 0,
+    EmmetiMode.COOL: 1,
+    EmmetiMode.DRY: 2,
+    EmmetiMode.FAN_ONLY: 3,
+    EmmetiMode.HEAT: 4,
 }
 _FANS = {
-    ClimateFan.AUTO: 0,
-    ClimateFan.LOW: 1,
-    ClimateFan.MEDIUM: 2,
-    ClimateFan.HIGH: 3,
+    EmmetiFanSpeed.AUTO: 0,
+    EmmetiFanSpeed.LOW: 1,
+    EmmetiFanSpeed.MEDIUM: 2,
+    EmmetiFanSpeed.HIGH: 3,
 }
 _OFF = number(
     bits(9, 12)
@@ -49,7 +78,7 @@ class EmmetiBlade(IntEnum):
     MIDDLE_SWING = 9
 
 
-class EmmetiCommand(SplitClimateCommand):
+class EmmetiCommand(SplitClimateCommand[EmmetiState]):
     """Whole-state Emmeti command with a separate fixed off word.
 
     Decoding requires all sections in one capture. Configure the receiver idle
@@ -64,10 +93,10 @@ class EmmetiCommand(SplitClimateCommand):
     def __init__(
         self,
         *,
-        mode: ClimateMode,
+        mode: EmmetiMode,
         temperature: int,
         power: bool = True,
-        fan: ClimateFan = ClimateFan.AUTO,
+        fan: EmmetiFanSpeed = EmmetiFanSpeed.AUTO,
         blade: EmmetiBlade = EmmetiBlade.STOP,
     ) -> None:
         """Build a 16..30 °C state or the protocol's fixed power-off message."""
@@ -103,10 +132,10 @@ class EmmetiCommand(SplitClimateCommand):
         return EmmetiBlade(number(bits(self.data, self.WIDTH)[35:39], lsb=True))
 
     @property
-    def state(self) -> ClimateState:
+    def state(self) -> EmmetiState:
         """Validate the checksum and report only fields present in the command."""
         if self.data == _OFF:
-            return ClimateState(power=False)
+            return EmmetiState(power=False)
         values = bits(self.data, self.WIDTH)
         mode_code, temp = number(values[:3], lsb=True), number(values[8:12], lsb=True)
         if (
@@ -115,10 +144,10 @@ class EmmetiCommand(SplitClimateCommand):
         ):
             raise ValueError("invalid Emmeti signature or checksum")
         if not values[3]:
-            return ClimateState(power=False)
+            return EmmetiState(power=False)
         temperature_value(temp + 16, 16, 30)
         EmmetiBlade(number(values[35:39], lsb=True))
-        return ClimateState(
+        return EmmetiState(
             power=True,
             mode=decoded(mode_code, _MODES),
             temperature=temp + 16,

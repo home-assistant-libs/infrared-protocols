@@ -4,19 +4,22 @@ import pytest
 
 from infrared_protocols.commands._climate import ClimatePacket
 from infrared_protocols.commands._split_climate import SplitClimateCommand
-from infrared_protocols.commands.climate import ClimateMode
-from infrared_protocols.commands.daikin_arc import DaikinArcCommand
-from infrared_protocols.commands.daikin_brc import DaikinBrcCommand
-from infrared_protocols.commands.emmeti import EmmetiCommand
+from infrared_protocols.commands.daikin_arc import DaikinAcMode, DaikinArcCommand
+from infrared_protocols.commands.daikin_brc import DaikinBrcCommand, DaikinBrcMode
+from infrared_protocols.commands.emmeti import EmmetiCommand, EmmetiMode
 from infrared_protocols.commands.friedrich import (
     FriedrichButton,
     FriedrichCommand,
+    FriedrichMode,
     FriedrichUtilityCommand,
 )
-from infrared_protocols.commands.mistral import MistralCommand
-from infrared_protocols.commands.mitsubishi import MitsubishiCommand
-from infrared_protocols.commands.noblex import NoblexCommand
-from infrared_protocols.commands.pd_pioneer_climate import PdPioneerClimateCommand
+from infrared_protocols.commands.mistral import MistralCommand, MistralMode
+from infrared_protocols.commands.mitsubishi import MitsubishiCommand, MitsubishiMode
+from infrared_protocols.commands.noblex import NoblexCommand, NoblexMode
+from infrared_protocols.commands.pd_pioneer_climate import (
+    PdPioneerClimateCommand,
+    PdPioneerClimateMode,
+)
 
 
 def _captures(raw: list[int], *, idle: int = 10000) -> list[list[int]]:
@@ -39,24 +42,26 @@ def _captures(raw: list[int], *, idle: int = 10000) -> list[list[int]]:
     "command",
     [
         pytest.param(
-            DaikinArcCommand(mode=ClimateMode.COOL, temperature=24),
+            DaikinArcCommand(mode=DaikinAcMode.COOL, temperature=24),
             id="arc-three-bursts",
         ),
-        pytest.param(DaikinBrcCommand(mode=ClimateMode.COOL, temperature=24), id="brc"),
-        pytest.param(EmmetiCommand(mode=ClimateMode.COOL, temperature=24), id="emmeti"),
-        pytest.param(NoblexCommand(mode=ClimateMode.COOL, temperature=24), id="noblex"),
         pytest.param(
-            MistralCommand(mode=ClimateMode.COOL, temperature=24), id="mistral"
+            DaikinBrcCommand(mode=DaikinBrcMode.COOL, temperature=24), id="brc"
+        ),
+        pytest.param(EmmetiCommand(mode=EmmetiMode.COOL, temperature=24), id="emmeti"),
+        pytest.param(NoblexCommand(mode=NoblexMode.COOL, temperature=24), id="noblex"),
+        pytest.param(
+            MistralCommand(mode=MistralMode.COOL, temperature=24), id="mistral"
         ),
         pytest.param(
-            FriedrichCommand(mode=ClimateMode.COOL, temperature_f=72), id="friedrich"
+            FriedrichCommand(mode=FriedrichMode.COOL, temperature=72), id="friedrich"
         ),
         pytest.param(
             FriedrichUtilityCommand(button=FriedrichButton.POWER_OFF),
             id="friedrich-off",
         ),
         pytest.param(
-            PdPioneerClimateCommand(mode=ClimateMode.COOL, temperature=24),
+            PdPioneerClimateCommand(mode=PdPioneerClimateMode.COOL, temperature=24),
             id="pd-pioneer",
         ),
     ],
@@ -85,17 +90,17 @@ def test_default_receiver_captures(
     "command,idle",
     [
         pytest.param(
-            DaikinBrcCommand(mode=ClimateMode.COOL, temperature=24),
+            DaikinBrcCommand(mode=DaikinBrcMode.COOL, temperature=24),
             30000,
             id="brc",
         ),
         pytest.param(
-            NoblexCommand(mode=ClimateMode.COOL, temperature=24),
+            NoblexCommand(mode=NoblexMode.COOL, temperature=24),
             21000,
             id="noblex",
         ),
         pytest.param(
-            EmmetiCommand(mode=ClimateMode.COOL, temperature=24),
+            EmmetiCommand(mode=EmmetiMode.COOL, temperature=24),
             21000,
             id="emmeti",
         ),
@@ -119,7 +124,7 @@ def test_stretched_gap_crosses_idle(
 
 def test_arc_gap_shortens_below_idle() -> None:
     """Only the longer gap splits when clock drift shortens the first divider."""
-    command = DaikinArcCommand(mode=ClimateMode.COOL, temperature=24)
+    command = DaikinArcCommand(mode=DaikinAcMode.COOL, temperature=24)
     captures = _captures(
         [round(t * 0.92) for t in command.get_raw_timings()], idle=24000
     )
@@ -145,7 +150,7 @@ def test_receiver_idle_too_short(
 @pytest.mark.parametrize("idle", [10000, 20000])
 def test_mitsubishi_copies(copies: int, idle: int) -> None:
     """Accept one complete copy or both, including captures spanning the copy gap."""
-    command = MitsubishiCommand(mode=ClimateMode.COOL, temperature=24)
+    command = MitsubishiCommand(mode=MitsubishiMode.COOL, temperature=24)
     raw = command.get_raw_timings()
     copy = raw[: raw.index(-17500)]
     transmitted = (copy + [-17500]) * (copies - 1) + copy
@@ -159,8 +164,8 @@ def test_mitsubishi_copies(copies: int, idle: int) -> None:
 
 def test_mitsubishi_conflicting_captures() -> None:
     """A second valid packet with different settings invalidates the whole press."""
-    first = MitsubishiCommand(mode=ClimateMode.COOL, temperature=24)
-    second = MitsubishiCommand(mode=ClimateMode.COOL, temperature=25)
+    first = MitsubishiCommand(mode=MitsubishiMode.COOL, temperature=24)
+    second = MitsubishiCommand(mode=MitsubishiMode.COOL, temperature=25)
     captures = [
         _captures(first.get_raw_timings())[0],
         _captures(second.get_raw_timings())[0],

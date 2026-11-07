@@ -1,29 +1,62 @@
 """Hitachi 344-bit and 424-bit commands with complementary byte pairs."""
 
+from dataclasses import dataclass
 from enum import IntEnum
 from typing import ClassVar
 
 from ._climate import ClimatePacket
 from ._climate_fields import decoded, selection, temperature_value
 from ._timing import PulseTiming
-from .climate import (
-    ClimateFan,
-    ClimateMode,
-    ClimateState,
-)
+
+
+class HitachiMode(IntEnum):
+    """Hitachi operating modes; AUTO is currently receive-only."""
+
+    AUTO = 7
+
+    FAN_ONLY = 0x1
+    COOL = 0x3
+    DRY = 0x5
+    HEAT = 0x6
+
+
+class HitachiFanSpeed(IntEnum):
+    """Hitachi fan speeds; MAXIMUM is currently receive-only."""
+
+    MAXIMUM = 6
+
+    QUIET = 0x1
+    LOW = 0x2
+    MEDIUM = 0x3
+    HIGH = 0x4
+    AUTO = 0x5
+
+
+@dataclass(frozen=True, kw_only=True)
+class HitachiState:
+    """Settings carried by a Hitachi packet, using its native enums and units."""
+
+    power: bool | None = None
+    mode: HitachiMode | None = None
+    temperature: float | None = None
+    fan: HitachiFanSpeed | None = None
+    swing_v: bool | None = None
+    swing_h: bool | None = None
+    is_fahrenheit: bool = False
+
 
 _MODES = {
-    ClimateMode.FAN_ONLY: 1,
-    ClimateMode.COOL: 3,
-    ClimateMode.DRY: 5,
-    ClimateMode.HEAT: 6,
+    HitachiMode.FAN_ONLY: 1,
+    HitachiMode.COOL: 3,
+    HitachiMode.DRY: 5,
+    HitachiMode.HEAT: 6,
 }
 _FANS = {
-    ClimateFan.QUIET: 1,
-    ClimateFan.LOW: 2,
-    ClimateFan.MEDIUM: 3,
-    ClimateFan.HIGH: 4,
-    ClimateFan.AUTO: 5,
+    HitachiFanSpeed.QUIET: 1,
+    HitachiFanSpeed.LOW: 2,
+    HitachiFanSpeed.MEDIUM: 3,
+    HitachiFanSpeed.HIGH: 4,
+    HitachiFanSpeed.AUTO: 5,
 }
 
 
@@ -41,7 +74,7 @@ class HitachiButton(IntEnum):
     MILDEW_PROOF = 0xE2
 
 
-class HitachiAc344Command(ClimatePacket):
+class HitachiAc344Command(ClimatePacket[HitachiState]):
     """Hitachi 344 state; use SWING_V only when a vertical change is intended."""
 
     HEADER = (3300, -1700)
@@ -53,10 +86,10 @@ class HitachiAc344Command(ClimatePacket):
     def __init__(
         self,
         *,
-        mode: ClimateMode,
+        mode: HitachiMode,
         temperature: int,
         power: bool = True,
-        fan: ClimateFan = ClimateFan.AUTO,
+        fan: HitachiFanSpeed = HitachiFanSpeed.AUTO,
         swing_v: bool = False,
         horizontal_position: int = 3,
         button: HitachiButton = HitachiButton.POWER,
@@ -70,20 +103,20 @@ class HitachiAc344Command(ClimatePacket):
         temperature_value(temperature, 16, 32)
         if not 0 <= horizontal_position <= 5:
             raise ValueError("horizontal_position must be 0..5")
-        if mode == ClimateMode.DRY and fan not in (
-            ClimateFan.AUTO,
-            ClimateFan.QUIET,
-            ClimateFan.LOW,
+        if mode == HitachiMode.DRY and fan not in (
+            HitachiFanSpeed.AUTO,
+            HitachiFanSpeed.QUIET,
+            HitachiFanSpeed.LOW,
         ):
             raise ValueError("dry mode supports automatic, quiet and low fan")
-        if mode == ClimateMode.FAN_ONLY and fan == ClimateFan.AUTO:
+        if mode == HitachiMode.FAN_ONLY and fan == HitachiFanSpeed.AUTO:
             raise ValueError("fan-only mode requires a fixed fan speed")
         data = bytearray(self.LENGTH)
         fields = {
             3: 0x40,
             5: 255,
             7: 0xCC,
-            9: 0x98 if fan == ClimateFan.QUIET else 0x92,
+            9: 0x98 if fan == HitachiFanSpeed.QUIET else 0x92,
             11: HitachiButton(button),
             13: temperature << 2,
             25: selection(fan, _FANS) << 4 | selection(mode, _MODES),
@@ -119,7 +152,7 @@ class HitachiAc344Command(ClimatePacket):
         return HitachiButton(self.data[11])
 
     @classmethod
-    def parse(cls, data: bytes) -> ClimateState:
+    def parse(cls, data: bytes) -> HitachiState:
         """Validate all complements and decode the common state."""
         if (
             len(data) != cls.LENGTH
@@ -132,13 +165,13 @@ class HitachiAc344Command(ClimatePacket):
         HitachiButton(data[11])
         temperature = data[13] >> 2
         temperature_value(temperature, 16, 32)
-        return ClimateState(
+        return HitachiState(
             power=data[27] == 0xF1,
-            mode=ClimateMode.AUTO
+            mode=HitachiMode.AUTO
             if data[25] & 15 == (14 if cls.EXTENDED else 7)
             else decoded(data[25] & 15, _MODES),
             temperature=temperature,
-            fan=ClimateFan.MAXIMUM
+            fan=HitachiFanSpeed.MAXIMUM
             if data[25] >> 4 == 6
             else decoded(data[25] >> 4, _FANS),
             swing_v=bool(data[37] & 32),
