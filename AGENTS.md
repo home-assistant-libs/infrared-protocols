@@ -38,10 +38,8 @@
 
 ### Before implementing a protocol
 
-- Read the current upstream implementation and tests in this repository before designing a new class. Identify overlapping transports, models, enums and timing helpers; reuse them where their semantics match. Check upstream again before submitting a long-running branch.
-- Clone reference repositories or use existing local checkouts; do not fetch source files individually. Record the repository, full revision and relevant source paths with the evidence.
+- Read the existing implementations and tests before designing a new class. Identify overlapping transports, models, enums and timing helpers; reuse them where their semantics match.
 - Decide the model boundaries and public API before expanding to more families. Identical framing does not establish identical model semantics: require an explicit model when the signal cannot identify it, and document overlapping decoders and intentional differences.
-- Prefer small changes grouped by transport or device family. A broad bootstrap PR is not a template for future contributions.
 - Preserve this library's MIT license. Implement from protocol facts and captured signals; do not copy incompatible licensed implementation code into the library. Keep external reference implementations confined to the comparison harness.
 
 ### Native APIs and state
@@ -100,9 +98,6 @@
 
 - Audit the whole affected family set when fixing a shared invariant. A finding about absent temperatures, native types, stale state or capture boundaries is a prompt to check sibling implementations, not just the cited line.
 - Review the full diff for consistency with existing APIs, tests and docstrings. After an API refactor, remove obsolete adapters, unused tables, duplicate properties and stale documentation. Run relevant tests and all required hooks on the final changes; verify CI belongs to the current head.
-- Track every review thread as fixed or explicitly explained. Push fixes before marking threads addressed, and reply with the decision for intentional behavior. Re-request review after addressing the outstanding findings, not on an unchanged head with unanswered comments.
-- When asked to obtain a full independent review, provide the complete PR scope. When asked to continue until approval, wait for the requested review, handle new findings and repeat; a review request is not an approval.
-- Check existing user decisions and PR comments before reopening a scope question. Record approved exceptions in the PR; do not turn a one-PR exception into a repository-wide rule.
 
 ## AI policy
 
