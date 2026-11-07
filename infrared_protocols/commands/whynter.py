@@ -48,7 +48,7 @@ class WhynterCommand(WordCommand):
     def __init__(
         self,
         *,
-        mode: WhynterMode,
+        mode: WhynterMode | None,
         temperature: int,
         power: bool = True,
         fan: WhynterFanSpeed = WhynterFanSpeed.HIGH,

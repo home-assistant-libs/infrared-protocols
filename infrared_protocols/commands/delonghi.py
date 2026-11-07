@@ -59,8 +59,8 @@ class DelonghiCommand(ClimatePacket[DelonghiState]):
     ) -> None:
         """Build a command: heat 13..27 °C, other modes 17..32 °C, or 64..90 °F.
 
-        The Celsius heat field uses a 12 °C offset. An off command has no
-        retained operating-mode field, so its temperature uses the cool offset.
+        The Celsius heat field uses a 12 °C offset. An off command uses the
+        cool temperature offset, even with a retained mode.
         Fahrenheit auto/dry packets can use None for the zero placeholder.
         Off packets also accept None, encoding a zero temperature field. Use
         retained_temperature to preserve a received off packet's stored field.

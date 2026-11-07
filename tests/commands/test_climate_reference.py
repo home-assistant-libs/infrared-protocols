@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum, IntEnum
 from functools import partial
+from operator import attrgetter
 from pathlib import Path
 from typing import NamedTuple, Protocol
 
@@ -209,6 +210,38 @@ class _ClimateCommand(Protocol):
 class _Factory(NamedTuple):
     build: Callable[[_Arguments], _ClimateCommand]
     decode: Callable[[list[int]], _ClimateCommand | None]
+    rebuild: Callable[[_ClimateCommand], _ClimateCommand] | None = None
+
+
+def _rebuilder(
+    constructor: Callable[..., _ClimateCommand],
+    **overrides: Callable[[_ClimateCommand], object],
+) -> Callable[[_ClimateCommand], _ClimateCommand]:
+    """Use native state, packet properties and explicit per-family overrides."""
+    parameters = inspect.signature(constructor).parameters
+
+    def rebuild(command: _ClimateCommand) -> _ClimateCommand:
+        arguments = {
+            name: getattr(
+                command.state, name, getattr(command, name, parameter.default)
+            )
+            for name, parameter in parameters.items()
+        }
+        arguments.update({name: getter(command) for name, getter in overrides.items()})
+        return constructor(**arguments)
+
+    return rebuild
+
+
+def _candidate_temperature(command: _ClimateCommand) -> object:
+    """Every decoded candidate generates identical bytes for an ambiguous code."""
+    candidates: tuple[int, ...] = attrgetter("temperature_candidates")(command)
+    return next(iter(candidates), command.state.temperature)
+
+
+def _off_command(command: _ClimateCommand) -> bool:
+    """Whirlpool's mode-less state identifies its shutdown command layout."""
+    return command.state.mode is None
 
 
 _FACTORIES: dict[str, _Factory] = {
@@ -222,10 +255,15 @@ _FACTORIES: dict[str, _Factory] = {
             power_selection=ToshibaPowerSelection(a.power_selection),
         ),
         ToshibaRas25j2kvsgNdCommand.from_raw_timings,
+        _rebuilder(
+            ToshibaRas25j2kvsgNdCommand.climate,
+            temperature=attrgetter("retained_temperature"),
+        ),
     ),
     "ToshibaRas25j2kvsgNdCommand.motion": _Factory(
         lambda a: ToshibaRas25j2kvsgNdCommand.motion(action=ToshibaMotion(a.action)),
         ToshibaRas25j2kvsgNdCommand.from_raw_timings,
+        rebuild=None,
     ),
     "ToshibaRacCommand.comfort_sense": _Factory(
         lambda a: ToshibaRacCommand.comfort_sense(
@@ -235,14 +273,17 @@ _FACTORIES: dict[str, _Factory] = {
             send_temperature=a.send_temperature,
         ),
         ToshibaRacCommand.from_raw_timings,
+        rebuild=None,
     ),
     "ToshibaRas2819Command.swing_toggle": _Factory(
         lambda a: ToshibaRas2819Command.swing_toggle(),
         ToshibaRas2819Command.from_raw_timings,
+        rebuild=None,
     ),
     "ToshibaRacCommand.swing": _Factory(
         lambda a: ToshibaRacCommand.swing(enabled=a.enabled),
         ToshibaRacCommand.from_raw_timings,
+        rebuild=None,
     ),
     "BalluCommand": _Factory(
         lambda a: BalluCommand(
@@ -254,6 +295,7 @@ _FACTORIES: dict[str, _Factory] = {
             swing_h=a.swing_h,
         ),
         BalluCommand.from_raw_timings,
+        _rebuilder(BalluCommand),
     ),
     "DelonghiCommand": _Factory(
         lambda a: DelonghiCommand(
@@ -263,6 +305,7 @@ _FACTORIES: dict[str, _Factory] = {
             fan=DelonghiFanSpeed[a.fan],
         ),
         DelonghiCommand.from_raw_timings,
+        _rebuilder(DelonghiCommand, temperature=attrgetter("retained_temperature")),
     ),
     "Tcl112Command": _Factory(
         lambda a: Tcl112Command(
@@ -273,6 +316,7 @@ _FACTORIES: dict[str, _Factory] = {
             swing_v=a.swing_v,
         ),
         Tcl112Command.from_raw_timings,
+        _rebuilder(Tcl112Command),
     ),
     "Zhlt01Command": _Factory(
         lambda a: Zhlt01Command(
@@ -285,6 +329,7 @@ _FACTORIES: dict[str, _Factory] = {
             boost=a.boost,
         ),
         Zhlt01Command.from_raw_timings,
+        _rebuilder(Zhlt01Command),
     ),
     "WhynterCommand": _Factory(
         lambda a: WhynterCommand(
@@ -295,6 +340,7 @@ _FACTORIES: dict[str, _Factory] = {
             is_fahrenheit=a.is_fahrenheit,
         ),
         WhynterCommand.from_raw_timings,
+        _rebuilder(WhynterCommand),
     ),
     "RemkoAr715Command": _Factory(
         lambda a: RemkoAr715Command(
@@ -305,6 +351,7 @@ _FACTORIES: dict[str, _Factory] = {
             swing_v=a.swing_v,
         ),
         RemkoAr715Command.from_raw_timings,
+        _rebuilder(RemkoAr715Command),
     ),
     "IslandaireCommand": _Factory(
         lambda a: IslandaireCommand(
@@ -314,6 +361,7 @@ _FACTORIES: dict[str, _Factory] = {
             fan=IslandaireFanSpeed[a.fan],
         ),
         IslandaireCommand.from_raw_timings,
+        _rebuilder(IslandaireCommand),
     ),
     "MistralCommand": _Factory(
         lambda a: MistralCommand(
@@ -323,6 +371,7 @@ _FACTORIES: dict[str, _Factory] = {
             fan=MistralFanSpeed[a.fan],
         ),
         MistralCommand.from_raw_timings,
+        _rebuilder(MistralCommand),
     ),
     "DaikinArcCommand": _Factory(
         lambda a: DaikinArcCommand(
@@ -336,6 +385,7 @@ _FACTORIES: dict[str, _Factory] = {
             humidity_changed=a.humidity_changed,
         ),
         DaikinArcCommand.from_raw_timings,
+        _rebuilder(DaikinArcCommand),
     ),
     "DaikinBrcCommand": _Factory(
         lambda a: DaikinBrcCommand(
@@ -349,6 +399,7 @@ _FACTORIES: dict[str, _Factory] = {
             mode_button=a.mode_button,
         ),
         DaikinBrcCommand.from_raw_timings,
+        _rebuilder(DaikinBrcCommand),
     ),
     "HaierTundraCommand": _Factory(
         lambda a: HaierTundraCommand(
@@ -360,6 +411,7 @@ _FACTORIES: dict[str, _Factory] = {
             swing_h=a.swing_h,
         ),
         HaierTundraCommand.from_raw_timings,
+        _rebuilder(HaierTundraCommand),
     ),
     "AirtonCommand": _Factory(
         lambda a: AirtonCommand(
@@ -372,6 +424,7 @@ _FACTORIES: dict[str, _Factory] = {
             sleep=a.sleep,
         ),
         AirtonCommand.from_raw_timings,
+        _rebuilder(AirtonCommand),
     ),
     "FriedrichCommand": _Factory(
         lambda a: FriedrichCommand(
@@ -381,10 +434,12 @@ _FACTORIES: dict[str, _Factory] = {
             swing_v=a.swing_v,
         ),
         FriedrichCommand.from_raw_timings,
+        _rebuilder(FriedrichCommand),
     ),
     "FriedrichUtilityCommand": _Factory(
         lambda a: FriedrichUtilityCommand(button=FriedrichButton(a.button)),
         FriedrichUtilityCommand.from_raw_timings,
+        _rebuilder(FriedrichUtilityCommand),
     ),
     "MitsubishiCommand": _Factory(
         lambda a: MitsubishiCommand(
@@ -401,6 +456,7 @@ _FACTORIES: dict[str, _Factory] = {
             swing_h=a.swing_h,
         ),
         MitsubishiCommand.from_raw_timings,
+        _rebuilder(MitsubishiCommand),
     ),
     "WhirlpoolCommand": _Factory(
         lambda a: WhirlpoolCommand(
@@ -412,6 +468,11 @@ _FACTORIES: dict[str, _Factory] = {
             swing_toggle=a.swing_toggle,
         ),
         WhirlpoolCommand.from_raw_timings,
+        _rebuilder(
+            WhirlpoolCommand,
+            off_command=_off_command,
+            temperature=_candidate_temperature,
+        ),
     ),
     "HitachiAc344Command": _Factory(
         lambda a: HitachiAc344Command(
@@ -424,6 +485,7 @@ _FACTORIES: dict[str, _Factory] = {
             button=HitachiButton(a.button),
         ),
         HitachiAc344Command.from_raw_timings,
+        _rebuilder(HitachiAc344Command),
     ),
     "HitachiAc424Command": _Factory(
         lambda a: HitachiAc424Command(
@@ -435,6 +497,7 @@ _FACTORIES: dict[str, _Factory] = {
             horizontal_position=a.horizontal_position,
         ),
         HitachiAc424Command.from_raw_timings,
+        _rebuilder(HitachiAc424Command),
     ),
     "NoblexCommand": _Factory(
         lambda a: NoblexCommand(
@@ -445,6 +508,7 @@ _FACTORIES: dict[str, _Factory] = {
             swing_v=a.swing_v,
         ),
         NoblexCommand.from_raw_timings,
+        _rebuilder(NoblexCommand),
     ),
     "EmmetiCommand": _Factory(
         lambda a: EmmetiCommand(
@@ -455,6 +519,7 @@ _FACTORIES: dict[str, _Factory] = {
             blade=EmmetiBlade(a.blade),
         ),
         EmmetiCommand.from_raw_timings,
+        _rebuilder(EmmetiCommand),
     ),
     "PdPioneerClimateCommand": _Factory(
         lambda a: PdPioneerClimateCommand(
@@ -467,6 +532,7 @@ _FACTORIES: dict[str, _Factory] = {
             economy=a.economy,
         ),
         PdPioneerClimateCommand.from_raw_timings,
+        _rebuilder(PdPioneerClimateCommand),
     ),
     "ToshibaCommand.climate": _Factory(
         lambda a: ToshibaCommand.climate(
@@ -476,6 +542,7 @@ _FACTORIES: dict[str, _Factory] = {
             fan=ToshibaFanSpeed[a.fan],
         ),
         ToshibaCommand.from_raw_timings,
+        _rebuilder(ToshibaCommand.climate),
     ),
     "ToshibaRasB10n3kv2Command.climate": _Factory(
         lambda a: ToshibaRasB10n3kv2Command.climate(
@@ -485,6 +552,7 @@ _FACTORIES: dict[str, _Factory] = {
             fan=ToshibaFanSpeed[a.fan],
         ),
         ToshibaRasB10n3kv2Command.from_raw_timings,
+        _rebuilder(ToshibaRasB10n3kv2Command.climate),
     ),
     "ToshibaSeiyaCommand.climate": _Factory(
         lambda a: ToshibaSeiyaCommand.climate(
@@ -495,6 +563,7 @@ _FACTORIES: dict[str, _Factory] = {
             swing=ToshibaSeiyaSwing(a.swing_code),
         ),
         ToshibaSeiyaCommand.from_raw_timings,
+        _rebuilder(ToshibaSeiyaCommand.climate),
     ),
     "ToshibaRacCommand.climate": _Factory(
         lambda a: ToshibaRacCommand.climate(
@@ -504,6 +573,7 @@ _FACTORIES: dict[str, _Factory] = {
             is_fahrenheit=a.is_fahrenheit,
         ),
         ToshibaRacCommand.from_raw_timings,
+        _rebuilder(ToshibaRacCommand.climate),
     ),
     "ToshibaRas2819Command.climate": _Factory(
         lambda a: ToshibaRas2819Command.climate(
@@ -512,13 +582,17 @@ _FACTORIES: dict[str, _Factory] = {
             fan=Toshiba48FanSpeed[a.fan],
         ),
         ToshibaRas2819Command.from_raw_timings,
+        _rebuilder(ToshibaRas2819Command.climate, temperature=_candidate_temperature),
     ),
     "ToshibaRacCommand.power_off": _Factory(
-        lambda a: ToshibaRacCommand.power_off(), ToshibaRacCommand.from_raw_timings
+        lambda a: ToshibaRacCommand.power_off(),
+        ToshibaRacCommand.from_raw_timings,
+        rebuild=None,
     ),
     "ToshibaRas2819Command.power_off": _Factory(
         lambda a: ToshibaRas2819Command.power_off(),
         ToshibaRas2819Command.from_raw_timings,
+        rebuild=None,
     ),
 }
 
@@ -539,6 +613,7 @@ def _gree_factory(model: GreeModel) -> _Factory:
             features=GreeFeature(a.features) if a.features is not None else None,
         ),
         partial(GreeModelCommand.from_raw_timings, model=model),
+        _rebuilder(partial(GreeModelCommand, model=model)),
     )
 
 
@@ -554,6 +629,7 @@ def _whirlpool_factory(cls: type[WhirlpoolCommand]) -> _Factory:
             swing_v=a.swing_v if cls.HISENSE else None,
         ),
         cls.from_raw_timings,
+        _rebuilder(cls, off_command=_off_command, temperature=_candidate_temperature),
     )
 
 
@@ -570,8 +646,7 @@ class _Case(NamedTuple):
     decoder: Callable[[list[int]], _ClimateCommand | None]
     timings: list[int]
     expected_state: dict[str, object]
-    constructor: Callable[..., _ClimateCommand]
-    factory_name: str
+    rebuild: Callable[[_ClimateCommand], _ClimateCommand] | None
 
 
 _CORPUS = json.loads(
@@ -594,10 +669,7 @@ for _case in _CORPUS["cases"]:
             _factory.decode,
             [_case["palette"][int(c, 36)] for c in _case["timings"]],
             _case["expected_state"],
-            getattr(type(_command), _tag.split(".")[1])
-            if "." in _tag
-            else type(_command),
-            _tag,
+            _factory.rebuild,
         )
     )
     _IDS.append(_case["key"])
@@ -625,40 +697,20 @@ def test_climate_reference(case: _Case) -> None:
     _assert_reference_state(received.state, case.expected_state)
 
 
-def _rebuild_arguments(command: _ClimateCommand, case: _Case) -> dict[str, object]:
-    """Recover constructor inputs from native state and packet properties only."""
-    state = vars(command.state)
-    arguments = {}
-    for name in inspect.signature(case.constructor).parameters:
-        if name in state:
-            arguments[name] = state[name]
-        elif hasattr(command, name):
-            arguments[name] = getattr(command, name)
-    if isinstance(command, (DelonghiCommand, ToshibaRas25j2kvsgNdCommand)):
-        arguments["temperature"] = command.retained_temperature
-    if isinstance(command, WhirlpoolCommand):
-        arguments["off_command"] = command.state.mode is None
-    if isinstance(command, (HisenseArgCommand, ToshibaRas2819Command)):
-        # Several native codes represent multiple set points; every candidate
-        # regenerates the same bytes without claiming which one was selected.
-        if arguments.get("temperature") is None and command.temperature_candidates:
-            arguments["temperature"] = command.temperature_candidates[0]
-    return arguments
-
-
 @pytest.mark.parametrize(
     "case",
     [
         pytest.param(case, id=key)
         for case, key in zip(_CASES, _IDS, strict=True)
-        if "." not in case.factory_name or case.factory_name.endswith(".climate")
+        if case.rebuild is not None
     ],
 )
 def test_climate_reference_rebuild(case: _Case) -> None:
     """Rebuild full climate packets without reusing their original inputs."""
     received = case.decoder(case.timings)
     assert received is not None
-    rebuilt = case.constructor(**_rebuild_arguments(received, case))
+    assert case.rebuild is not None
+    rebuilt = case.rebuild(received)
     assert rebuilt.get_raw_timings() == case.timings
 
 
