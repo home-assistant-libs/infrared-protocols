@@ -1,5 +1,9 @@
 """Tests for the SONY SIRC IR command encoder."""
 
+import json
+from itertools import product
+from pathlib import Path
+
 import pytest
 
 from infrared_protocols.commands.sony import SonyCommand
@@ -84,3 +88,54 @@ def test_sony_command_rejects_out_of_range(
     """SONY SIRC fields must fit address<=13 bits and command<=7 bits."""
     with pytest.raises(ValueError):
         SonyCommand(address=address, address_bits=address_bits, command=command)
+
+
+_CAPTURES = json.loads(
+    (Path(__file__).parents[1] / "fixtures/receiver_captures.json").read_text()
+)["captures"]
+
+_DECODE_CASES = [
+    pytest.param(command, id=type(command).__name__ + "-" + str(vars(command)))
+    for command in [
+        *[
+            SonyCommand(address=(1 << b) - 1, address_bits=b, command=c)
+            for b, c in product((5, 8, 13), (0, 127))
+        ]
+    ]
+]
+
+
+def test_sony_physical_capture() -> None:
+    """Decode a recorded Sony20 signal with stretched marks and short spaces."""
+    capture = next(c for c in _CAPTURES if c["protocol"] == "sony")
+    received = SonyCommand.from_raw_timings(capture["timings"])
+    assert received is not None
+    assert (received.address_bits, received.address, received.command) == (13, 0x4B9, 7)
+
+
+def test_sony_held_key() -> None:
+    """SIRC repeats a full frame on a 45-ms period."""
+    sent = SonyCommand(address=0x4B9, address_bits=13, command=7, repeat_count=2)
+    received = SonyCommand.from_raw_timings(sent.get_raw_timings())
+    assert received is not None
+    assert (received.address, received.command, received.repeat_count) == (0x4B9, 7, 2)
+
+
+@pytest.mark.parametrize("command", _DECODE_CASES)
+def test_decoder_round_trip_fields(command: SonyCommand) -> None:
+    """Decode edge-valued fields and preserve their protocol meaning."""
+    raw = command.get_raw_timings()
+    result = type(command).from_raw_timings(raw)
+    assert result is not None
+    assert result.get_raw_timings() == raw
+    assert result.address == command.address
+    assert result.address_bits == command.address_bits
+    assert result.command == command.command
+    assert result.repeat_count == command.repeat_count
+
+
+@pytest.mark.parametrize("command", _DECODE_CASES)
+@pytest.mark.parametrize("prefix", [0, 1, 5])
+def test_decoder_truncated(command: SonyCommand, prefix: int) -> None:
+    """A partial leader or payload cannot be a complete command."""
+    assert type(command).from_raw_timings(command.get_raw_timings()[:prefix]) is None

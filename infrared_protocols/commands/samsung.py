@@ -1,8 +1,10 @@
 """Samsung IR commands."""
 
-from typing import override
+from typing import Self, override
 
 from . import Command
+from ._decode import frames, validate_pulse_prefix
+from ._timing import PulseTiming, Reader, byte_bits, pack_bytes
 
 
 class Samsung32Command(Command):
@@ -88,3 +90,39 @@ class Samsung32Command(Command):
                 timings.extend(base_frame)
 
         return timings
+
+    @classmethod
+    def from_raw_timings(cls, timings: list[int]) -> Self | None:
+        """Decode standard/extended Samsung32 and validate command complements."""
+        messages: list[bytes] = []
+        try:
+            packets = frames(timings, period=108000, tolerance=0.4)
+            for index, frame in enumerate(packets):
+                if messages and len(frame) < 67 and index == len(packets) - 1:
+                    expected = [
+                        4500,
+                        -4500,
+                        *PulseTiming(560, 560, 1690).encode(byte_bits(messages[0])),
+                        560,
+                    ]
+                    validate_pulse_prefix(frame, expected, tolerance=0.4)
+                    break
+                reader = Reader(timings=frame, tolerance=0.4)
+                reader.expect(4500, -4500)
+                data = pack_bytes(reader.read_bits(PulseTiming(560, 560, 1690), 32))
+                reader.expect(560)
+                reader.end()
+                if data[2] ^ data[3] != 255:
+                    return None
+                messages.append(data)
+            first = messages[0]
+            if any(message != first for message in messages[1:]):
+                return None
+            if first[1] == 0 and first[0] != 0:
+                return None
+            address = first[0] if first[0] == first[1] else first[0] | first[1] << 8
+            return cls(
+                address=address, command=first[2], repeat_count=len(messages) - 1
+            )
+        except ValueError:
+            return None

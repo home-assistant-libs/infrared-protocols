@@ -1,8 +1,10 @@
 """Pioneer IR command."""
 
-from typing import override
+from typing import Self, override
 
 from . import Command
+from ._decode import frames, validate_pulse_prefix
+from ._timing import PulseTiming, Reader, pack_bytes
 from .nec import NECCommand
 
 # Pioneer carrier frequency in Hz. The frame is NEC-shaped, but Pioneer
@@ -24,6 +26,10 @@ class PioneerCommand(Command):
     command: a preamble frame that selects the set, followed by the frame
     carrying the button. Pass ``preamble_address`` and ``preamble_command``
     together to emit one. Devices that need no preamble send a single frame.
+
+    A two-part command needs both frames in one capture: set receiver idle above
+    26 ms, or concatenate captures with their measured gaps before decoding.
+    A lone preamble cannot be distinguished from a single-frame button.
     """
 
     address: int
@@ -99,3 +105,46 @@ class PioneerCommand(Command):
         period differ, and both are handled by the caller.
         """
         return NECCommand(address=address, command=command).get_raw_timings()
+
+    @classmethod
+    def from_raw_timings(cls, timings: list[int]) -> Self | None:
+        """Decode one-frame or two-part Pioneer commands and matching repeats."""
+        messages: list[tuple[int, int]] = []
+        try:
+            packets = frames(timings, period=PIONEER_FRAME_PERIOD_US)
+            for index, frame in enumerate(packets):
+                if len(messages) >= 2 and len(frame) < 67 and index == len(packets) - 1:
+                    expected = messages[index % 2]
+                    validate_pulse_prefix(frame, cls._frame(*expected))
+                    break
+                reader = Reader(timings=frame)
+                reader.expect(9000, -4500)
+                data = pack_bytes(reader.read_bits(PulseTiming(560, 560, 1690), 32))
+                reader.expect(560)
+                reader.end()
+                if data[0] ^ data[1] != 255 or data[2] ^ data[3] != 255:
+                    return None
+                messages.append((data[0], data[2]))
+            first = messages[0]
+            if all(message == first for message in messages):
+                return cls(
+                    address=first[0], command=first[1], repeat_count=len(messages) - 1
+                )
+            if len(messages) >= 3 and len(messages) % 2:
+                if messages[-1] != first:
+                    return None
+                messages.pop()
+            if len(messages) % 2 or any(
+                message != messages[i % 2] for i, message in enumerate(messages)
+            ):
+                return None
+            second = messages[1]
+            return cls(
+                address=second[0],
+                command=second[1],
+                preamble_address=first[0],
+                preamble_command=first[1],
+                repeat_count=len(messages) // 2 - 1,
+            )
+        except ValueError:
+            return None

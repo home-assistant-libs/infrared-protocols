@@ -1,5 +1,9 @@
 """Tests for the RC-6 IR command encoder."""
 
+import json
+from itertools import product
+from pathlib import Path
+
 import pytest
 
 from infrared_protocols.commands.rc6 import RC6Command
@@ -144,3 +148,95 @@ def test_rc6_command_rejects_out_of_range(address: int, command: int) -> None:
     """RC-6 mode 0 fields are both 8-bit — anything else is invalid."""
     with pytest.raises(ValueError):
         RC6Command(address=address, command=command, toggle=0)
+
+
+_CAPTURES = json.loads(
+    (Path(__file__).parents[1] / "fixtures/receiver_captures.json").read_text()
+)["captures"]
+
+_DECODE_CASES = [
+    pytest.param(
+        RC6Command(address=a, command=c, toggle=t, repeat_count=r, mode=m),
+        id=f"{a:#04x}-{c:#04x}-t{t}-r{r}-m{m}",
+    )
+    for a, c, t, r, m in product((0, 255), (0, 255), (0, 1), (0, 2), (0, 1, 6, 7))
+]
+
+
+def test_rc6_nonzero_mode_order() -> None:
+    """Mode 6 transmits its bits in the documented MSB-first mode field."""
+    raw = RC6Command(mode=6, address=0, command=0, toggle=0).get_raw_timings()
+    assert raw[:11] == [2664, -888, 444, -444, 444, -444, 444, -888, 444, -888, 888]
+
+
+def test_rc6_half_clock_rejected() -> None:
+    """Half-unit noise cannot supply a valid clock or cause division by zero."""
+    assert RC6Command.from_raw_timings([2664, -888, *([222, -222] * 22)]) is None
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        pytest.param(c["timings"], id=f"rc6a-{i}")
+        for i, c in enumerate(_CAPTURES)
+        if c["protocol"] == "rc6a"
+    ],
+)
+def test_unsupported_rc6a(raw: list[int]) -> None:
+    """The fixed 20-bit RC6 decoder cannot silently truncate a longer RC6A word."""
+    assert RC6Command.from_raw_timings(raw) is None
+
+
+@pytest.mark.parametrize(
+    "raw,address,command,toggle,mode",
+    [
+        pytest.param(
+            c["timings"],
+            c["address"],
+            c["command"],
+            c["toggle"],
+            c["mode"],
+            id=f"{c['address']:x}-{c['command']:x}",
+        )
+        for c in _CAPTURES
+        if c["protocol"] == "rc6"
+    ],
+)
+def test_recorded_rc6(
+    raw: list[int], address: int, command: int, toggle: int, mode: int
+) -> None:
+    """Recover independent recorded fields and the toggle bit."""
+    result = RC6Command.from_raw_timings(raw)
+    assert result is not None
+    assert (result.address, result.command, result.toggle) == (address, command, toggle)
+    assert result.mode == mode
+
+
+@pytest.mark.parametrize("command", _DECODE_CASES)
+def test_decoder_round_trip_fields(command: RC6Command) -> None:
+    """Decode edge-valued fields and preserve their protocol meaning."""
+    raw = command.get_raw_timings()
+    result = RC6Command.from_raw_timings(raw)
+    assert result is not None
+    assert result.get_raw_timings() == raw
+    assert result.address == command.address
+    assert result.command == command.command
+    assert result.toggle == command.toggle
+    assert result.mode == command.mode
+    assert result.repeat_count == command.repeat_count
+
+
+@pytest.mark.parametrize("command", _DECODE_CASES)
+@pytest.mark.parametrize("prefix", [0, 1, 5])
+def test_decoder_truncated(command: RC6Command, prefix: int) -> None:
+    """A partial leader or payload cannot be a complete command."""
+    assert RC6Command.from_raw_timings(command.get_raw_timings()[:prefix]) is None
+
+
+@pytest.mark.parametrize(
+    "mode", [pytest.param(-1, id="negative"), pytest.param(8, id="too-large")]
+)
+def test_invalid_mode(mode: int) -> None:
+    """The selected mode must fit its three wire bits."""
+    with pytest.raises(ValueError, match="mode"):
+        RC6Command(address=0, command=0, mode=mode)

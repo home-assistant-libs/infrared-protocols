@@ -1,8 +1,10 @@
 """RC-5 IR command (Philips, Marantz, and other devices)."""
 
-from typing import override
+from typing import Self, override
 
 from . import Command
+from ._decode import frames, rc5_bits
+from ._timing import number
 
 # RC-5 timing unit (half-bit) in microseconds. The full bit period is 2 × this.
 RC5_HALF_BIT_US = 889
@@ -136,3 +138,23 @@ class RC5Command(Command):
                 timings.extend(frame)
 
         return timings
+
+    @classmethod
+    def from_raw_timings(cls, timings: list[int]) -> Self | None:
+        """Decode RC-5 or extended commands, including identical held-key repeats."""
+        try:
+            decoded = [
+                rc5_bits(frame)
+                for frame in frames(timings, period=RC5_REPEAT_PERIOD_US)
+            ]
+            first = decoded[0]
+            if any(value != first for value in decoded[1:]):
+                return None
+            return cls(
+                address=number(first[3:8]),
+                command=number(first[8:]) | ((1 - first[1]) << 6),
+                toggle=first[2],
+                repeat_count=len(decoded) - 1,
+            )
+        except ValueError:
+            return None

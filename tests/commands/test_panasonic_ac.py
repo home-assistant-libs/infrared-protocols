@@ -2,10 +2,12 @@
 
 import pytest
 
+from infrared_protocols.commands.kaseikyo import KaseikyoCommand
 from infrared_protocols.commands.panasonic_ac import (
     PanasonicAcCommand,
     PanasonicAcFanSpeed,
     PanasonicAcMode,
+    PanasonicAcModel,
     PanasonicAcSwingAxis1,
     PanasonicAcSwingAxis2,
     PanasonicAcToggle,
@@ -104,3 +106,483 @@ def test_temperature_out_of_range_raises(temperature: float) -> None:
     """Test an out-of-range temperature raises ValueError."""
     with pytest.raises(ValueError, match="out of range"):
         PanasonicAcCommand(mode=PanasonicAcMode.COOL, temperature=temperature)
+
+
+# CS-NE9PKE remote recordings, including checksums, from ESPHome PR #21631:
+# tests/components/panasonic_ir/test_panasonic_ir.cpp,
+# commit 5f5a81434df4d47c3b9fb8d3927f11791a5bcbf6.
+@pytest.mark.parametrize(
+    ("temperature", "fan", "payload"),
+    [
+        (16, PanasonicAcFanSpeed.HIGH, "0220e004004920807f00000ee00000810000dd"),
+        (30, PanasonicAcFanSpeed.HIGH, "0220e00400493c807f00000ee00000810000f9"),
+        (19, PanasonicAcFanSpeed.AUTO, "0220e00400492680af00000ee0000081000013"),
+        (20, PanasonicAcFanSpeed.AUTO, "0220e00400492880af00000ee0000081000015"),
+    ],
+)
+def test_pke_recorded_heat_frames(
+    temperature: int, fan: PanasonicAcFanSpeed, payload: str
+) -> None:
+    """Match complete payloads recorded from the physical remote."""
+    command = PanasonicAcCommand(
+        model=PanasonicAcModel.PKE,
+        mode=PanasonicAcMode.HEAT,
+        temperature=temperature,
+        fan=fan,
+    )
+    assert _decode_frames(command.get_raw_timings()) == [
+        FULL_COOL_24_FRAMES[0],
+        list(bytes.fromhex(payload)),
+    ]
+    assert command.modulation == 36700
+    assert command.repeat_count == 0
+
+
+def test_pke_recorded_fixed_vane_frame() -> None:
+    """Match the remote's cooling frame with a fixed middle vane."""
+    command = PanasonicAcCommand(
+        model=PanasonicAcModel.PKE,
+        mode=PanasonicAcMode.COOL,
+        temperature=24,
+        swing_axis1=PanasonicAcSwingAxis1.MIDDLE,
+    )
+    assert _decode_frames(command.get_raw_timings())[1] == list(
+        bytes.fromhex("0220e00400393080a300000ee0000081000001")
+    )
+
+
+def test_pke_recorded_frost_protection_frame() -> None:
+    """Frost protection overrides remembered temperature, fan and vane settings."""
+    command = PanasonicAcCommand(
+        model=PanasonicAcModel.PKE,
+        mode=PanasonicAcMode.HEAT,
+        temperature=24,
+        fan=PanasonicAcFanSpeed.LOW,
+        swing_axis1=PanasonicAcSwingAxis1.LOWEST,
+        frost_protection=True,
+    )
+    assert _decode_frames(command.get_raw_timings())[1] == list(
+        bytes.fromhex("0220e004004914807f00000ee00000810000d1")
+    )
+
+
+@pytest.mark.parametrize(
+    ("model", "payload"),
+    [
+        (PanasonicAcModel.DKE, "0220e00400412880af06000ee0000001000699"),
+        (PanasonicAcModel.JKE, "0220e00400412880af00000ee000008100000d"),
+        (PanasonicAcModel.LKE, "0220e00400432880af06000ee0000081000015"),
+        (PanasonicAcModel.NKE, "0220e00400412880af06000ee0000081000013"),
+        (PanasonicAcModel.RKR, "0220e00400492880af06000ee0000089000023"),
+        (PanasonicAcModel.PKE, "0220e00400492880af00000ee0000081000015"),
+    ],
+)
+def test_model_frames(model: PanasonicAcModel, payload: str) -> None:
+    """Match the ESPHome encoder's model layouts for heat at 20 degrees."""
+    command = PanasonicAcCommand(model=model, mode=PanasonicAcMode.HEAT, temperature=20)
+    assert _decode_frames(command.get_raw_timings())[1] == list(bytes.fromhex(payload))
+
+
+@pytest.mark.parametrize(
+    "toggle, power_byte, checksum", [(False, 0x40, 0x9C), (True, 0x41, 0x9D)]
+)
+def test_ckp_power_toggle(toggle: bool, power_byte: int, checksum: int) -> None:
+    """CKP must explicitly request a toggle or leave power unchanged."""
+    command = PanasonicAcCommand(
+        model=PanasonicAcModel.CKP,
+        mode=PanasonicAcMode.HEAT,
+        temperature=20,
+        power_toggle=toggle,
+    )
+    assert _decode_frames(command.get_raw_timings())[1] == [
+        0x02, 0x20, 0xE0, 0x04, 0x00, power_byte, 0x28, 0x80, 0xAF, 0x00,
+        0x00, 0x0E, 0xE0, 0x10, 0x00, 0x01, 0x00, 0x00, checksum,
+    ]  # fmt: skip
+
+
+@pytest.mark.parametrize("temperature", [16, 20, 30])
+def test_fan_only_fixed_temperature(temperature: int) -> None:
+    """Fan-only sends the protocol's fixed temperature, not the set point."""
+    command = PanasonicAcCommand(
+        model=PanasonicAcModel.PKE,
+        mode=PanasonicAcMode.FAN_ONLY,
+        temperature=temperature,
+    )
+    assert _decode_frames(command.get_raw_timings())[1] == list(
+        bytes.fromhex("0220e00400693680af00000ee0000081000043")
+    )
+
+
+@pytest.mark.parametrize("model", [PanasonicAcModel.DKE, PanasonicAcModel.RKR])
+def test_named_model_horizontal_vane(model: PanasonicAcModel) -> None:
+    """Models with a horizontal vane accept explicit positions."""
+    command = PanasonicAcCommand(
+        model=model,
+        mode=PanasonicAcMode.COOL,
+        temperature=24,
+        swing_axis2=PanasonicAcSwingAxis2.LEFT,
+    )
+    frame = _decode_frames(command.get_raw_timings())[1]
+    assert frame[9] == 0x0A
+    assert frame[-1] == sum(frame[:-1]) % 256
+
+
+@pytest.mark.parametrize("modulation", [36700, 38000, 40000])
+def test_named_model_timings(modulation: int) -> None:
+    """Carrier overrides do not change the recorded pulse durations."""
+    command = PanasonicAcCommand(
+        model=PanasonicAcModel.PKE,
+        mode=PanasonicAcMode.COOL,
+        temperature=24,
+        modulation=modulation,
+    )
+    timings = command.get_raw_timings()
+    assert command.modulation == modulation
+    assert len(timings) == 439
+    assert timings[:6] == [3456, -1728, 432, -432, 432, -1296]
+    assert timings[130:134] == [432, -10000, 3456, -1728]
+    assert timings[-1] == 432
+
+
+@pytest.mark.parametrize("power", [False, True])
+def test_named_model_power(power: bool) -> None:
+    """Switching off preserves the PKE model flag, including in frost mode."""
+    command = PanasonicAcCommand(
+        model=PanasonicAcModel.PKE,
+        mode=PanasonicAcMode.HEAT,
+        temperature=20,
+        power=power,
+        frost_protection=True,
+    )
+    frame = _decode_frames(command.get_raw_timings())[1]
+    assert frame[5] == 0x48 | power
+    assert frame[-1] == sum(frame[:-1]) % 256
+
+
+def test_original_half_degree_encoding() -> None:
+    """Existing callers retain half-degree temperature encoding and timing."""
+    command = PanasonicAcCommand(mode=PanasonicAcMode.COOL, temperature=24.5)
+    assert _decode_frames(command.get_raw_timings())[1][6] == 49
+    assert command.get_raw_timings()[:2] == [3368, -1684]
+
+
+@pytest.mark.parametrize("model", list(PanasonicAcModel))
+def test_named_model_rejects_half_degree(model: PanasonicAcModel) -> None:
+    """Named models cannot transmit fractional set points."""
+    with pytest.raises(ValueError, match="whole degree"):
+        PanasonicAcCommand(model=model, mode=PanasonicAcMode.HEAT, temperature=20.5)
+
+
+@pytest.mark.parametrize("power", [None, True, False])
+def test_ckp_requires_explicit_toggle(power: bool | None) -> None:
+    """A declarative power state cannot safely drive a CKP power toggle."""
+    with pytest.raises(ValueError, match="CKP requires power_toggle"):
+        PanasonicAcCommand(
+            model=PanasonicAcModel.CKP,
+            mode=PanasonicAcMode.HEAT,
+            temperature=20,
+            power=power,
+        )
+
+
+def test_ckp_rejects_conflicting_power_arguments() -> None:
+    """The caller must choose toggle semantics for CKP."""
+    with pytest.raises(ValueError, match="CKP requires power_toggle"):
+        PanasonicAcCommand(
+            model=PanasonicAcModel.CKP,
+            mode=PanasonicAcMode.HEAT,
+            temperature=20,
+            power=True,
+            power_toggle=True,
+        )
+
+
+def test_other_models_reject_power_toggle() -> None:
+    """Other variants have declarative power."""
+    with pytest.raises(ValueError, match="only supported for CKP"):
+        PanasonicAcCommand(
+            model=PanasonicAcModel.PKE,
+            mode=PanasonicAcMode.HEAT,
+            temperature=20,
+            power_toggle=True,
+        )
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        PanasonicAcModel.JKE,
+        PanasonicAcModel.LKE,
+        PanasonicAcModel.NKE,
+        PanasonicAcModel.PKE,
+    ],
+)
+def test_unsupported_horizontal_vane(model: PanasonicAcModel) -> None:
+    """Do not send unsupported axis commands or silently ignore them."""
+    with pytest.raises(ValueError, match="swing_axis2 is not supported"):
+        PanasonicAcCommand(
+            model=model,
+            mode=PanasonicAcMode.COOL,
+            temperature=24,
+            swing_axis2=PanasonicAcSwingAxis2.AUTO,
+        )
+
+
+def test_named_model_rejects_nanoex() -> None:
+    """The original nanoeX bit is not valid for the new model layouts."""
+    with pytest.raises(ValueError, match="nanoex is not supported"):
+        PanasonicAcCommand(
+            model=PanasonicAcModel.PKE,
+            mode=PanasonicAcMode.COOL,
+            temperature=24,
+            nanoex=True,
+        )
+
+
+@pytest.mark.parametrize(
+    ("model", "mode"),
+    [(None, PanasonicAcMode.HEAT), (PanasonicAcModel.PKE, PanasonicAcMode.COOL)],
+)
+def test_invalid_frost_protection(
+    model: PanasonicAcModel | None, mode: PanasonicAcMode
+) -> None:
+    """Frost protection needs a compatible frame layout and heating mode."""
+    with pytest.raises(ValueError, match="frost_protection requires"):
+        PanasonicAcCommand(
+            model=model, mode=mode, temperature=24, frost_protection=True
+        )
+
+
+_DECODE_CASES = [
+    pytest.param(command, id=type(command).__name__ + "-" + str(vars(command)))
+    for command in [
+        PanasonicAcCommand(mode=PanasonicAcMode.COOL, temperature=24),
+        *[PanasonicAcToggleCommand(toggle=t) for t in PanasonicAcToggle],
+    ]
+]
+
+
+@pytest.mark.parametrize(
+    "model,axis2",
+    [
+        pytest.param(PanasonicAcModel.DKE, PanasonicAcSwingAxis2.LEFT, id="dke"),
+        pytest.param(PanasonicAcModel.RKR, PanasonicAcSwingAxis2.RIGHT, id="rkr"),
+        pytest.param(PanasonicAcModel.LKE, None, id="lke"),
+        pytest.param(PanasonicAcModel.NKE, None, id="nke"),
+    ],
+)
+def test_panasonic_native_state(
+    model: PanasonicAcModel, axis2: PanasonicAcSwingAxis2 | None
+) -> None:
+    """The selected model determines which native vane fields are present."""
+    sent = PanasonicAcCommand(
+        model=model,
+        mode=PanasonicAcMode.COOL,
+        temperature=24,
+        power=False,
+        fan=PanasonicAcFanSpeed.MEDIUM_LOW,
+        swing_axis1=PanasonicAcSwingAxis1.LOW,
+        swing_axis2=axis2,
+    )
+    received = PanasonicAcCommand.from_raw_timings(sent.get_raw_timings(), model=model)
+    assert received is not None
+    assert received.state.power is False
+    assert received.state.power_toggle is None
+    assert received.state.fan == PanasonicAcFanSpeed.MEDIUM_LOW
+    assert received.state.swing_axis1 == PanasonicAcSwingAxis1.LOW
+    assert received.state.swing_axis2 == axis2
+    assert received.state.nanoex is None
+
+
+def test_panasonic_ckp_toggle() -> None:
+    """CKP's power bit carries a toggle and cannot reveal absolute power."""
+    sent = PanasonicAcCommand(
+        model=PanasonicAcModel.CKP,
+        mode=PanasonicAcMode.COOL,
+        temperature=24,
+        power_toggle=True,
+    )
+    received = PanasonicAcCommand.from_raw_timings(
+        sent.get_raw_timings(), model=PanasonicAcModel.CKP
+    )
+    assert received is not None
+    assert received.state.power is None
+    assert received.state.power_toggle is True
+
+
+@pytest.mark.parametrize("nanoex", [False, True], ids=["off", "on"])
+def test_panasonic_legacy_nanoex(nanoex: bool) -> None:
+    """Legacy full-state nanoe-X remains readable alongside native vane settings."""
+    sent = PanasonicAcCommand(mode=PanasonicAcMode.COOL, temperature=24, nanoex=nanoex)
+    received = PanasonicAcCommand.from_raw_timings(sent.get_raw_timings())
+    assert received is not None
+    assert received.state.nanoex is nanoex
+
+
+@pytest.mark.parametrize("temperature", [8, 10])
+def test_panasonic_received_frost_state_section(temperature: int) -> None:
+    """A standalone state section exposes 8/10 C frost protection and native fan."""
+    sent = PanasonicAcCommand(
+        model=PanasonicAcModel.PKE,
+        mode=PanasonicAcMode.HEAT,
+        temperature=24,
+        frost_protection=True,
+    )
+    assert isinstance(sent.data, list)
+    second = bytearray(sent.data[1])
+    second[4] = temperature * 2
+    second[-1] = (sum(second[:-1]) + 2 + 32) & 255
+    raw = KaseikyoCommand(address=0x2002, data=bytes(second)).get_raw_timings()
+    received = PanasonicAcCommand.from_raw_timings(raw, model=PanasonicAcModel.PKE)
+    assert received is not None
+    assert received.state.frost_protection
+    assert received.state.temperature is None
+    assert received.state.fan == PanasonicAcFanSpeed.HIGH
+    assert isinstance(received.data, list)
+    assert received.data[1] == bytes(second)
+    assert len(received.get_raw_timings()) == 439
+
+
+def test_panasonic_bad_checksum() -> None:
+    """Kaseikyo parity alone cannot validate the application packet."""
+    sent = PanasonicAcCommand(mode=PanasonicAcMode.COOL, temperature=24)
+    assert isinstance(sent.data, list)
+    sent.data[1] = sent.data[1][:-1] + bytes([sent.data[1][-1] ^ 1])
+    assert PanasonicAcCommand.from_raw_timings(sent.get_raw_timings()) is None
+
+
+def test_panasonic_fan_only_has_no_temperature() -> None:
+    """The fan-only placeholder is not the user's target temperature."""
+    sent = PanasonicAcCommand(mode=PanasonicAcMode.FAN_ONLY, temperature=24)
+    received = PanasonicAcCommand.from_raw_timings(sent.get_raw_timings())
+    assert received is not None
+    assert received.state.temperature is None
+    assert received.state.mode == PanasonicAcMode.FAN_ONLY
+
+
+@pytest.mark.parametrize(
+    "model", [m for m in PanasonicAcModel if m != PanasonicAcModel.CKP]
+)
+def test_panasonic_named_models(model: PanasonicAcModel) -> None:
+    """The caller's remote model survives decoding a valid full state."""
+    command = PanasonicAcCommand(model=model, mode=PanasonicAcMode.HEAT, temperature=21)
+    result = PanasonicAcCommand.from_raw_timings(command.get_raw_timings(), model=model)
+    assert result is not None
+    assert result.get_raw_timings() == command.get_raw_timings()
+
+
+def test_panasonic_power_toggle() -> None:
+    """A CKP power request retains the toggle bit."""
+    command = PanasonicAcCommand(
+        model=PanasonicAcModel.CKP,
+        mode=PanasonicAcMode.HEAT,
+        temperature=21,
+        power_toggle=True,
+    )
+    result = PanasonicAcCommand.from_raw_timings(
+        command.get_raw_timings(), model=PanasonicAcModel.CKP
+    )
+    assert result is not None
+    assert result.get_raw_timings() == command.get_raw_timings()
+
+
+@pytest.mark.parametrize("command", _DECODE_CASES)
+def test_decoder_round_trip_fields(
+    command: PanasonicAcCommand | PanasonicAcToggleCommand,
+) -> None:
+    """Decode edge-valued fields and preserve their protocol meaning."""
+    raw = command.get_raw_timings()
+    result = type(command).from_raw_timings(raw)
+    assert result is not None
+    assert result.get_raw_timings() == raw
+    assert result.data == command.data
+
+
+@pytest.mark.parametrize("command", _DECODE_CASES)
+@pytest.mark.parametrize("prefix", [0, 1, 5])
+def test_decoder_truncated(
+    command: PanasonicAcCommand | PanasonicAcToggleCommand, prefix: int
+) -> None:
+    """A partial leader or payload cannot be a complete command."""
+    assert type(command).from_raw_timings(command.get_raw_timings()[:prefix]) is None
+
+
+@pytest.mark.parametrize("toggle", list(PanasonicAcToggle))
+def test_toggle_action_section_only(toggle: PanasonicAcToggle) -> None:
+    """A default receiver can deliver the short action separately from its prefix."""
+    sent = PanasonicAcToggleCommand(toggle=toggle)
+    assert isinstance(sent.data, list)
+    second = KaseikyoCommand(address=0x2002, data=sent.data[1]).get_raw_timings()
+    received = PanasonicAcToggleCommand.from_raw_timings(second)
+    assert received is not None
+    assert received.data == sent.data
+    assert received.get_raw_timings() == sent.get_raw_timings()
+
+
+@pytest.mark.parametrize(
+    "model,mode,frost,power_toggle",
+    [
+        pytest.param(
+            model,
+            PanasonicAcMode.FAN_ONLY,
+            False,
+            True if model == PanasonicAcModel.CKP else None,
+            id=f"fan-{model}",
+        )
+        for model in (None, *PanasonicAcModel)
+    ]
+    + [
+        pytest.param(
+            model,
+            PanasonicAcMode.HEAT,
+            True,
+            True if model == PanasonicAcModel.CKP else None,
+            id=f"frost-{model}",
+        )
+        for model in PanasonicAcModel
+    ],
+)
+def test_rebuild_placeholder_temperature(
+    model: PanasonicAcModel | None,
+    mode: PanasonicAcMode,
+    frost: bool,
+    power_toggle: bool | None,
+) -> None:
+    """Every model rebuilds a decoded placeholder without a fabricated set point."""
+    sent = PanasonicAcCommand(
+        model=model,
+        mode=mode,
+        temperature=24,
+        frost_protection=frost,
+        power_toggle=power_toggle,
+    )
+    received = PanasonicAcCommand.from_raw_timings(sent.get_raw_timings(), model=model)
+    assert received is not None
+    state = received.state
+    assert state.temperature is None
+    rebuilt = PanasonicAcCommand(
+        model=model,
+        mode=state.mode,
+        temperature=state.temperature,
+        fan=state.fan,
+        power=state.power,
+        power_toggle=state.power_toggle,
+        frost_protection=state.frost_protection,
+        swing_axis1=state.swing_axis1,
+        swing_axis2=state.swing_axis2,
+    )
+    assert rebuilt.get_raw_timings() == sent.get_raw_timings()
+
+
+@pytest.mark.parametrize("temperature", [None, 15, 31])
+def test_missing_or_invalid_set_point(temperature: int | None) -> None:
+    """Cooling still requires a temperature within the native range."""
+    with pytest.raises(ValueError, match="temperature"):
+        PanasonicAcCommand(mode=PanasonicAcMode.COOL, temperature=temperature)
+
+
+@pytest.mark.parametrize("temperature", [15, 31])
+def test_invalid_placeholder_input(temperature: int) -> None:
+    """A fixed fan-only field does not hide explicitly invalid input."""
+    with pytest.raises(ValueError, match="temperature"):
+        PanasonicAcCommand(mode=PanasonicAcMode.FAN_ONLY, temperature=temperature)

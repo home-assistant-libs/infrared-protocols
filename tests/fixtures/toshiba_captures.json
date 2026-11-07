@@ -1,0 +1,246 @@
+{
+  "source": "WH-TA15PE handheld captures recorded in ESPHome tests/components/toshiba/toshiba_tests.cpp",
+  "revision": "d2d5bb623a3be3b3610f7370ab45cf62f7448ca9",
+  "states": [
+    {
+      "data": "f20d03fc0170430032",
+      "temperature": 24,
+      "mode": "heat",
+      "fan": 2,
+      "preset": "none",
+      "power_selection": 0
+    },
+    {
+      "data": "f20d03fc0170630012",
+      "temperature": 24,
+      "mode": "heat",
+      "fan": 3,
+      "preset": "none",
+      "power_selection": 0
+    },
+    {
+      "data": "f20d03fc01708300f2",
+      "temperature": 24,
+      "mode": "heat",
+      "fan": 4,
+      "preset": "none",
+      "power_selection": 0
+    },
+    {
+      "data": "f20d03fc0170a300d2",
+      "temperature": 24,
+      "mode": "heat",
+      "fan": 5,
+      "preset": "none",
+      "power_selection": 0
+    },
+    {
+      "data": "f20d03fc0170c300b2",
+      "temperature": 24,
+      "mode": "heat",
+      "fan": 6,
+      "preset": "none",
+      "power_selection": 0
+    },
+    {
+      "data": "f20d03fc0170230052",
+      "temperature": 24,
+      "mode": "heat",
+      "fan": 1,
+      "preset": "none",
+      "power_selection": 0
+    },
+    {
+      "data": "f20d03fc0170030072",
+      "temperature": 24,
+      "mode": "heat",
+      "fan": 0,
+      "preset": "none",
+      "power_selection": 0
+    },
+    {
+      "data": "f20d04fb09700300017b",
+      "temperature": 24,
+      "mode": "heat",
+      "fan": 0,
+      "preset": "boost",
+      "power_selection": 0
+    },
+    {
+      "data": "f20d04fb09600300016b",
+      "temperature": 23,
+      "mode": "heat",
+      "fan": 0,
+      "preset": "boost",
+      "power_selection": 0
+    },
+    {
+      "data": "f20d04fb097063000319",
+      "temperature": 24,
+      "mode": "heat",
+      "fan": 3,
+      "preset": "eco",
+      "power_selection": 0
+    },
+    {
+      "data": "f20d03fc0160430220",
+      "temperature": 23,
+      "mode": "heat",
+      "fan": 2,
+      "preset": "fireplace_1",
+      "power_selection": 0
+    },
+    {
+      "data": "f20d03fc0170630311",
+      "temperature": 24,
+      "mode": "heat",
+      "fan": 3,
+      "preset": "fireplace_2",
+      "power_selection": 0
+    },
+    {
+      "data": "f20d04fb09706300041e",
+      "temperature": 8,
+      "mode": "heat",
+      "fan": 3,
+      "preset": "frost_protection",
+      "power_selection": 0
+    },
+    {
+      "data": "f20d04fb09406300042e",
+      "temperature": 5,
+      "mode": "heat",
+      "fan": 3,
+      "preset": "frost_protection",
+      "power_selection": 0
+    },
+    {
+      "data": "f20d04fb09c0630004ae",
+      "temperature": 13,
+      "mode": "heat",
+      "fan": 3,
+      "preset": "frost_protection",
+      "power_selection": 0
+    },
+    {
+      "data": "f20d03fc0170634052",
+      "temperature": 24,
+      "mode": "heat",
+      "fan": 3,
+      "preset": "none",
+      "power_selection": 1
+    },
+    {
+      "data": "f20d03fc0160638082",
+      "temperature": 23,
+      "mode": "heat",
+      "fan": 3,
+      "preset": "none",
+      "power_selection": 2
+    },
+    {
+      "data": "f20d04fb097063000218",
+      "temperature": 24,
+      "mode": "heat",
+      "fan": 3,
+      "preset": "none",
+      "power_selection": 3
+    },
+    {
+      "data": "f20d04fb096063000a00",
+      "temperature": 23,
+      "mode": "heat",
+      "fan": 3,
+      "preset": "none",
+      "power_selection": 4
+    },
+    {
+      "data": "f20d05fa01706300211724",
+      "temperature": 24,
+      "mode": "heat",
+      "fan": 3,
+      "preset": "hada_care",
+      "power_selection": 0
+    },
+    {
+      "data": "f20d05fa01606300211734",
+      "temperature": 23,
+      "mode": "heat",
+      "fan": 3,
+      "preset": "hada_care",
+      "power_selection": 0
+    },
+    {
+      "data": "f20d06f90b700300047f0300",
+      "temperature": 24,
+      "mode": "heat",
+      "fan": 0,
+      "preset": "sleep_1h",
+      "power_selection": 0
+    },
+    {
+      "data": "f20d06f90b7003000c7f0308",
+      "temperature": 24,
+      "mode": "heat",
+      "fan": 0,
+      "preset": "sleep_3h",
+      "power_selection": 0
+    },
+    {
+      "data": "f20d06f90b700300147f0310",
+      "temperature": 24,
+      "mode": "heat",
+      "fan": 0,
+      "preset": "sleep_5h",
+      "power_selection": 0
+    },
+    {
+      "data": "f20d06f90b700300247f0320",
+      "temperature": 24,
+      "mode": "heat",
+      "fan": 0,
+      "preset": "sleep_9h",
+      "power_selection": 0
+    },
+    {
+      "data": "f20d06f90b600300047f0310",
+      "temperature": 23,
+      "mode": "heat",
+      "fan": 0,
+      "preset": "sleep_1h",
+      "power_selection": 0
+    },
+    {
+      "data": "f20d03fc0150600031",
+      "temperature": 22,
+      "mode": "auto",
+      "fan": 3,
+      "preset": "none",
+      "power_selection": 0
+    },
+    {
+      "data": "f20d03fc0100610060",
+      "temperature": 17,
+      "mode": "cool",
+      "fan": 3,
+      "preset": "none",
+      "power_selection": 0
+    },
+    {
+      "data": "f20d03fc0150020053",
+      "temperature": 22,
+      "mode": "dry",
+      "fan": 0,
+      "preset": "none",
+      "power_selection": 0
+    },
+    {
+      "data": "f20d03fc0160630002",
+      "temperature": 23,
+      "mode": "heat",
+      "fan": 3,
+      "preset": "none",
+      "power_selection": 0
+    }
+  ]
+}

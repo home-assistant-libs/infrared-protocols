@@ -1,5 +1,9 @@
 """Tests for the Marantz extended (RC-5 + extension) IR command encoder."""
 
+import json
+from itertools import product
+from pathlib import Path
+
 import pytest
 
 from infrared_protocols.commands.marantz_extended import MarantzExtendedCommand
@@ -148,3 +152,90 @@ def test_marantz_extended_rejects_out_of_range(
         MarantzExtendedCommand(
             address=address, command=command, extension=extension, toggle=0
         )
+
+
+_CAPTURES = json.loads(
+    (Path(__file__).parents[1] / "fixtures/receiver_captures.json").read_text()
+)["captures"]
+
+_DECODE_CASES = [
+    pytest.param(command, id=type(command).__name__ + "-" + str(vars(command)))
+    for command in [
+        *[
+            MarantzExtendedCommand(
+                address=a, command=c, extension=e, toggle=t, repeat_count=r
+            )
+            for a, c, e, t, r in product((0, 31), (0, 64, 127), (0, 63), (0, 1), (0, 2))
+        ]
+    ]
+]
+
+
+@pytest.mark.parametrize("scale", [0.88, 0.9, 0.92, 1.1, 1.12, 1.15])
+@pytest.mark.parametrize("address", [0, 31])
+@pytest.mark.parametrize("command", [0, 63, 64, 127])
+@pytest.mark.parametrize("extension", [0, 63])
+def test_marantz_clock_skew(
+    scale: float, address: int, command: int, extension: int
+) -> None:
+    """The long pause must not shift all subsequent Manchester cells."""
+    sent = MarantzExtendedCommand(address=address, command=command, extension=extension)
+    received = MarantzExtendedCommand.from_raw_timings(
+        [round(t * scale) for t in sent.get_raw_timings()] + [-5000]
+    )
+    assert received is not None
+    assert (received.address, received.command, received.extension) == (
+        address,
+        command,
+        extension,
+    )
+
+
+@pytest.mark.parametrize(
+    "raw,address,command,toggle,extension",
+    [
+        pytest.param(
+            c["timings"],
+            c["address"],
+            c["command"],
+            c["toggle"],
+            c["extension"],
+            id=f"marantz-{c['address']:x}-{c['command']:x}",
+        )
+        for c in _CAPTURES
+        if c["protocol"] == "marantz"
+    ],
+)
+def test_recorded_marantz(
+    raw: list[int], address: int, command: int, toggle: int, extension: int
+) -> None:
+    """The extended frame retains its command and extension after the long pause."""
+    result = MarantzExtendedCommand.from_raw_timings(raw)
+    assert result is not None
+    assert (result.address, result.command, result.toggle, result.extension) == (
+        address,
+        command,
+        toggle,
+        extension,
+    )
+
+
+@pytest.mark.parametrize("command", _DECODE_CASES)
+def test_decoder_round_trip_fields(command: MarantzExtendedCommand) -> None:
+    """Decode edge-valued fields and preserve their protocol meaning."""
+    raw = command.get_raw_timings()
+    result = type(command).from_raw_timings(raw)
+    assert result is not None
+    assert result.get_raw_timings() == raw
+    assert result.address == command.address
+    assert result.command == command.command
+    assert result.extension == command.extension
+    assert result.toggle == command.toggle
+    assert result.repeat_count == command.repeat_count
+
+
+@pytest.mark.parametrize("command", _DECODE_CASES)
+@pytest.mark.parametrize("prefix", [0, 1, 5])
+def test_decoder_truncated(command: MarantzExtendedCommand, prefix: int) -> None:
+    """A partial leader or payload cannot be a complete command."""
+    assert type(command).from_raw_timings(command.get_raw_timings()[:prefix]) is None

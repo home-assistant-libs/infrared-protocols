@@ -1,0 +1,306 @@
+"""Tests for gree models protocol behavior."""
+
+import pytest
+
+from infrared_protocols.commands.gree_ac import GreeAcCommand
+from infrared_protocols.commands.gree_models import (
+    GreeAcFanSpeed,
+    GreeAcMode,
+    GreeFeature,
+    GreeModel,
+    GreeModelCommand,
+    GreeYx1ffFanSpeed,
+)
+
+
+def test_gree_turbo_fan() -> None:
+    """YB1FA turbo selects high speed even with a lower ordinary setting."""
+    command = GreeModelCommand(
+        model=GreeModel.YB1FA,
+        mode=GreeAcMode.COOL,
+        temperature=24,
+        fan=GreeAcFanSpeed.LOW,
+        features=GreeFeature.TURBO,
+    )
+    assert command.state.fan == GreeAcFanSpeed.HIGH
+
+
+def test_gree_horizontal_only_yac() -> None:
+    """YAC horizontal motion is independent of the primary vertical enable bit."""
+    sent = GreeModelCommand(
+        model=GreeModel.YAC, mode=GreeAcMode.COOL, temperature=24, swing_h=True
+    )
+    received = GreeModelCommand.from_raw_timings(
+        sent.get_raw_timings(), model=GreeModel.YAC
+    )
+    assert received is not None
+    assert received.state.swing_h is True
+    assert received.state.swing_v is False
+
+
+def test_gree_yaw_followup() -> None:
+    """The fixed second YAW1F packet has no independent climate state."""
+    sent = GreeModelCommand(model=GreeModel.YAW1F, mode=GreeAcMode.COOL, temperature=24)
+    raw = sent.get_raw_timings()
+    assert (
+        GreeModelCommand.from_raw_timings(
+            raw[raw.index(-40000) + 1 :], model=GreeModel.YAW1F
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("model", [GreeModel.YAA, GreeModel.YAC1FB9, GreeModel.GENERIC])
+def test_gree_no_swing_fields(model: GreeModel) -> None:
+    """No enable bit and no vane position means no vertical motion."""
+    sent = GreeModelCommand(
+        model=GreeModel.YAA, mode=GreeAcMode.COOL, temperature=24, swing_v=True
+    )
+    data = bytearray(sent.data)
+    data[0] &= ~0x40
+    # The swing-enable bit is not included in this checksum.
+    sent.data = bytes(data)
+    received = GreeModelCommand.from_raw_timings(sent.get_raw_timings(), model=model)
+    assert received is not None
+    assert received.state.swing_v is False
+
+
+def test_gree_yan_model_semantics() -> None:
+    """YAN's vane nibble carries motion even without the other models' enable bit."""
+    sent = GreeModelCommand(
+        model=GreeModel.YAN,
+        mode=GreeAcMode.COOL,
+        temperature=24,
+        swing_v=True,
+        modulation=36000,
+    )
+    received = GreeModelCommand.from_raw_timings(
+        sent.get_raw_timings(), model=GreeModel.YAN
+    )
+    assert received is not None
+    assert received.state.swing_v is True
+    assert sent.modulation == 36000
+
+
+def test_gree_yac_rejects_followup() -> None:
+    """The YAC follow-up packet is not an ordinary YAC state."""
+    sent = GreeModelCommand(model=GreeModel.YAC, mode=GreeAcMode.COOL, temperature=24)
+    sent.data = bytes.fromhex("09082070002020f0")
+    assert (
+        GreeModelCommand.from_raw_timings(sent.get_raw_timings(), model=GreeModel.YAC)
+        is None
+    )
+
+
+def test_gree_yx_vertical_only() -> None:
+    """YX1FF has one vane axis; a horizontal-only request cannot be encoded."""
+    with pytest.raises(ValueError, match="horizontal"):
+        GreeModelCommand(
+            model=GreeModel.YX1FF, mode=GreeAcMode.COOL, temperature=24, swing_h=True
+        )
+    sent = GreeModelCommand(
+        model=GreeModel.YX1FF, mode=GreeAcMode.COOL, temperature=24, swing_v=True
+    )
+    assert sent.state.swing_v is True
+    assert sent.state.swing_h is None
+
+
+@pytest.mark.parametrize("model", list(GreeModel))
+@pytest.mark.parametrize("temperature", [60, 72, 86])
+def test_gree_native_fahrenheit(model: GreeModel, temperature: int) -> None:
+    """Fahrenheit input and received native units match the display's truncation."""
+    command = GreeModelCommand(
+        model=model,
+        mode=GreeAcMode.COOL,
+        temperature=temperature,
+        is_fahrenheit=True,
+    )
+    received = GreeModelCommand.from_raw_timings(command.get_raw_timings(), model=model)
+    assert received is not None
+    assert received.state.is_fahrenheit
+    assert received.state.temperature == temperature
+    assert received.state.is_fahrenheit is True
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        GreeModel.YAC,
+        GreeModel.YAG,
+        GreeModel.YAW1F,
+        GreeModel.GENERIC,
+        GreeModel.YAA,
+        GreeModel.YAC1FB9,
+    ],
+)
+def test_gree_vane_without_enable_bit(model: GreeModel) -> None:
+    """These model layouts retain an absolute vane indication with bit 6 clear."""
+    command = GreeModelCommand(model=model, mode=GreeAcMode.COOL, temperature=24)
+    command.data = bytes.fromhex("09082050012020f0")
+    received = GreeModelCommand.from_raw_timings(command.get_raw_timings(), model=model)
+    assert received is not None
+    assert received.state.swing_v is True
+
+
+@pytest.mark.parametrize(
+    "model,packet",
+    [
+        pytest.param(GreeModel.YX1FF, "19087050002000d0", id="turbo-with-low-fan"),
+        pytest.param(GreeModel.YX1FF, "49086a5011200080", id="timer-ones"),
+        pytest.param(GreeModel.YX1FF, "49686050112000e0", id="timer-tens"),
+        pytest.param(GreeModel.YX1FF, "49086051112000f0", id="byte-three"),
+        pytest.param(GreeModel.YX1FF, "49086050122000e0", id="vane-while-swinging"),
+        pytest.param(GreeModel.YX1FF, "49086050012000d0", id="missing-horizontal-vane"),
+        pytest.param(GreeModel.YX1FF, "49086050110000c0", id="byte-five"),
+        pytest.param(GreeModel.YX1FF, "4908605011202000", id="byte-six"),
+        pytest.param(GreeModel.YX1FF, "49086050112000e1", id="checksum-low-nibble"),
+        pytest.param(GreeModel.YX1FF, "4958645011200020", id="timer-over-24h"),
+        pytest.param(GreeModel.YB1FA, "09082050002000d0", id="missing-model-a-power"),
+    ],
+)
+def test_gree_model_a_validation(model: GreeModel, packet: str) -> None:
+    """Correct checksums do not make incompatible model-A fields valid."""
+    command = GreeModelCommand(model=model, mode=GreeAcMode.COOL, temperature=24)
+    command.data = bytes.fromhex(packet)
+    assert (
+        GreeModelCommand.from_raw_timings(command.get_raw_timings(), model=model)
+        is None
+    )
+
+
+@pytest.mark.parametrize("model", [GreeModel.YB1FA, GreeModel.YX1FF])
+def test_gree_power_is_not_health(model: GreeModel) -> None:
+    """The model-A power flag is excluded from independent feature bits."""
+    command = GreeModelCommand(
+        model=model, mode=GreeAcMode.COOL, temperature=24, features=GreeFeature.NONE
+    )
+    assert command.data[2] & 64
+    assert command.features == GreeFeature.NONE
+
+
+@pytest.mark.parametrize("model", [GreeModel.YX1FF, GreeModel.YAC1FB9])
+def test_gree_sleep_light_features(model: GreeModel) -> None:
+    """Supported sleep and light flags survive receiving a state."""
+    sent = GreeModelCommand(
+        model=model, mode=GreeAcMode.COOL, temperature=24, sleep=True
+    )
+    received = GreeModelCommand.from_raw_timings(sent.get_raw_timings(), model=model)
+    assert received is not None
+    assert received.sleep is True
+    assert received.features == GreeFeature.LIGHT
+
+
+def test_gree_health_xfan() -> None:
+    """Legacy independent features are readable without interpreting raw bytes."""
+    sent = GreeModelCommand(
+        model=GreeModel.YAN,
+        mode=GreeAcMode.COOL,
+        temperature=24,
+        features=GreeFeature.HEALTH | GreeFeature.XFAN,
+    )
+    assert sent.features == GreeFeature.HEALTH | GreeFeature.XFAN
+    assert sent.data[2] == 0xC0
+
+
+def test_gree_yx_rejects_horizontal_swing() -> None:
+    """The duplicated vane nibble is a vertical-only control."""
+    with pytest.raises(ValueError, match="horizontal swing"):
+        GreeModelCommand(
+            model=GreeModel.YX1FF,
+            mode=GreeAcMode.COOL,
+            temperature=24,
+            swing_v=True,
+            swing_h=True,
+        )
+
+
+def test_gree_unsupported_features() -> None:
+    """Model-specific power bits cannot be requested as health features."""
+    with pytest.raises(ValueError, match="unsupported Gree feature"):
+        GreeModelCommand(
+            model=GreeModel.YB1FA,
+            mode=GreeAcMode.COOL,
+            temperature=24,
+            features=GreeFeature.HEALTH,
+        )
+
+
+def test_yb_turbo_overrides_received_fan() -> None:
+    """YB1FA's turbo flag overrides a lower ordinary fan field."""
+    command = GreeModelCommand(
+        model=GreeModel.YB1FA, mode=GreeAcMode.COOL, temperature=24
+    )
+    command.data = bytes.fromhex("19087050002000d0")
+    received = GreeModelCommand.from_raw_timings(
+        command.get_raw_timings(), model=GreeModel.YB1FA
+    )
+    assert received is not None
+    assert received.state.fan is GreeAcFanSpeed.HIGH
+
+
+@pytest.mark.parametrize("fan", list(GreeYx1ffFanSpeed), ids=lambda fan: fan.name)
+def test_yx1ff_native_fan(fan: GreeYx1ffFanSpeed) -> None:
+    """YX1FF retains its own fan encoding, including the high-speed turbo bit."""
+    command = GreeModelCommand(
+        model=GreeModel.YX1FF, mode=GreeAcMode.COOL, temperature=24, fan=fan
+    )
+    assert (command.data[0] >> 4 & 3) | (command.data[2] & 16) == fan.value
+    received = GreeModelCommand.from_raw_timings(
+        command.get_raw_timings(), model=GreeModel.YX1FF
+    )
+    assert received is not None
+    assert received.state.fan is fan
+
+
+@pytest.mark.parametrize(
+    "model,fan",
+    [
+        pytest.param(GreeModel.YX1FF, GreeAcFanSpeed.LOW, id="standard-on-yx1ff"),
+        pytest.param(GreeModel.YAN, GreeYx1ffFanSpeed.QUIET, id="yx1ff-on-standard"),
+    ],
+)
+def test_wrong_model_fan(
+    model: GreeModel, fan: GreeAcFanSpeed | GreeYx1ffFanSpeed
+) -> None:
+    """Overlapping enum integers must not reinterpret another model's fan setting."""
+    with pytest.raises(TypeError, match="requires"):
+        GreeModelCommand(model=model, mode=GreeAcMode.COOL, temperature=24, fan=fan)
+
+
+def test_model_fan_mapping_keys() -> None:
+    """A consumer can map both models without silently replacing another key."""
+    mapping = {fan: fan.name for fan in (*GreeAcFanSpeed, *GreeYx1ffFanSpeed)}
+    assert len(mapping) == 9
+    assert mapping[GreeAcFanSpeed.LOW] == "LOW"
+    assert mapping[GreeYx1ffFanSpeed.QUIET] == "QUIET"
+    assert mapping[GreeAcFanSpeed.HIGH] == "HIGH"
+    assert mapping[GreeYx1ffFanSpeed.MEDIUM] == "MEDIUM"
+
+
+def test_explicit_gree_layout_selection() -> None:
+    """Identical frames have different vane semantics on YAN and YB1F2."""
+    sent = GreeModelCommand(
+        model=GreeModel.YAN, mode=GreeAcMode.COOL, temperature=24, swing_v=True
+    )
+    yan = GreeModelCommand.from_raw_timings(sent.get_raw_timings(), model=GreeModel.YAN)
+    yb1f2 = GreeAcCommand.from_raw_timings(sent.get_raw_timings())
+    assert yan is not None
+    assert yb1f2 is not None
+    assert yan.state.swing_v is True
+    assert yb1f2.swing_v is False
+
+
+def test_gree_power_off_layouts() -> None:
+    """The captured YB1F2 keeps its mode; the named model encoder clears it."""
+    captured = GreeAcCommand(mode=GreeAcMode.HEAT, temperature=24, power=False)
+    variant = GreeModelCommand(
+        model=GreeModel.YAN, mode=GreeAcMode.HEAT, temperature=24, power=False
+    )
+    yb1f2 = GreeAcCommand.from_raw_timings(captured.get_raw_timings())
+    yan = GreeModelCommand.from_raw_timings(
+        variant.get_raw_timings(), model=GreeModel.YAN
+    )
+    assert yb1f2 is not None
+    assert yan is not None
+    assert yb1f2.mode is GreeAcMode.HEAT
+    assert yan.state.mode is None

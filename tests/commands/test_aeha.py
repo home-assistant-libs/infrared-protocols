@@ -3,6 +3,8 @@
 import pytest
 
 from infrared_protocols.commands.aeha import AEHA_NOMINAL, AehaCommand, AehaTiming
+from infrared_protocols.commands.friedrich import FriedrichCommand, FriedrichMode
+from infrared_protocols.commands.mistral import MistralCommand, MistralMode
 
 # Physical-layer constants are duplicated here rather than imported
 # so the tests are independent
@@ -80,7 +82,9 @@ def test_roundtrip(data: bytes) -> None:
     """Encoding then decoding a payload must return it unchanged."""
     timings = AehaCommand(data=data).get_raw_timings()
 
-    assert AehaCommand._decode_data(timings) == data
+    received = AehaCommand.from_raw_timings(timings)
+    assert received is not None
+    assert received.data == data
 
 
 def test_variant_timings_are_used_for_both_directions() -> None:
@@ -118,7 +122,7 @@ def test_decode_rejects_bad_leader(index: int, value: int) -> None:
     timings = _timings_for(b"\x14\x63")
     timings[index] = value
 
-    assert AehaCommand._decode_data(timings) is None
+    assert AehaCommand.from_raw_timings(timings) is None
 
 
 @pytest.mark.parametrize(
@@ -131,7 +135,7 @@ def test_decode_rejects_bad_leader(index: int, value: int) -> None:
 )
 def test_decode_rejects_too_short(timings: list[int]) -> None:
     """Timings with no payload at all must not decode."""
-    assert AehaCommand._decode_data(timings) is None
+    assert AehaCommand.from_raw_timings(timings) is None
 
 
 def test_decode_rejects_partial_byte() -> None:
@@ -162,14 +166,14 @@ def test_decode_rejects_corruption_at_a_byte_boundary() -> None:
     # Damage the first bit of the second byte, leaving one whole byte before it.
     timings[2 + 2 * 8 + 1] = -900
 
-    assert AehaCommand._decode_data(timings) is None
+    assert AehaCommand.from_raw_timings(timings) is None
 
 
 def test_decode_rejects_a_burst_that_runs_into_noise() -> None:
     """Bits that never reach a trailer must not decode."""
     timings = _timings_for(b"\x14\x63")[:-2] + [_BIT_MARK, -900, _BIT_MARK, -900]
 
-    assert AehaCommand._decode_data(timings) is None
+    assert AehaCommand.from_raw_timings(timings) is None
 
 
 def test_decode_rejects_a_trailer_whose_mark_is_not_a_bit_mark() -> None:
@@ -177,7 +181,7 @@ def test_decode_rejects_a_trailer_whose_mark_is_not_a_bit_mark() -> None:
     timings = _timings_for(b"\x14\x63")
     timings[-2] = 3000
 
-    assert AehaCommand._decode_data(timings) is None
+    assert AehaCommand.from_raw_timings(timings) is None
 
 
 def test_decode_tolerates_a_missing_trailer_space() -> None:
@@ -231,7 +235,7 @@ def test_decode_rejects_bits_outside_the_windows(mark: int, space: int) -> None:
         timings += [mark, -space]
     timings += [_BIT_MARK, -_TRAILER_SPACE]
 
-    assert AehaCommand._decode_data(timings) is None
+    assert AehaCommand.from_raw_timings(timings) is None
 
 
 def test_decode_rejects_a_foreign_burst() -> None:
@@ -250,4 +254,28 @@ def test_empty_payload_encodes_to_leader_and_trailer_only() -> None:
     timings = AehaCommand(data=b"").get_raw_timings()
 
     assert timings == [_LEADER_MARK, -_LEADER_SPACE, _BIT_MARK, -_TRAILER_SPACE]
-    assert AehaCommand._decode_data(timings) is None
+    assert AehaCommand.from_raw_timings(timings) is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        pytest.param(AehaCommand(data=b"\x01\x02"), id="aeha"),
+        pytest.param(
+            MistralCommand(mode=MistralMode.COOL, temperature=24),
+            id="mistral",
+        ),
+        pytest.param(
+            FriedrichCommand(mode=FriedrichMode.COOL, temperature=72),
+            id="friedrich",
+        ),
+    ],
+)
+@pytest.mark.parametrize("index", [0, 1, 2, 3, -2, -1])
+def test_public_decoder_polarity(
+    command: AehaCommand | MistralCommand | FriedrichCommand, index: int
+) -> None:
+    """Reject inverted mark or space polarity through the public AEHA decoders."""
+    raw = command.get_raw_timings()
+    raw[index] *= -1
+    assert type(command).from_raw_timings(raw) is None
