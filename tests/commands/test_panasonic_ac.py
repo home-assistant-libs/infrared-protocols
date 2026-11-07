@@ -517,3 +517,72 @@ def test_toggle_action_section_only(toggle: PanasonicAcToggle) -> None:
     assert received is not None
     assert received.data == sent.data
     assert received.get_raw_timings() == sent.get_raw_timings()
+
+
+@pytest.mark.parametrize(
+    "model,mode,frost,power_toggle",
+    [
+        pytest.param(
+            model,
+            PanasonicAcMode.FAN_ONLY,
+            False,
+            True if model == PanasonicAcModel.CKP else None,
+            id=f"fan-{model}",
+        )
+        for model in (None, *PanasonicAcModel)
+    ]
+    + [
+        pytest.param(
+            model,
+            PanasonicAcMode.HEAT,
+            True,
+            True if model == PanasonicAcModel.CKP else None,
+            id=f"frost-{model}",
+        )
+        for model in PanasonicAcModel
+    ],
+)
+def test_rebuild_placeholder_temperature(
+    model: PanasonicAcModel | None,
+    mode: PanasonicAcMode,
+    frost: bool,
+    power_toggle: bool | None,
+) -> None:
+    """Every model rebuilds a decoded placeholder without a fabricated set point."""
+    sent = PanasonicAcCommand(
+        model=model,
+        mode=mode,
+        temperature=24,
+        frost_protection=frost,
+        power_toggle=power_toggle,
+    )
+    received = PanasonicAcCommand.from_raw_timings(sent.get_raw_timings(), model=model)
+    assert received is not None
+    state = received.state
+    assert state.temperature is None
+    rebuilt = PanasonicAcCommand(
+        model=model,
+        mode=state.mode,
+        temperature=state.temperature,
+        fan=state.fan,
+        power=state.power,
+        power_toggle=state.power_toggle,
+        frost_protection=state.frost_protection,
+        swing_axis1=state.swing_axis1,
+        swing_axis2=state.swing_axis2,
+    )
+    assert rebuilt.get_raw_timings() == sent.get_raw_timings()
+
+
+@pytest.mark.parametrize("temperature", [None, 15, 31])
+def test_missing_or_invalid_set_point(temperature: int | None) -> None:
+    """Cooling still requires a temperature within the native range."""
+    with pytest.raises(ValueError, match="temperature"):
+        PanasonicAcCommand(mode=PanasonicAcMode.COOL, temperature=temperature)
+
+
+@pytest.mark.parametrize("temperature", [15, 31])
+def test_invalid_placeholder_input(temperature: int) -> None:
+    """A fixed fan-only field does not hide explicitly invalid input."""
+    with pytest.raises(ValueError, match="temperature"):
+        PanasonicAcCommand(mode=PanasonicAcMode.FAN_ONLY, temperature=temperature)

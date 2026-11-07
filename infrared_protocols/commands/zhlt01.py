@@ -50,7 +50,7 @@ class Zhlt01Command(ClimatePacket[Zhlt01State]):
     def __init__(
         self,
         *,
-        mode: Zhlt01Mode,
+        mode: Zhlt01Mode | None,
         temperature: int,
         power: bool = True,
         fan: Zhlt01FanSpeed = Zhlt01FanSpeed.AUTO,
@@ -59,7 +59,8 @@ class Zhlt01Command(ClimatePacket[Zhlt01State]):
         boost: bool = False,
     ) -> None:
         """Build a state for 16..32 °C; QUIET selects the sleep fan setting."""
-        int(Zhlt01Mode(mode))
+        if power:
+            Zhlt01Mode(mode)
         temp = temperature_value(temperature, 16, 32)
         control = (2 if power else 0) | (4 if swing_v else 8) | (0 if swing_h else 16)
         control |= int(Zhlt01FanSpeed(Zhlt01FanSpeed.HIGH if boost else fan))

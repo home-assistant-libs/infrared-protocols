@@ -44,13 +44,14 @@ class MistralCommand(AehaClimatePacket[MistralState]):
     def __init__(
         self,
         *,
-        mode: MistralMode,
+        mode: MistralMode | None,
         temperature: int,
         power: bool = True,
         fan: MistralFanSpeed = MistralFanSpeed.AUTO,
     ) -> None:
         """Build a whole-degree 16..30 °C state."""
-        int(MistralMode(mode))
+        if power:
+            MistralMode(mode)
         temperature_value(temperature, 16, 30)
         fan_code = int(MistralFanSpeed(fan))
         data = bytes(

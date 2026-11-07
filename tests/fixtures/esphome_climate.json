@@ -1,5 +1,6 @@
 {
   "source": "ESPHome encoder output",
+  "revision": "d2d5bb623a3be3b3610f7370ab45cf62f7448ca9",
   "kind": "Synthetic outputs of original C++ encoders, not hardware captures",
   "timing_format": "Each base-36 character indexes the signed microsecond palette; zero-duration spaces omitted",
   "cases": [

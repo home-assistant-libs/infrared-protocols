@@ -78,13 +78,24 @@ class EmmetiCommand(SplitClimateCommand[EmmetiState]):
     def __init__(
         self,
         *,
-        mode: EmmetiMode,
-        temperature: int,
+        mode: EmmetiMode | None,
+        temperature: int | None = None,
         power: bool = True,
-        fan: EmmetiFanSpeed = EmmetiFanSpeed.AUTO,
-        blade: EmmetiBlade = EmmetiBlade.STOP,
+        fan: EmmetiFanSpeed | None = EmmetiFanSpeed.AUTO,
+        blade: EmmetiBlade | None = EmmetiBlade.STOP,
     ) -> None:
         """Build a 16..30 °C state or the protocol's fixed power-off message."""
+        if not power:
+            if temperature is not None:
+                temperature_value(temperature, 16, 30)
+            if mode is not None:
+                EmmetiMode(mode)
+            if fan is not None:
+                EmmetiFanSpeed(fan)
+            if blade is not None:
+                EmmetiBlade(blade)
+            super().__init__(data=_OFF)
+            return
         temp = temperature_value(temperature, 16, 30)
         mode_code = int(EmmetiMode(mode))
         blade = EmmetiBlade(blade)
@@ -107,7 +118,7 @@ class EmmetiCommand(SplitClimateCommand[EmmetiState]):
             + bits(0, 18)
             + bits((temp + mode_code + 2) & 15, 4, lsb=True)
         )
-        super().__init__(data=number(first + second) if power else _OFF)
+        super().__init__(data=number(first + second))
 
     @property
     def blade(self) -> EmmetiBlade | None:

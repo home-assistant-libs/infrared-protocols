@@ -181,3 +181,40 @@ def test_sleep_in_native_state(sleep: bool) -> None:
         is_fahrenheit=state.is_fahrenheit,
     )
     assert rebuilt.data == command.data
+
+
+@pytest.mark.parametrize("mode", list(MideaMode))
+@pytest.mark.parametrize("power", [False, True], ids=["off", "on"])
+@pytest.mark.parametrize(
+    "is_fahrenheit,temperature",
+    [pytest.param(False, 24, id="celsius"), pytest.param(True, 72, id="fahrenheit")],
+)
+def test_rebuild_state(
+    mode: MideaMode, power: bool, is_fahrenheit: bool, temperature: int
+) -> None:
+    """Decoded fan-only and off states feed back into the native constructor."""
+    sent = MideaCommand.climate(
+        mode=mode, temperature=temperature, power=power, is_fahrenheit=is_fahrenheit
+    )
+    received = MideaCommand.from_raw_timings(sent.get_raw_timings())
+    assert received is not None
+    state = received.state
+    assert state is not None
+    assert state.power is not None
+    assert state.fan is not None
+    rebuilt = MideaCommand.climate(
+        mode=state.mode,
+        temperature=state.temperature,
+        power=state.power,
+        fan=state.fan,
+        is_fahrenheit=state.is_fahrenheit,
+        sleep=state.sleep,
+    )
+    assert rebuilt.get_raw_timings() == sent.get_raw_timings()
+
+
+@pytest.mark.parametrize("temperature", [16, 31])
+def test_invalid_fan_temperature(temperature: int) -> None:
+    """Explicit temperatures still receive validation before applying the sentinel."""
+    with pytest.raises(ValueError, match="temperature"):
+        MideaCommand.climate(mode=MideaMode.FAN_ONLY, temperature=temperature)

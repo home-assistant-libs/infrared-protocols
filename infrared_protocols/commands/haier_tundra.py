@@ -75,7 +75,7 @@ class HaierTundraCommand(ClimatePacket[HaierTundraState]):
     def __init__(
         self,
         *,
-        mode: HaierTundraMode,
+        mode: HaierTundraMode | None,
         temperature: int,
         power: bool = True,
         fan: HaierTundraFanSpeed = HaierTundraFanSpeed.AUTO,
@@ -88,7 +88,8 @@ class HaierTundraCommand(ClimatePacket[HaierTundraState]):
         turbo: bool = False,
     ) -> None:
         """Build a state for 16..30 °C with optional health, quiet or turbo."""
-        int(HaierTundraMode(mode))
+        if power:
+            HaierTundraMode(mode)
         temp = temperature_value(temperature, 16, 30)
         if (
             quiet

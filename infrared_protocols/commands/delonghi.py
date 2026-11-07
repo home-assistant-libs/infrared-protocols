@@ -48,24 +48,39 @@ class DelonghiCommand(ClimatePacket[DelonghiState]):
     def __init__(
         self,
         *,
-        mode: DelonghiMode,
+        mode: DelonghiMode | None,
         temperature: int | None,
         is_fahrenheit: bool = False,
         power: bool = True,
         fan: DelonghiFanSpeed = DelonghiFanSpeed.AUTO,
         boost: bool = False,
         sleep: bool = False,
+        retained_mode: DelonghiMode | None = None,
     ) -> None:
         """Build a command: heat 13..27 °C, other modes 17..32 °C, or 64..90 °F.
 
         The Celsius heat field uses a 12 °C offset. An off command has no
         retained operating-mode field, so its temperature uses the cool offset.
         Fahrenheit auto/dry packets can use None for the zero placeholder.
+        Off packets also accept None, encoding a zero temperature field. Use
+        retained_temperature to preserve a received off packet's stored field.
+        retained_mode preserves nonzero mode bits on received off packets;
+        omit it for the default off layout, which clears those bits.
         """
-        int(DelonghiMode(mode))
+        if retained_mode is not None and power:
+            raise ValueError("retained_mode is only supported for off packets")
+        mode_code = (
+            int(DelonghiMode(mode)) | 1
+            if power
+            else int(DelonghiMode(retained_mode))
+            if retained_mode is not None
+            else 0
+        )
         heat = mode == DelonghiMode.HEAT
         if temperature is None:
-            if not (is_fahrenheit and mode in (DelonghiMode.AUTO, DelonghiMode.DRY)):
+            if power and not (
+                is_fahrenheit and mode in (DelonghiMode.AUTO, DelonghiMode.DRY)
+            ):
                 raise ValueError("temperature is required for this mode and unit")
             temp = 0
         elif is_fahrenheit:
@@ -82,9 +97,7 @@ class DelonghiCommand(ClimatePacket[DelonghiState]):
             [
                 0x53,
                 temp | int(DelonghiFanSpeed(fan)) << 5 | int(is_fahrenheit) << 7,
-                (int(DelonghiMode(mode)) | 1 if power else 0)
-                | (16 if boost else 0)
-                | (32 if sleep else 0),
+                mode_code | (16 if boost else 0) | (32 if sleep else 0),
                 0,
                 0,
                 0,
@@ -92,6 +105,30 @@ class DelonghiCommand(ClimatePacket[DelonghiState]):
             ]
         )
         super().__init__(data=data + bytes([self.checksum(data)]))
+
+    @property
+    def retained_mode(self) -> DelonghiMode | None:
+        """Return the inactive mode field on an off packet, if identified.
+
+        COOL is code zero, also used when the sender clears this field. It
+        does not establish which mode the unit was in before powering off.
+        """
+        code = self.data[2] & 14
+        return (
+            DelonghiMode(code)
+            if not self.state.power and code in DelonghiMode
+            else None
+        )
+
+    @property
+    def retained_temperature(self) -> int | None:
+        """Return the temperature field retained even when power is off."""
+        if self.state.power:
+            return self.state.temperature
+        code = self.data[1] & 31
+        if self.data[1] & 128:
+            return code + 63 if code else None
+        return code + 17
 
     @property
     def boost(self) -> bool:

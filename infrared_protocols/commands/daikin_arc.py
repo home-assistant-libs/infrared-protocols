@@ -25,7 +25,7 @@ class DaikinArcState:
 
 def _state_packet(
     *,
-    mode: DaikinAcMode,
+    mode: DaikinAcMode | None,
     temperature: float | None,
     power: bool,
     fan: DaikinAcFanSpeed,
@@ -33,7 +33,8 @@ def _state_packet(
     swing_h: bool,
 ) -> bytearray:
     """Build the ARC state section before humidity and checksum fields."""
-    int(DaikinAcMode(mode))
+    if power:
+        DaikinAcMode(mode)
     if temperature is not None:
         temperature_value(temperature, 10, 30, 0.5)
     if power and mode in (DaikinAcMode.AUTO, DaikinAcMode.DRY):
@@ -114,7 +115,7 @@ class DaikinArcCommand(ClimatePacket[DaikinArcState]):
     def __init__(
         self,
         *,
-        mode: DaikinAcMode,
+        mode: DaikinAcMode | None,
         temperature: float | None = None,
         power: bool = True,
         fan: DaikinAcFanSpeed = DaikinAcFanSpeed.AUTO,

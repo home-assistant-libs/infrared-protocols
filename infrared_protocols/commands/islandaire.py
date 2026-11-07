@@ -46,7 +46,7 @@ class IslandaireCommand(ClimatePacket[IslandaireState]):
     def __init__(
         self,
         *,
-        mode: IslandaireMode,
+        mode: IslandaireMode | None,
         temperature: int,
         is_fahrenheit: bool = True,
         power: bool = True,
@@ -55,7 +55,8 @@ class IslandaireCommand(ClimatePacket[IslandaireState]):
         """Build a state with a whole-degree 61..88 °F set point."""
         if not is_fahrenheit:
             raise ValueError("this remote only supports Fahrenheit set points")
-        int(IslandaireMode(mode))
+        if power:
+            IslandaireMode(mode)
         temperature_value(temperature, 61, 88)
         data = bytes(
             [

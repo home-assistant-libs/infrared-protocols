@@ -51,7 +51,7 @@ class RemkoAr715Command(WordCommand):
         mode: RemkoAr715Mode,
         temperature: int,
         power: bool = True,
-        fan: RemkoAr715FanSpeed = RemkoAr715FanSpeed.AUTO,
+        fan: RemkoAr715FanSpeed | None = RemkoAr715FanSpeed.AUTO,
         swing_v: bool = False,
     ) -> None:
         """Build a whole-degree 16..30 °C state."""
@@ -59,7 +59,7 @@ class RemkoAr715Command(WordCommand):
         if mode == RemkoAr715Mode.COOL:
             mode_fan = int(RemkoAr715FanSpeed(fan))
         elif mode in (RemkoAr715Mode.DRY, RemkoAr715Mode.FAN_ONLY):
-            if fan != RemkoAr715FanSpeed.AUTO:
+            if fan not in (None, RemkoAr715FanSpeed.AUTO):
                 raise ValueError("dry and fan-only commands do not carry a fan speed")
             mode_fan = int(mode)
         else:

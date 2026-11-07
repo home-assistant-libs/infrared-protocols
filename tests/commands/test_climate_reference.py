@@ -1,5 +1,6 @@
 """Compare independent climate encoders against recorded reference waveforms."""
 
+import inspect
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -569,6 +570,8 @@ class _Case(NamedTuple):
     decoder: Callable[[list[int]], _ClimateCommand | None]
     timings: list[int]
     expected_state: dict[str, object]
+    constructor: Callable[..., _ClimateCommand]
+    factory_name: str
 
 
 _CORPUS = json.loads(
@@ -584,12 +587,17 @@ for _case in _CORPUS["cases"]:
     )
     _tag = _case["factory"]
     _factory = _FACTORIES.get(_tag) or _FACTORIES[f"{_tag}.{_args.model}"]
+    _command = _factory.build(_args)
     _CASES.append(
         _Case(
-            _factory.build(_args),
+            _command,
             _factory.decode,
             [_case["palette"][int(c, 36)] for c in _case["timings"]],
             _case["expected_state"],
+            getattr(type(_command), _tag.split(".")[1])
+            if "." in _tag
+            else type(_command),
+            _tag,
         )
     )
     _IDS.append(_case["key"])
@@ -615,6 +623,43 @@ def test_climate_reference(case: _Case) -> None:
     assert type(received.state.mode) is type(case.command.state.mode)
     assert type(received.state.fan) is type(case.command.state.fan)
     _assert_reference_state(received.state, case.expected_state)
+
+
+def _rebuild_arguments(command: _ClimateCommand, case: _Case) -> dict[str, object]:
+    """Recover constructor inputs from native state and packet properties only."""
+    state = vars(command.state)
+    arguments = {}
+    for name in inspect.signature(case.constructor).parameters:
+        if name in state:
+            arguments[name] = state[name]
+        elif hasattr(command, name):
+            arguments[name] = getattr(command, name)
+    if isinstance(command, (DelonghiCommand, ToshibaRas25j2kvsgNdCommand)):
+        arguments["temperature"] = command.retained_temperature
+    if isinstance(command, WhirlpoolCommand):
+        arguments["off_command"] = command.state.mode is None
+    if isinstance(command, (HisenseArgCommand, ToshibaRas2819Command)):
+        # Several native codes represent multiple set points; every candidate
+        # regenerates the same bytes without claiming which one was selected.
+        if arguments.get("temperature") is None and command.temperature_candidates:
+            arguments["temperature"] = command.temperature_candidates[0]
+    return arguments
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        pytest.param(case, id=key)
+        for case, key in zip(_CASES, _IDS, strict=True)
+        if "." not in case.factory_name or case.factory_name.endswith(".climate")
+    ],
+)
+def test_climate_reference_rebuild(case: _Case) -> None:
+    """Rebuild full climate packets without reusing their original inputs."""
+    received = case.decoder(case.timings)
+    assert received is not None
+    rebuilt = case.constructor(**_rebuild_arguments(received, case))
+    assert rebuilt.get_raw_timings() == case.timings
 
 
 # Framing depends on the decoder and model, not every state permutation.

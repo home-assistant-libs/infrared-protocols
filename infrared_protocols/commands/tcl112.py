@@ -50,7 +50,7 @@ class Tcl112Command(ClimatePacket[Tcl112State]):
     def __init__(
         self,
         *,
-        mode: Tcl112Mode,
+        mode: Tcl112Mode | None,
         temperature: float,
         power: bool = True,
         fan: Tcl112FanSpeed = Tcl112FanSpeed.AUTO,

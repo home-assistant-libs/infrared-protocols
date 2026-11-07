@@ -99,20 +99,27 @@ class MideaCommand(Command):
     def climate(
         cls,
         *,
-        mode: MideaMode,
-        temperature: int,
+        mode: MideaMode | None,
+        temperature: int | None = None,
         power: bool = True,
         fan: MideaFanSpeed = MideaFanSpeed.AUTO,
         sleep: bool = False,
         is_fahrenheit: bool = False,
     ) -> Self:
         """Build a control packet; temperature is 17..30 °C or 62..86 °F."""
-        temp = temperature_value(
-            temperature, 62 if is_fahrenheit else 17, 86 if is_fahrenheit else 30
+        temp = (
+            None
+            if temperature is None
+            else temperature_value(
+                temperature, 62 if is_fahrenheit else 17, 86 if is_fahrenheit else 30
+            )
         )
-        mode_code = int(MideaMode(mode))
-        if not power:
-            mode, mode_code = MideaMode.AUTO, int(MideaMode.AUTO)
+        mode = MideaMode(mode) if power else MideaMode.AUTO
+        mode_code = int(mode)
+        if mode == MideaMode.FAN_ONLY:
+            temp = 31
+        if temp is None:
+            raise ValueError("temperature is required for this mode")
         fan_code = int(MideaFanSpeed(fan))
         flags = (128 if power else 0) | (64 if sleep else 0) | fan_code << 3 | mode_code
         if fan_code == 0 and mode in (

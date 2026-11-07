@@ -56,7 +56,7 @@ class DaikinBrcCommand(ClimatePacket[DaikinBrcState]):
     def __init__(
         self,
         *,
-        mode: DaikinBrcMode,
+        mode: DaikinBrcMode | None,
         temperature: int | None = None,
         is_fahrenheit: bool = False,
         power: bool = True,
@@ -66,7 +66,8 @@ class DaikinBrcCommand(ClimatePacket[DaikinBrcState]):
         mode_button: bool = False,
     ) -> None:
         """Build a state in 16..32 °C, or 60..90 °F with is_fahrenheit=True."""
-        int(DaikinBrcMode(mode))
+        if power:
+            DaikinBrcMode(mode)
         if temperature is not None:
             temperature_value(
                 temperature, 60 if is_fahrenheit else 16, 90 if is_fahrenheit else 32
@@ -84,7 +85,9 @@ class DaikinBrcCommand(ClimatePacket[DaikinBrcState]):
         header = bytes([0x11, 0xDA, 0x17, 0x18 | sub_unit])
         preamble = checked(header + bytes([4, 0]))
         alt = (
-            {DaikinBrcMode.DRY: 0x23, DaikinBrcMode.FAN_ONLY: 0x63}.get(mode, 0x73)
+            {DaikinBrcMode.DRY: 0x23, DaikinBrcMode.FAN_ONLY: 0x63}.get(
+                DaikinBrcMode(mode), 0x73
+            )
             if power
             else 0x73
         )

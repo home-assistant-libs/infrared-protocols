@@ -1,5 +1,6 @@
 {
   "source": "ESPHome encoder output",
+  "revision": "d2d5bb623a3be3b3610f7370ab45cf62f7448ca9",
   "kind": "Synthetic encoder outputs, not hardware captures",
   "signals": [
     {

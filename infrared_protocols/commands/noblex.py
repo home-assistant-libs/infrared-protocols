@@ -61,7 +61,7 @@ class NoblexCommand(SplitClimateCommand[NoblexState]):
     def __init__(
         self,
         *,
-        mode: NoblexMode,
+        mode: NoblexMode | None,
         temperature: int | None = None,
         power: bool = True,
         fan: NoblexFanSpeed = NoblexFanSpeed.AUTO,

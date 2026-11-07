@@ -45,6 +45,13 @@ def main() -> None:
     args = parser.parse_args()
     if not (args.esphome_source / "esphome/components/remote_base").is_dir():
         parser.error("esphome_source must be a complete local ESPHome checkout")
+    revision = subprocess.check_output(
+        ["git", "-C", str(args.esphome_source), "rev-parse", "HEAD"], text=True
+    ).strip()
+    if subprocess.check_output(
+        ["git", "-C", str(args.esphome_source), "status", "--porcelain"], text=True
+    ).strip():
+        parser.error("esphome_source must be clean to record a reproducible revision")
     args.output.mkdir(parents=True, exist_ok=True)
     args.output.joinpath("toshiba_captures.json").write_text(
         json.dumps(
@@ -53,6 +60,7 @@ def main() -> None:
                     "WH-TA15PE handheld captures recorded in ESPHome "
                     "tests/components/toshiba/toshiba_tests.cpp"
                 ),
+                "revision": revision,
                 "states": toshiba_states(args.esphome_source),
             },
             indent=2,
@@ -80,6 +88,7 @@ def main() -> None:
     climate_path = args.output / "esphome_climate.json"
     corpus = {
         "source": "ESPHome encoder output",
+        "revision": revision,
         "kind": "Synthetic outputs of original C++ encoders, not hardware captures",
     }
     corpus["timing_format"] = (
@@ -137,6 +146,7 @@ def main() -> None:
     transport_path = args.output / "esphome_protocols.json"
     corpus = {
         "source": "ESPHome encoder output",
+        "revision": revision,
         "kind": "Synthetic encoder outputs, not hardware captures",
         "signals": [],
     }

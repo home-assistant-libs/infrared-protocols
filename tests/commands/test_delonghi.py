@@ -149,3 +149,70 @@ def test_native_feature_bits(packet: str, boost: bool, sleep: bool) -> None:
     )
     assert rebuilt.data[2] == received.data[2]
     assert rebuilt.state.temperature == 81
+
+
+@pytest.mark.parametrize(
+    "is_fahrenheit,temperature",
+    [
+        pytest.param(False, None, id="celsius-placeholder"),
+        pytest.param(False, 24, id="celsius-24"),
+        pytest.param(False, 27, id="celsius-27"),
+        pytest.param(True, None, id="fahrenheit-placeholder"),
+        pytest.param(True, 74, id="fahrenheit-74"),
+        pytest.param(True, 77, id="fahrenheit-77"),
+    ],
+)
+def test_off_rebuild(temperature: int | None, is_fahrenheit: bool) -> None:
+    """Off carries no set point, but a retained field can reproduce exact bytes."""
+    sent = DelonghiCommand(
+        mode=None,
+        temperature=temperature,
+        power=False,
+        is_fahrenheit=is_fahrenheit,
+    )
+    received = DelonghiCommand.from_raw_timings(sent.get_raw_timings())
+    assert received is not None
+    assert received.state.mode is None
+    assert received.state.temperature is None
+    rebuilt = DelonghiCommand(
+        mode=received.state.mode,
+        temperature=received.retained_temperature,
+        power=False,
+        is_fahrenheit=received.state.is_fahrenheit,
+    )
+    assert rebuilt.get_raw_timings() == sent.get_raw_timings()
+
+
+@pytest.mark.parametrize(
+    "mode,packet",
+    [
+        pytest.param(DelonghiMode.DRY, "530702000000005c", id="retained-dry"),
+        pytest.param(DelonghiMode.FAN_ONLY, "530704000000005e", id="retained-fan"),
+        pytest.param(DelonghiMode.AUTO, "5307080000000062", id="retained-auto"),
+    ],
+)
+def test_retained_off_mode(mode: DelonghiMode, packet: str) -> None:
+    """Off packets may retain mode bits without carrying an active mode."""
+    sent = DelonghiCommand(mode=None, temperature=24, power=False, retained_mode=mode)
+    assert sent.data == bytes.fromhex(packet)
+    received = DelonghiCommand.from_raw_timings(sent.get_raw_timings())
+    assert received is not None
+    assert received.state.mode is None
+    assert received.state.temperature is None
+    assert received.retained_mode is mode
+    assert received.retained_temperature == 24
+    rebuilt = DelonghiCommand(
+        mode=received.state.mode,
+        temperature=received.retained_temperature,
+        power=False,
+        retained_mode=received.retained_mode,
+    )
+    assert rebuilt.data == bytes.fromhex(packet)
+
+
+def test_retained_mode_requires_off() -> None:
+    """An on packet has one active mode, not a second retained mode."""
+    with pytest.raises(ValueError, match="retained_mode"):
+        DelonghiCommand(
+            mode=DelonghiMode.COOL, temperature=24, retained_mode=DelonghiMode.DRY
+        )

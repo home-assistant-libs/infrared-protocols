@@ -114,7 +114,7 @@ class ToshibaCommand(Command):
     def climate(
         cls,
         *,
-        mode: ToshibaMode,
+        mode: ToshibaMode | None,
         temperature: int,
         power: bool = True,
         fan: ToshibaFanSpeed = ToshibaFanSpeed.AUTO,
@@ -225,15 +225,15 @@ class ToshibaSeiyaCommand(ToshibaCommand):
     def climate(
         cls,
         *,
-        mode: ToshibaMode,
+        mode: ToshibaMode | None,
         temperature: int,
         power: bool = True,
-        fan: ToshibaFanSpeed = ToshibaFanSpeed.AUTO,
+        fan: ToshibaFanSpeed | None = ToshibaFanSpeed.AUTO,
         swing: ToshibaSeiyaSwing = ToshibaSeiyaSwing.UNCHANGED,
     ) -> Self:
         """Build a Seiya state; send swing requests only when a change is intended."""
         temp = temperature_value(temperature, 17, 30)
-        fan_code = int(ToshibaFanSpeed(fan))
+        fan_code = int(ToshibaFanSpeed(fan)) if power else 0
         code = int(ToshibaMode(mode)) | fan_code << 5 if power else 7
         return cls(
             data=_packet(bytes([1, temp << 4, code, 0, 0x21, ToshibaSeiyaSwing(swing)]))
@@ -302,6 +302,11 @@ class ToshibaRas25j2kvsgNdCommand(ToshibaCommand):
         return state
 
     @property
+    def retained_temperature(self) -> int | None:
+        """Return the stored temperature field, including fan-only packets."""
+        return super().state.temperature
+
+    @property
     def action(self) -> ToshibaMotion | None:
         """Return the momentary action, absent in full state packets."""
         _ = self.state
@@ -351,8 +356,8 @@ class ToshibaRas25j2kvsgNdCommand(ToshibaCommand):
     def climate(
         cls,
         *,
-        mode: ToshibaMode,
-        temperature: int,
+        mode: ToshibaMode | None,
+        temperature: int | None = None,
         power: bool = True,
         fan: ToshibaFanSpeed = ToshibaFanSpeed.AUTO,
         preset: ToshibaPreset = ToshibaPreset.NONE,
@@ -360,6 +365,8 @@ class ToshibaRas25j2kvsgNdCommand(ToshibaCommand):
     ) -> Self:
         """Build a state with common or native fan selections.
 
+        Fan-only accepts None, encoding 17 °C in the inactive field. Use
+        retained_temperature to preserve a received fan-only packet's field.
         Frost protection accepts 5..13 °C in heat mode. Fireplace presets also
         require heat. Sleep uses automatic fan; silent power excludes presets.
         """
@@ -368,7 +375,12 @@ class ToshibaRas25j2kvsgNdCommand(ToshibaCommand):
             ToshibaPowerSelection(power_selection),
         )
         frost = preset == ToshibaPreset.FROST_PROTECTION
-        temperature_value(temperature, 5 if frost else 17, 13 if frost else 30)
+        if temperature is not None:
+            temperature_value(temperature, 5 if frost else 17, 13 if frost else 30)
+        elif mode == ToshibaMode.FAN_ONLY:
+            temperature = 17
+        else:
+            raise ValueError("temperature is required for this mode")
         if preset in (
             ToshibaPreset.FROST_PROTECTION,
             ToshibaPreset.FIREPLACE_1,

@@ -1,5 +1,6 @@
 {
   "source": "WH-TA15PE handheld captures recorded in ESPHome tests/components/toshiba/toshiba_tests.cpp",
+  "revision": "d2d5bb623a3be3b3610f7370ab45cf62f7448ca9",
   "states": [
     {
       "data": "f20d03fc0170430032",

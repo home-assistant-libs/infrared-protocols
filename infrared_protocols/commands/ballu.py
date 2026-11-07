@@ -49,7 +49,7 @@ class BalluCommand(ClimatePacket[BalluState]):
     def __init__(
         self,
         *,
-        mode: BalluMode,
+        mode: BalluMode | None,
         temperature: int,
         power: bool = True,
         fan: BalluFanSpeed = BalluFanSpeed.AUTO,
@@ -57,7 +57,8 @@ class BalluCommand(ClimatePacket[BalluState]):
         swing_h: bool = False,
     ) -> None:
         """Build a state for 16..32 °C in whole degrees."""
-        int(BalluMode(mode))
+        if power:
+            BalluMode(mode)
         temp = temperature_value(temperature, 16, 32) + 8
         data = bytes(
             [

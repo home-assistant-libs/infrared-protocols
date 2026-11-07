@@ -111,7 +111,7 @@ class GreeModelCommand(Command):
         self,
         *,
         model: GreeModel,
-        mode: GreeAcMode,
+        mode: GreeAcMode | None,
         temperature: float,
         power: bool = True,
         fan: GreeAcFanSpeed | GreeYx1ffFanSpeed | None = None,

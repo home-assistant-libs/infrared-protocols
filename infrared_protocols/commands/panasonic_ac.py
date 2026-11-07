@@ -141,7 +141,7 @@ class PanasonicAcCommand(KaseikyoCommand):
         self,
         *,
         mode: PanasonicAcMode,
-        temperature: float,
+        temperature: float | None = None,
         model: PanasonicAcModel | None = None,
         fan: PanasonicAcFanSpeed = PanasonicAcFanSpeed.AUTO,
         power: bool | None = None,
@@ -168,12 +168,12 @@ class PanasonicAcCommand(KaseikyoCommand):
         expose axis 2; their default is middle. nanoeX belongs to the original
         layout and is not supported for named models.
         """
-        if not MIN_TEMP <= temperature <= MAX_TEMP:
+        if temperature is not None and not MIN_TEMP <= temperature <= MAX_TEMP:
             raise ValueError(
                 f"temperature {temperature} out of range {MIN_TEMP}..{MAX_TEMP}"
             )
 
-        if model is not None and temperature % 1:
+        if model is not None and temperature is not None and temperature % 1:
             raise ValueError("temperature must be a whole degree for named models")
         if model == PanasonicAcModel.CKP:
             if power is not None or power_toggle is None:
@@ -194,6 +194,9 @@ class PanasonicAcCommand(KaseikyoCommand):
             swing_axis1 = PanasonicAcSwingAxis1.AUTO
         elif mode == PanasonicAcMode.FAN_ONLY:
             temperature = 27
+
+        if temperature is None:
+            raise ValueError("temperature is required for this mode")
 
         axis2: int = PanasonicAcSwingAxis2.AUTO if swing_axis2 is None else swing_axis2
         mode_flags = 0

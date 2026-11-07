@@ -54,7 +54,7 @@ class WhirlpoolCommand(ClimatePacket[WhirlpoolState]):
     def __init__(
         self,
         *,
-        mode: WhirlpoolMode,
+        mode: WhirlpoolMode | None,
         temperature: int | None = None,
         power_toggle: bool = False,
         fan: WhirlpoolFanSpeed = WhirlpoolFanSpeed.AUTO,

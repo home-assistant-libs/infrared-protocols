@@ -77,7 +77,9 @@ class MitsubishiCommand(ClimatePacket[MitsubishiState]):
         """Build a state with half degrees, native fan levels and vane positions.
 
         Vertical positions are 0 (auto) through 5 (down). Horizontal positions
-        are 1..5 (left to right) or 8 (split). Dry mode sends 24 °C.
+        are 1..5 (left to right) or 8 (split). The native swing positions 7
+        (vertical) and 12 (horizontal) require the matching swing flag.
+        Dry mode sends 24 °C.
         With fahrenheit_compatibility=True, temperature is 61..88 °F and uses
         the remote's lookup table. Decoded state reports the wire Celsius value.
         """
@@ -101,13 +103,11 @@ class MitsubishiCommand(ClimatePacket[MitsubishiState]):
             )  # fmt: skip
             code = codes[int(temperature) - 61]
             temperature = 16 + (code & 15) + (0.5 if code & 16 else 0)
-        if not 0 <= vertical_position <= 5 or horizontal_position not in (
-            1,
-            2,
-            3,
-            4,
-            5,
-            8,
+        if (
+            not 0 <= vertical_position <= 5 and not (swing_v and vertical_position == 7)
+        ) or (
+            horizontal_position not in (1, 2, 3, 4, 5, 8)
+            and not (swing_h and horizontal_position == 12)
         ):
             raise ValueError("invalid Mitsubishi vane position")
         mode_code = int(MitsubishiMode(mode))
