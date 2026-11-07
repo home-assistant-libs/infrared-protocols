@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from enum import IntEnum
 
-from ._climate_fields import decoded, selection, temperature_value
+from ._climate_fields import temperature_value
 from ._split_climate import SplitClimateCommand
 from ._timing import PulseTiming, bits, byte_bits, number, pack_bytes
 
@@ -36,23 +36,6 @@ class NoblexState:
     temperature: float | None = None
     fan: NoblexFanSpeed | None = None
     swing_v: bool | None = None
-    swing_h: bool | None = None
-    is_fahrenheit: bool = False
-
-
-_MODES = {
-    NoblexMode.AUTO: 0,
-    NoblexMode.COOL: 4,
-    NoblexMode.DRY: 2,
-    NoblexMode.FAN_ONLY: 6,
-    NoblexMode.HEAT: 1,
-}
-_FANS = {
-    NoblexFanSpeed.AUTO: 0,
-    NoblexFanSpeed.LOW: 2,
-    NoblexFanSpeed.MEDIUM: 1,
-    NoblexFanSpeed.HIGH: 3,
-}
 
 
 def _reverse(value: int) -> int:
@@ -90,12 +73,12 @@ class NoblexCommand(SplitClimateCommand[NoblexState]):
         changes auto/dry/heat codes. Here the mode field is assigned explicitly.
         """
         temp = temperature_value(temperature, 16, 30)
-        code = selection(mode, _MODES) if power else 4
+        code = int(NoblexMode(mode)) if power else 4
         data = bytes(
             [
                 code << 5
                 | (16 if power else 0)
-                | selection(fan, _FANS) << 2
+                | int(NoblexFanSpeed(fan)) << 2
                 | (2 if swing_v else 0),
                 _reverse(9 if power and mode == NoblexMode.AUTO else temp),
                 2 if power else 0,
@@ -125,11 +108,11 @@ class NoblexCommand(SplitClimateCommand[NoblexState]):
             raise ValueError("invalid Noblex signature or checksum")
         temp = (_reverse(data[1]) & 15) + 16
         temperature_value(temp, 16, 30)
-        mode = decoded(data[0] >> 5, _MODES) if data[0] & 16 else None
+        mode = NoblexMode(data[0] >> 5) if data[0] & 16 else None
         return NoblexState(
             power=bool(data[0] & 16),
             mode=mode,
             temperature=None if mode == NoblexMode.AUTO else temp,
-            fan=decoded(data[0] >> 2 & 3, _FANS),
+            fan=NoblexFanSpeed(data[0] >> 2 & 3),
             swing_v=bool(data[0] & 2),
         )

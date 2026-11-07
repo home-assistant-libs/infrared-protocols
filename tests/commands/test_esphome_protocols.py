@@ -18,7 +18,7 @@ from infrared_protocols.commands.hob2hood import Hob2HoodCommand
 from infrared_protocols.commands.ira211 import (
     Ira211Action,
     Ira211Command,
-    Ira211Fan,
+    Ira211FanSpeed,
     Ira211Mode,
 )
 from infrared_protocols.commands.jvc import JvcCommand
@@ -48,7 +48,7 @@ _INPUTS: list[tuple[str, Command, Decoder]] = [
                 action=action,
                 temperature=21.5,
                 mode=Ira211Mode.TIMER,
-                fan=Ira211Fan.HIGH,
+                fan=Ira211FanSpeed.HIGH,
             ),
             Ira211Command.from_raw_timings,
         )

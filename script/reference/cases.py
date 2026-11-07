@@ -520,7 +520,7 @@ def cases():
     return result
 
 
-def expected_state(factory, args):
+def _observable_state(factory, args):
     """Specify observable fields from requested settings and remote limitations."""
     state = dict(
         power=None, mode=None, temperature=None, fan=None, swing_v=None, swing_h=None
@@ -576,8 +576,6 @@ def expected_state(factory, args):
         state["temperature"] = None
     if factory == "HaierTundraCommand" and not power:
         state["swing_v"] = None
-    if factory in ("FriedrichCommand", "IslandaireCommand") or args.get("fahrenheit"):
-        state["temperature"] = (temp - 32) * 5 / 9
     if factory == "MitsubishiCommand":
         state["fan"] = args["native_fan"]
         state.update(
@@ -587,7 +585,7 @@ def expected_state(factory, args):
             state["temperature"] = None
         if args.get("preset") == "night":
             state.update(fan=0, swing_v=False)
-        if args.get("fahrenheit"):
+        if args.get("fahrenheit") and mode != "dry":
             state["temperature"] = {61: 16, 72: 22.5, 88: 31}[temp]
     if factory.startswith("Hitachi"):
         state["swing_h"] = args["horizontal_position"] == 0
@@ -655,3 +653,218 @@ def expected_state(factory, args):
     if factory == "ToshibaRas2819Command.climate" and mode == "dry" and temp != 25:
         state["temperature"] = None
     return state
+
+
+_NATIVE_FIELDS = {
+    "AirtonCommand": ("power", "mode", "temperature", "fan", "swing_v"),
+    "BalluCommand": ("power", "mode", "temperature", "fan", "swing_v", "swing_h"),
+    "CoolixCommand": ("power", "mode", "temperature", "fan"),
+    "DaikinArcCommand": ("power", "mode", "temperature", "fan", "swing_v", "swing_h"),
+    "DaikinArcQueryCommand": (
+        "power",
+        "mode",
+        "temperature",
+        "fan",
+        "swing_v",
+        "swing_h",
+    ),
+    "DaikinBrcCommand": (
+        "power",
+        "mode",
+        "temperature",
+        "fan",
+        "swing",
+        "is_fahrenheit",
+    ),
+    "DelonghiCommand": ("power", "mode", "temperature", "fan", "is_fahrenheit"),
+    "EmmetiCommand": ("power", "mode", "temperature", "fan", "swing_v"),
+    "FriedrichCommand": (
+        "power",
+        "mode",
+        "temperature",
+        "fan",
+        "swing_v",
+        "is_fahrenheit",
+    ),
+    "FriedrichUtilityCommand": (
+        "power",
+        "mode",
+        "temperature",
+        "fan",
+        "swing_v",
+        "is_fahrenheit",
+    ),
+    "GreeModelCommand": (
+        "power",
+        "mode",
+        "temperature",
+        "fan",
+        "swing_v",
+        "swing_h",
+        "is_fahrenheit",
+    ),
+    "HaierTundraCommand": ("power", "mode", "temperature", "fan", "swing_v", "swing_h"),
+    "HitachiAc344Command": (
+        "power",
+        "mode",
+        "temperature",
+        "fan",
+        "swing_v",
+        "swing_h",
+    ),
+    "HitachiAc424Command": (
+        "power",
+        "mode",
+        "temperature",
+        "fan",
+        "swing_v",
+        "swing_h",
+    ),
+    "IslandaireCommand": ("power", "mode", "temperature", "fan", "is_fahrenheit"),
+    "MideaCommand": ("power", "mode", "temperature", "fan", "is_fahrenheit", "sleep"),
+    "MistralCommand": ("power", "mode", "temperature", "fan"),
+    "MitsubishiCommand": ("power", "mode", "temperature", "fan", "swing_v", "swing_h"),
+    "NoblexCommand": ("power", "mode", "temperature", "fan", "swing_v"),
+    "PdPioneerClimateCommand": (
+        "power",
+        "mode",
+        "temperature",
+        "fan",
+        "swing_v",
+        "swing_h",
+    ),
+    "RemkoAr715Command": ("power", "mode", "temperature", "fan", "swing_v"),
+    "Tcl112Command": ("power", "mode", "temperature", "fan", "swing_v"),
+    "ToshibaCommand": ("power", "mode", "temperature", "fan"),
+    "ToshibaRasB10n3kv2Command": ("power", "mode", "temperature", "fan"),
+    "ToshibaSeiyaCommand": ("power", "mode", "temperature", "fan"),
+    "ToshibaRas25j2kvsgNdCommand": ("power", "mode", "temperature", "fan"),
+    "Toshiba48Command": (
+        "power",
+        "mode",
+        "temperature",
+        "fan",
+        "swing_v",
+        "is_fahrenheit",
+    ),
+    "ToshibaRacCommand": (
+        "power",
+        "mode",
+        "temperature",
+        "fan",
+        "swing_v",
+        "is_fahrenheit",
+    ),
+    "ToshibaRas2819Command": (
+        "power",
+        "mode",
+        "temperature",
+        "fan",
+        "swing_v",
+        "is_fahrenheit",
+    ),
+    "WhirlpoolCommand": ("power", "mode", "temperature", "fan", "swing_v"),
+    "WhirlpoolDg11j191Command": ("power", "mode", "temperature", "fan", "swing_v"),
+    "HisenseArgCommand": ("power", "mode", "temperature", "fan", "swing_v"),
+    "WhynterCommand": ("power", "mode", "temperature", "fan", "is_fahrenheit"),
+    "Zhlt01Command": ("power", "mode", "temperature", "fan", "swing_v", "swing_h"),
+}
+
+
+_FAN_NAMES = {
+    "AirtonCommand": {"low": "LEVEL_1", "medium": "LEVEL_3", "high": "LEVEL_5"},
+    "DaikinArcCommand": {
+        "low": "LEVEL_1",
+        "medium": "LEVEL_3",
+        "high": "LEVEL_5",
+        "quiet": "SILENT",
+    },
+}
+_NATIVE_FANS = {
+    "MitsubishiCommand": {
+        0: "AUTO",
+        1: "LEVEL_1",
+        2: "LEVEL_2",
+        3: "LEVEL_3",
+        4: "LEVEL_4",
+        5: "QUIET",
+    },
+    "DaikinArcCommand": {
+        3: "LEVEL_1",
+        4: "LEVEL_2",
+        5: "LEVEL_3",
+        6: "LEVEL_4",
+        7: "LEVEL_5",
+        10: "AUTO",
+        11: "SILENT",
+    },
+}
+_TOSHIBA_FANS = {
+    0: "AUTO",
+    1: "QUIET",
+    2: "LOW",
+    3: "LOW_PLUS",
+    4: "MEDIUM",
+    5: "MEDIUM_PLUS",
+    6: "HIGH",
+}
+
+
+def native_arguments(factory, args):
+    """Record Python keyword arguments with each family's native enum names."""
+    result = args.copy()
+    family = factory.split(".")[0]
+    if "mode" in result:
+        result["mode"] = result["mode"].upper()
+    if "fan" in result:
+        name = result["fan"]
+        result["fan"] = _FAN_NAMES.get(family, {}).get(name, name.upper())
+    if "native_fan" in result:
+        value = result.pop("native_fan")
+        result["fan"] = _NATIVE_FANS.get(family, _TOSHIBA_FANS)[value]
+    if "fahrenheit" in result:
+        key = (
+            "fahrenheit_compatibility"
+            if family == "MitsubishiCommand"
+            else "is_fahrenheit"
+        )
+        result[key] = result.pop("fahrenheit")
+    if (
+        factory in ("ToshibaRacCommand.climate", "ToshibaRas2819Command.climate")
+        and args.get("mode") in ("auto", "dry")
+    ):
+        result["fan"] = "AUTO_ALT"
+    return result
+
+
+def expected_state(factory, args):
+    """Specify the native fields and units observable in the transmitted packet."""
+    state = _observable_state(factory, args)
+    family = factory.split(".")[0]
+    if state["mode"] is not None:
+        state["mode"] = state["mode"].upper()
+    fan = state["fan"]
+    if isinstance(fan, str):
+        state["fan"] = _FAN_NAMES.get(family, {}).get(fan, fan.upper())
+    elif fan is not None:
+        state["fan"] = _NATIVE_FANS.get(family, _TOSHIBA_FANS)[fan]
+    if family == "DaikinBrcCommand":
+        state["swing"] = state.pop("swing_v")
+    state["is_fahrenheit"] = args.get("fahrenheit", False)
+    if family in ("FriedrichCommand", "IslandaireCommand"):
+        state["is_fahrenheit"] = True
+    if (
+        family
+        in ("Toshiba48Command", "ToshibaRas2819Command", "FriedrichUtilityCommand")
+        or factory.startswith("ToshibaRacCommand.")
+        and not factory.endswith(".climate")
+    ):
+        state["is_fahrenheit"] = None
+    if family == "MideaCommand":
+        state["sleep"] = args.get("sleep", False)
+    if (
+        factory in ("ToshibaRacCommand.climate", "ToshibaRas2819Command.climate")
+        and args.get("mode") in ("auto", "dry")
+    ):
+        state["fan"] = "AUTO_ALT"
+    return {name: state[name] for name in _NATIVE_FIELDS[family]}

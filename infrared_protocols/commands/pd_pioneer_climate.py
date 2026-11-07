@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 
 from ._climate import ClimatePacket, FramePart
-from ._climate_fields import decoded, selection, temperature_value
+from ._climate_fields import temperature_value
 from .pd_pioneer import PdPioneerCommand
 
 
@@ -37,22 +37,8 @@ class PdPioneerClimateState:
     fan: PdPioneerClimateFanSpeed | None = None
     swing_v: bool | None = None
     swing_h: bool | None = None
-    is_fahrenheit: bool = False
 
 
-_MODES = {
-    PdPioneerClimateMode.HEAT: 1,
-    PdPioneerClimateMode.DRY: 2,
-    PdPioneerClimateMode.COOL: 3,
-    PdPioneerClimateMode.FAN_ONLY: 7,
-    PdPioneerClimateMode.AUTO: 8,
-}
-_FANS = {
-    PdPioneerClimateFanSpeed.AUTO: 0,
-    PdPioneerClimateFanSpeed.LOW: 2,
-    PdPioneerClimateFanSpeed.MEDIUM: 3,
-    PdPioneerClimateFanSpeed.HIGH: 5,
-}
 _ODD_FANS = {
     PdPioneerClimateFanSpeed.AUTO: (0x40, 0x20),
     PdPioneerClimateFanSpeed.LOW: (0x60, 0x40),
@@ -91,7 +77,7 @@ class PdPioneerClimateCommand(ClimatePacket[PdPioneerClimateState]):
     ) -> None:
         """Build a whole state, including half-degree set points from 16..31 °C."""
         temperature_value(temperature, 16, 31, 0.5)
-        fan_code = selection(fan, _FANS)
+        fan_code = int(PdPioneerClimateFanSpeed(fan))
         odd_fan = _ODD_FANS[fan]
         odd = bytes(
             [
@@ -124,7 +110,7 @@ class PdPioneerClimateCommand(ClimatePacket[PdPioneerClimateState]):
                 1,
                 0,
                 (0x25 if economy else 0x24) if power else 0xA0,
-                selection(mode, _MODES) if power else 1,
+                int(PdPioneerClimateMode(mode)) if power else 1,
                 31 - int(target),
                 fan_code | (0x38 if swing_v else 0),
                 0,
@@ -155,14 +141,14 @@ class PdPioneerClimateCommand(ClimatePacket[PdPioneerClimateState]):
             or sum(even[:-1]) & 255 != even[-1]
         ):
             raise ValueError("invalid Pioneer burst signature or checksum")
-        fan = decoded(even[8] & 7, _FANS)
+        fan = PdPioneerClimateFanSpeed(even[8] & 7)
         if (
             tuple(odd[5:7]) != _ODD_FANS[fan]
             or bool(odd[7] & 8) != (even[8] & 0x38 == 0x38)
             or even[5] not in (0x24, 0x25, 0xA0)
         ):
             raise ValueError("inconsistent Pioneer state bursts")
-        mode = decoded(even[6], _MODES)
+        mode = PdPioneerClimateMode(even[6])
         temp = 31 - even[7] + (0.5 if even[12] & 4 else 0)
         temperature_value(temp, 16, 31, 0.5)
         power = even[5] != 0xA0

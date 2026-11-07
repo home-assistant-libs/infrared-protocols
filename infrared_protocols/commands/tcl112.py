@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 
 from ._climate import ClimatePacket
-from ._climate_fields import decoded, selection, temperature_value
+from ._climate_fields import temperature_value
 from .pioneer_wyt import PioneerWytCommand
 
 
@@ -37,24 +37,6 @@ class Tcl112State:
     temperature: float | None = None
     fan: Tcl112FanSpeed | None = None
     swing_v: bool | None = None
-    swing_h: bool | None = None
-    is_fahrenheit: bool = False
-
-
-_MODES = {
-    Tcl112Mode.HEAT: 1,
-    Tcl112Mode.DRY: 2,
-    Tcl112Mode.COOL: 3,
-    Tcl112Mode.FAN_ONLY: 7,
-    Tcl112Mode.AUTO: 8,
-}
-_FANS = {
-    Tcl112FanSpeed.QUIET: 1,
-    Tcl112FanSpeed.AUTO: 0,
-    Tcl112FanSpeed.LOW: 2,
-    Tcl112FanSpeed.MEDIUM: 3,
-    Tcl112FanSpeed.HIGH: 5,
-}
 
 
 class Tcl112Command(ClimatePacket[Tcl112State]):
@@ -84,9 +66,9 @@ class Tcl112Command(ClimatePacket[Tcl112State]):
                 1,
                 0,
                 0x20 | (4 if power else 0),
-                selection(mode, _MODES) if power else 3,
+                int(Tcl112Mode(mode)) if power else 3,
                 31 - int(temperature),
-                0x40 | selection(fan, _FANS) | (0x38 if swing_v else 0),
+                0x40 | int(Tcl112FanSpeed(fan)) | (0x38 if swing_v else 0),
                 0,
                 0,
                 0,
@@ -105,8 +87,8 @@ class Tcl112Command(ClimatePacket[Tcl112State]):
         temperature_value(temperature, 16, 31, 0.5)
         return Tcl112State(
             power=bool(data[5] & 4),
-            mode=decoded(data[6] & 15, _MODES) if data[5] & 4 else None,
+            mode=Tcl112Mode(data[6] & 15) if data[5] & 4 else None,
             temperature=temperature,
-            fan=decoded(data[8] & 7, _FANS),
+            fan=Tcl112FanSpeed(data[8] & 7),
             swing_v=data[8] & 0x38 == 0x38,
         )

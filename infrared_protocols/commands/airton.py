@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 
 from ._climate import ClimatePacket
-from ._climate_fields import decoded, selection, temperature_value
+from ._climate_fields import temperature_value
 from ._timing import PulseTiming
 
 
@@ -22,9 +22,11 @@ class AirtonFanSpeed(IntEnum):
     """Airton fan speeds."""
 
     AUTO = 0x0
-    LOW = 0x1
-    MEDIUM = 0x3
-    HIGH = 0x5
+    LEVEL_1 = 1
+    LEVEL_2 = 2
+    LEVEL_3 = 3
+    LEVEL_4 = 4
+    LEVEL_5 = 5
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -36,23 +38,6 @@ class AirtonState:
     temperature: float | None = None
     fan: AirtonFanSpeed | None = None
     swing_v: bool | None = None
-    swing_h: bool | None = None
-    is_fahrenheit: bool = False
-
-
-_MODES = {
-    AirtonMode.AUTO: 0,
-    AirtonMode.COOL: 1,
-    AirtonMode.DRY: 2,
-    AirtonMode.FAN_ONLY: 3,
-    AirtonMode.HEAT: 4,
-}
-_FANS = {
-    AirtonFanSpeed.AUTO: 0,
-    AirtonFanSpeed.LOW: 1,
-    AirtonFanSpeed.MEDIUM: 3,
-    AirtonFanSpeed.HIGH: 5,
-}
 
 
 class AirtonDirection(IntEnum):
@@ -97,9 +82,9 @@ class AirtonCommand(ClimatePacket[AirtonState]):
             [
                 0xD3,
                 0x11,
-                selection(mode, _MODES)
+                int(AirtonMode(mode))
                 | (8 if power else 0)
-                | selection(fan, _FANS) << 4,
+                | int(AirtonFanSpeed(fan)) << 4,
                 9 if power and mode == AirtonMode.AUTO else temp,
                 AirtonDirection(direction),
                 settings,
@@ -127,23 +112,37 @@ class AirtonCommand(ClimatePacket[AirtonState]):
         """Return whether sleep is enabled."""
         return bool(self.data[5] & 2)
 
+    @property
+    def turbo(self) -> bool:
+        """Return the independent turbo bit carried by the remote."""
+        return bool(self.data[2] & 128)
+
+    @property
+    def economy(self) -> bool:
+        """Return the remote's economy bit."""
+        return bool(self.data[5] & 1)
+
+    @property
+    def health(self) -> bool:
+        """Return the remote's health bit."""
+        return bool(self.data[5] & 64)
+
     @classmethod
     def parse(cls, data: bytes) -> AirtonState:
-        """Validate and read common state; finer fan levels remain in data."""
+        """Validate and decode every native fan level."""
         cls._validate_packet(data)
         if data[:2] != b"\xd3\x11":
             raise ValueError("invalid Airton signature")
         direction = AirtonDirection(data[4] & 15)
         fan_code = (data[2] >> 4) & 7
-        fan_code = {2: 1, 4: 5}.get(fan_code, fan_code)
         power = bool(data[2] & 8)
-        mode = decoded(data[2] & 7, _MODES)
+        mode = AirtonMode(data[2] & 7)
         return AirtonState(
             power=power,
             mode=mode,
             temperature=None
             if power and mode == AirtonMode.AUTO
             else (data[3] & 15) + 16,
-            fan=decoded(fan_code, _FANS),
+            fan=AirtonFanSpeed(fan_code),
             swing_v=direction == AirtonDirection.SWING,
         )

@@ -3,8 +3,8 @@
 from typing import Self, override
 
 from . import Command
-from ._decode import frames
-from ._timing import PulseTiming, Reader, pack_bytes
+from ._decode import frames, validate_pulse_prefix
+from ._timing import PulseTiming, Reader, byte_bits, pack_bytes
 
 
 class Samsung32Command(Command):
@@ -99,6 +99,13 @@ class Samsung32Command(Command):
             packets = frames(timings, period=108000, tolerance=0.4)
             for index, frame in enumerate(packets):
                 if messages and len(frame) < 67 and index == len(packets) - 1:
+                    expected = [
+                        4500,
+                        -4500,
+                        *PulseTiming(560, 560, 1690).encode(byte_bits(messages[0])),
+                        560,
+                    ]
+                    validate_pulse_prefix(frame, expected, tolerance=0.4)
                     break
                 reader = Reader(timings=frame, tolerance=0.4)
                 reader.expect(4500, -4500)

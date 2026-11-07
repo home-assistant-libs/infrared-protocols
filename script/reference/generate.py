@@ -19,7 +19,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from captures import toshiba_states
-from cases import expected_state
+from cases import expected_state, native_arguments
 
 _DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz"
 
@@ -119,6 +119,7 @@ def main() -> None:
                 case["trailing_idle"] = -timings[-1]
                 timings = timings[:-1]
             case["expected_state"] = expected_state(case["factory"], case["arguments"])
+            case["arguments"] = native_arguments(case["factory"], case["arguments"])
             palette = list(dict.fromkeys(timings))
             case["palette"] = palette
             case["timings"] = "".join(_DIGITS[palette.index(t)] for t in timings)

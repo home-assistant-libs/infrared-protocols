@@ -84,6 +84,35 @@ def test_arc_native_fan_levels(fan: DaikinAcFanSpeed) -> None:
     sent = DaikinArcCommand(mode=DaikinAcMode.COOL, temperature=24, fan=fan)
     received = DaikinArcCommand.from_raw_timings(sent.get_raw_timings())
     assert received is not None
-    assert received.fan is fan
     assert received.state.fan is fan
     assert received.data[28] >> 4 == int(fan)
+
+
+@pytest.mark.parametrize(
+    "mode",
+    [
+        pytest.param(DaikinAcMode.DRY, id="dry"),
+        pytest.param(DaikinAcMode.FAN_ONLY, id="fan_only"),
+        pytest.param(DaikinAcMode.AUTO, id="auto"),
+    ],
+)
+def test_rebuild_absent_setpoint(mode: DaikinAcMode) -> None:
+    """Modes with fixed wire temperatures can be rebuilt without inventing a target."""
+    command = DaikinArcCommand(mode=mode)
+    received = DaikinArcCommand.from_raw_timings(command.get_raw_timings())
+    assert received is not None
+    assert received.state.mode is not None
+    assert received.state.temperature is None
+    rebuilt = DaikinArcCommand(
+        mode=received.state.mode, temperature=received.state.temperature
+    )
+    assert rebuilt.data == command.data
+
+
+@pytest.mark.parametrize(
+    "power", [pytest.param(True, id="on"), pytest.param(False, id="off")]
+)
+def test_required_setpoint(power: bool) -> None:
+    """Frames that carry a set point require one explicitly."""
+    with pytest.raises(ValueError, match="temperature is required"):
+        DaikinArcCommand(mode=DaikinAcMode.COOL, power=power)

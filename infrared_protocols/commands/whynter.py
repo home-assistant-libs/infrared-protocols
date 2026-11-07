@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import Self
 
-from ._climate_fields import decoded, selection, temperature_value
+from ._climate_fields import temperature_value
 from ._timing import PulseTiming, bits, number
 from ._word import WordCommand
 
@@ -32,20 +32,9 @@ class WhynterState:
 
     power: bool | None = None
     mode: WhynterMode | None = None
-    temperature: float | None = None
+    temperature: int | None = None
     fan: WhynterFanSpeed | None = None
-    swing_v: bool | None = None
-    swing_h: bool | None = None
     is_fahrenheit: bool = False
-
-
-_MODES = {
-    WhynterMode.FAN_ONLY: 1,
-    WhynterMode.DRY: 2,
-    WhynterMode.HEAT: 4,
-    WhynterMode.COOL: 8,
-}
-_FANS = {WhynterFanSpeed.HIGH: 1, WhynterFanSpeed.MEDIUM: 2, WhynterFanSpeed.LOW: 4}
 
 
 class WhynterCommand(WordCommand):
@@ -72,8 +61,8 @@ class WhynterCommand(WordCommand):
         temp = temperature if is_fahrenheit else temperature - 16
         value = (
             0x12000000
-            | selection(fan, _FANS) << 20
-            | (selection(mode, _MODES) << 16 if power else 0)
+            | int(WhynterFanSpeed(fan)) << 20
+            | (int(WhynterMode(mode)) << 16 if power else 0)
         )
         value |= (
             int(power) << 8 | int(is_fahrenheit) << 10 | number(bits(temp, 8), lsb=True)
@@ -81,15 +70,15 @@ class WhynterCommand(WordCommand):
         super().__init__(data=value)
 
     @property
-    def is_fahrenheit(self) -> bool:
+    def _is_fahrenheit(self) -> bool:
         """Return the remote's native temperature-unit flag."""
         return bool(self.data & 1024)
 
     @property
-    def temperature(self) -> int:
+    def _temperature(self) -> int:
         """Return the set point in the remote's native units."""
         native = number(bits(self.data & 255, 8), lsb=True)
-        return native if self.is_fahrenheit else native + 16
+        return native if self._is_fahrenheit else native + 16
 
     @property
     def state(self) -> WhynterState:
@@ -97,17 +86,17 @@ class WhynterCommand(WordCommand):
         if self.data >> 24 != 0x12:
             raise ValueError("invalid Whynter signature")
         temperature_value(
-            self.temperature,
-            61 if self.is_fahrenheit else 16,
-            89 if self.is_fahrenheit else 32,
+            self._temperature,
+            61 if self._is_fahrenheit else 16,
+            89 if self._is_fahrenheit else 32,
         )
         mode_code = self.data >> 16 & 15
         return WhynterState(
             power=bool(self.data & 256),
-            mode=decoded(mode_code, _MODES) if mode_code else None,
-            temperature=self.temperature,
-            is_fahrenheit=self.is_fahrenheit,
-            fan=decoded(self.data >> 20 & 7, _FANS),
+            mode=WhynterMode(mode_code) if mode_code else None,
+            temperature=self._temperature,
+            is_fahrenheit=self._is_fahrenheit,
+            fan=WhynterFanSpeed(self.data >> 20 & 7),
         )
 
     @classmethod

@@ -4,13 +4,13 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import Self
 
-from ._climate_fields import decoded, selection, temperature_value
+from ._climate_fields import temperature_value
 from ._timing import PulseTiming, Reader, number
 from ._word import WordCommand
 
 
 class RemkoAr715Mode(IntEnum):
-    """RemkoAr715 operating modes."""
+    """Mode selectors; COOL uses the fan code instead of a fixed mode byte."""
 
     COOL = 0x80
     DRY = 0xA4
@@ -35,16 +35,6 @@ class RemkoAr715State:
     temperature: float | None = None
     fan: RemkoAr715FanSpeed | None = None
     swing_v: bool | None = None
-    swing_h: bool | None = None
-    is_fahrenheit: bool = False
-
-
-_FANS = {
-    RemkoAr715FanSpeed.AUTO: 0x80,
-    RemkoAr715FanSpeed.LOW: 0xA2,
-    RemkoAr715FanSpeed.MEDIUM: 0x91,
-    RemkoAr715FanSpeed.HIGH: 0x88,
-}
 
 
 class RemkoAr715Command(WordCommand):
@@ -67,11 +57,11 @@ class RemkoAr715Command(WordCommand):
         """Build a whole-degree 16..30 °C state."""
         temp = temperature_value(temperature, 16, 30)
         if mode == RemkoAr715Mode.COOL:
-            mode_fan = selection(fan, _FANS)
+            mode_fan = int(RemkoAr715FanSpeed(fan))
         elif mode in (RemkoAr715Mode.DRY, RemkoAr715Mode.FAN_ONLY):
             if fan != RemkoAr715FanSpeed.AUTO:
                 raise ValueError("dry and fan-only commands do not carry a fan speed")
-            mode_fan = 0xA4 if mode == RemkoAr715Mode.DRY else 0xA3
+            mode_fan = int(mode)
         else:
             raise ValueError("Remko supports cool, dry and fan-only modes")
         value = (
@@ -99,14 +89,14 @@ class RemkoAr715Command(WordCommand):
         mode_fan = value >> 8 & 255
         temperature = (value >> 4 & 15) + 16
         temperature_value(temperature, 16, 30)
-        mode = {0xA4: RemkoAr715Mode.DRY, 0xA3: RemkoAr715Mode.FAN_ONLY}.get(
-            mode_fan, RemkoAr715Mode.COOL
-        )
+        mode = {
+            int(mode): mode for mode in (RemkoAr715Mode.DRY, RemkoAr715Mode.FAN_ONLY)
+        }.get(mode_fan, RemkoAr715Mode.COOL)
         return RemkoAr715State(
             power=bool(power_code),
             mode=mode,
             temperature=temperature,
-            fan=decoded(mode_fan, _FANS) if mode == RemkoAr715Mode.COOL else None,
+            fan=RemkoAr715FanSpeed(mode_fan) if mode == RemkoAr715Mode.COOL else None,
             swing_v=swing_code == 5,
         )
 

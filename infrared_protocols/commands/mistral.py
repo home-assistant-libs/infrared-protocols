@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 
 from ._aeha_climate import AehaClimatePacket
-from ._climate_fields import decoded, selection, temperature_value
+from ._climate_fields import temperature_value
 
 
 class MistralMode(IntEnum):
@@ -34,24 +34,6 @@ class MistralState:
     mode: MistralMode | None = None
     temperature: float | None = None
     fan: MistralFanSpeed | None = None
-    swing_v: bool | None = None
-    swing_h: bool | None = None
-    is_fahrenheit: bool = False
-
-
-_MODES = {
-    MistralMode.COOL: 3,
-    MistralMode.DRY: 2,
-    MistralMode.FAN_ONLY: 1,
-    MistralMode.HEAT: 6,
-    MistralMode.AUTO: 8,
-}
-_FANS = {
-    MistralFanSpeed.AUTO: 0x2500,
-    MistralFanSpeed.LOW: 0x2202,
-    MistralFanSpeed.MEDIUM: 0x2403,
-    MistralFanSpeed.HIGH: 0x2505,
-}
 
 
 class MistralCommand(AehaClimatePacket[MistralState]):
@@ -68,9 +50,9 @@ class MistralCommand(AehaClimatePacket[MistralState]):
         fan: MistralFanSpeed = MistralFanSpeed.AUTO,
     ) -> None:
         """Build a whole-degree 16..30 °C state."""
-        selection(mode, _MODES)
+        int(MistralMode(mode))
         temperature_value(temperature, 16, 30)
-        fan_code = selection(fan, _FANS)
+        fan_code = int(MistralFanSpeed(fan))
         data = bytes(
             [
                 0x4C,
@@ -79,7 +61,7 @@ class MistralCommand(AehaClimatePacket[MistralState]):
                 fan_code >> 8,
                 16,
                 4 if power else 0,
-                selection(mode, _MODES) if power else 8,
+                int(MistralMode(mode)) if power else 8,
                 159 - int(temperature),
                 fan_code & 255,
                 0,
@@ -110,7 +92,7 @@ class MistralCommand(AehaClimatePacket[MistralState]):
         temperature_value(temperature, 16, 30)
         return MistralState(
             power=bool(data[5]),
-            mode=decoded(data[6], _MODES) if bool(data[5]) else None,
+            mode=MistralMode(data[6]) if bool(data[5]) else None,
             temperature=temperature,
-            fan=decoded(data[3] << 8 | data[8], _FANS),
+            fan=MistralFanSpeed(data[3] << 8 | data[8]),
         )

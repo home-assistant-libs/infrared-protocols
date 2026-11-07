@@ -19,7 +19,6 @@ def test_friedrich_economy_boundaries(mode: FriedrichMode, temperature: int) -> 
     sent = FriedrichCommand(mode=mode, temperature=temperature, economy=True)
     received = FriedrichCommand.from_raw_timings(sent.get_raw_timings())
     assert received is not None
-    assert received.temperature == temperature
     assert received.state.temperature == temperature
     assert received.state.is_fahrenheit is True
     assert received.economy

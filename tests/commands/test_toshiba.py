@@ -8,7 +8,7 @@ import pytest
 from infrared_protocols.commands._timing import byte_bits
 from infrared_protocols.commands.toshiba import (
     ToshibaCommand,
-    ToshibaFan,
+    ToshibaFanSpeed,
     ToshibaMode,
     ToshibaMotion,
     ToshibaPowerSelection,
@@ -20,6 +20,7 @@ from infrared_protocols.commands.toshiba import (
 )
 from infrared_protocols.commands.toshiba_48 import (
     Toshiba48Command,
+    Toshiba48FanSpeed,
     Toshiba48Mode,
     Toshiba48State,
     ToshibaRacCommand,
@@ -76,15 +77,15 @@ def test_toshiba_invalid_auxiliary_field() -> None:
         ToshibaSeiyaCommand(data=bytes(data))
 
 
-@pytest.mark.parametrize("fan", list(ToshibaFan))
-def test_toshiba_native_fan(fan: ToshibaFan) -> None:
+@pytest.mark.parametrize("fan", list(ToshibaFanSpeed))
+def test_toshiba_native_fan(fan: ToshibaFanSpeed) -> None:
     """Every decoded native fan is accepted directly by the state factory."""
     sent = ToshibaRas25j2kvsgNdCommand.climate(
         mode=ToshibaMode.COOL, temperature=24, fan=fan
     )
     received = ToshibaRas25j2kvsgNdCommand.from_raw_timings(sent.get_raw_timings())
     assert received is not None
-    assert received.fan == fan
+    assert received.state.fan == fan
 
 
 def test_toshiba_shared_transport() -> None:
@@ -184,7 +185,7 @@ def test_dry_requires_auto_fan() -> None:
     """The RAS-25 dry program has no independently adjustable fan."""
     with pytest.raises(ValueError, match="dry"):
         ToshibaRas25j2kvsgNdCommand.climate(
-            mode=ToshibaMode.DRY, temperature=24, fan=ToshibaFan.HIGH
+            mode=ToshibaMode.DRY, temperature=24, fan=ToshibaFanSpeed.HIGH
         )
 
 
@@ -238,8 +239,8 @@ def test_rac_native_fahrenheit() -> None:
     assert received is not None
     assert received.state.temperature == 75
     assert received.state.is_fahrenheit is True
-    assert received.temperature == 75
-    assert received.is_fahrenheit is True
+    assert received.state.temperature == 75
+    assert received.state.is_fahrenheit is True
 
 
 @pytest.mark.parametrize(
@@ -250,16 +251,16 @@ def test_rac_native_fahrenheit() -> None:
         pytest.param(ToshibaSeiyaCommand, id="seiya"),
     ],
 )
-@pytest.mark.parametrize("fan", list(ToshibaFan))
+@pytest.mark.parametrize("fan", list(ToshibaFanSpeed))
 def test_generic_native_fan_round_trip(
-    cls: type[ToshibaCommand], fan: ToshibaFan
+    cls: type[ToshibaCommand], fan: ToshibaFanSpeed
 ) -> None:
     """Every decoded native fan, including intermediate speeds, can be sent again."""
     sent = cls.climate(mode=ToshibaMode.HEAT, temperature=20, fan=fan)
     received = cls.from_raw_timings(sent.get_raw_timings())
     assert received is not None
     assert received.state.fan is fan
-    assert isinstance(received.state.fan, ToshibaFan)
+    assert isinstance(received.state.fan, ToshibaFanSpeed)
     assert (
         cls.climate(mode=ToshibaMode.HEAT, temperature=20, fan=received.state.fan).data
         == sent.data
@@ -339,8 +340,8 @@ def test_replaced_extension_updates_native_temperature() -> None:
     assert command.first == replacement.first
     command.rc_code_2 = replacement.rc_code_2
     assert command.second == replacement.second
-    assert command.temperature == 60
-    assert command.is_fahrenheit is True
+    assert command.state.temperature == 60
+    assert command.state.is_fahrenheit is True
     assert command.state == replacement.state
     assert command.get_raw_timings() == replacement.get_raw_timings()
 
@@ -349,7 +350,7 @@ def test_replaced_extension_updates_native_temperature() -> None:
     "attribute",
     [
         pytest.param("action", id="action"),
-        pytest.param("fan", id="fan"),
+        pytest.param("state", id="state"),
         pytest.param("preset", id="preset"),
         pytest.param("power_selection", id="power-selection"),
     ],
@@ -419,8 +420,7 @@ def test_replaced_word_validates_width(word: str, attribute: str, value: int) ->
 @pytest.mark.parametrize(
     "attribute",
     [
-        pytest.param("is_fahrenheit", id="is_fahrenheit"),
-        pytest.param("temperature", id="temperature"),
+        pytest.param("state", id="state"),
         pytest.param("room_temperature", id="room-temperature"),
         pytest.param("comfort_sense_enabled", id="comfort-enabled"),
         pytest.param("comfort_sense_reports_temperature", id="comfort-reports"),
@@ -474,3 +474,67 @@ def test_ras2819_temperature_candidates(
 def test_ras2819_off_has_no_temperature_candidates() -> None:
     """An absent extension is valid for the standalone power-off command."""
     assert ToshibaRas2819Command.power_off().temperature_candidates == ()
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        pytest.param(ToshibaRacCommand.power_off(), id="off"),
+        pytest.param(ToshibaRacCommand.swing(enabled=True), id="swing"),
+        pytest.param(
+            ToshibaRacCommand.comfort_sense(mode=Toshiba48Mode.COOL, temperature=24),
+            id="sensor",
+        ),
+    ],
+)
+def test_action_has_no_temperature_unit(command: ToshibaRacCommand) -> None:
+    """A standalone action does not report an absent unit flag as Celsius."""
+    assert command.state.is_fahrenheit is None
+    assert command.state.temperature is None
+
+
+@pytest.mark.parametrize("fan", list(Toshiba48FanSpeed))
+def test_ras2819_native_fan_rebuild(fan: Toshiba48FanSpeed) -> None:
+    """Both automatic codes retain their distinct primary and extension bytes."""
+    sent = ToshibaRas2819Command.climate(
+        mode=Toshiba48Mode.COOL, temperature=24, fan=fan
+    )
+    assert sent.first[2] == int(fan)
+    received = ToshibaRas2819Command.from_raw_timings(sent.get_raw_timings())
+    assert received is not None
+    state = received.state
+    assert state.fan is fan
+    assert state.mode is not None
+    assert state.temperature is not None
+    rebuilt = ToshibaRas2819Command.climate(
+        mode=state.mode, temperature=state.temperature, fan=state.fan
+    )
+    assert rebuilt.first == received.first
+    assert rebuilt.second == received.second
+
+
+@pytest.mark.parametrize("mode", [Toshiba48Mode.AUTO, Toshiba48Mode.DRY])
+def test_rac_native_automatic_fan(mode: Toshiba48Mode) -> None:
+    """Automatic modes report the encoded fan value accepted by the encoder."""
+    sent = ToshibaRacCommand.climate(mode=mode, temperature=24)
+    state = sent.state
+    assert state.fan is Toshiba48FanSpeed.AUTO_ALT
+    rebuilt = ToshibaRacCommand.climate(mode=mode, temperature=24, fan=state.fan)
+    assert rebuilt.first == sent.first
+    assert rebuilt.second == sent.second
+
+
+def test_rac_rejects_alternate_auto_in_cool() -> None:
+    """RAC permits the alternate automatic fan only in auto/dry modes."""
+    with pytest.raises(ValueError, match="fan"):
+        ToshibaRacCommand.climate(
+            mode=Toshiba48Mode.COOL, temperature=24, fan=Toshiba48FanSpeed.AUTO_ALT
+        )
+
+
+def test_ras2819_rejects_ambiguous_fan_only() -> None:
+    """Fan-only with code 0x1F is indistinguishable from a dry-mode command."""
+    with pytest.raises(ValueError, match="ambiguous"):
+        ToshibaRas2819Command.climate(
+            mode=Toshiba48Mode.FAN_ONLY, temperature=24, fan=Toshiba48FanSpeed.AUTO_ALT
+        )

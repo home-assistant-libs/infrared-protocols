@@ -7,7 +7,7 @@ from operator import xor
 from typing import ClassVar, Self, override
 
 from ._climate import ClimatePacket, FramePart
-from ._climate_fields import decoded, selection, temperature_value
+from ._climate_fields import temperature_value
 from ._timing import PulseTiming, Reader, byte_bits, pack_bytes
 
 
@@ -39,23 +39,6 @@ class WhirlpoolState:
     temperature: float | None = None
     fan: WhirlpoolFanSpeed | None = None
     swing_v: bool | None = None
-    swing_h: bool | None = None
-    is_fahrenheit: bool = False
-
-
-_MODES = {
-    WhirlpoolMode.HEAT: 0,
-    WhirlpoolMode.AUTO: 1,
-    WhirlpoolMode.COOL: 2,
-    WhirlpoolMode.DRY: 3,
-    WhirlpoolMode.FAN_ONLY: 4,
-}
-_FANS = {
-    WhirlpoolFanSpeed.AUTO: 0,
-    WhirlpoolFanSpeed.HIGH: 1,
-    WhirlpoolFanSpeed.MEDIUM: 2,
-    WhirlpoolFanSpeed.LOW: 3,
-}
 
 
 class WhirlpoolCommand(ClimatePacket[WhirlpoolState]):
@@ -89,8 +72,8 @@ class WhirlpoolCommand(ClimatePacket[WhirlpoolState]):
             raise ValueError("swing semantics do not match the selected model")
         data = bytearray(21)
         data[:2] = b"\x83\x06"
-        data[2] = selection(fan, _FANS) | (4 if power_toggle else 0)
-        data[3] = temp << 4 | (0 if off_command else selection(mode, _MODES))
+        data[2] = int(WhirlpoolFanSpeed(fan)) | (4 if power_toggle else 0)
+        data[3] = temp << 4 | (0 if off_command else int(WhirlpoolMode(mode)))
         data[6], data[18] = 128, 8
         data[15] = (
             (1 if power_toggle else 0)
@@ -195,7 +178,7 @@ class WhirlpoolCommand(ClimatePacket[WhirlpoolState]):
             and reduce(xor, data[14:21], 0)
         ):
             raise ValueError("invalid Whirlpool packet or checksum")
-        mode = decoded(data[3] & 15, _MODES)
+        mode = WhirlpoolMode(data[3] & 15)
         temperature: int | None = (data[3] >> 4) + cls.MIN_TEMP
         temperature_value(temperature, cls.MIN_TEMP, cls.MIN_TEMP + 14)
         if cls.HISENSE and mode == WhirlpoolMode.AUTO:
@@ -215,7 +198,7 @@ class WhirlpoolCommand(ClimatePacket[WhirlpoolState]):
             )
             else mode,
             temperature=temperature,
-            fan=decoded(data[2] & 3, _FANS),
+            fan=WhirlpoolFanSpeed(data[2] & 3),
             swing_v=bool(data[8] & 64) if cls.HISENSE else None,
         )
 

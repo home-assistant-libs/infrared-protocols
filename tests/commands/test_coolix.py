@@ -20,19 +20,13 @@ from infrared_protocols.commands.coolix import (
             temp,
             None if mode == CoolixMode.FAN_ONLY else temp,
             fan,
-            id=f"{mode}-{temp}-{fan}",
+            id=f"{mode.name}-{temp}-{fan.name}",
         )
         for mode, temp, fan in product(
             CoolixMode,
             [17, 24, 30],
-            [
-                CoolixFanSpeed.AUTO,
-                CoolixFanSpeed.LOW,
-                CoolixFanSpeed.MEDIUM,
-                CoolixFanSpeed.HIGH,
-            ],
+            CoolixFanSpeed,
         )
-        if fan == CoolixFanSpeed.AUTO or mode not in (CoolixMode.AUTO, CoolixMode.DRY)
     ],
 )
 def test_coolix_state(
@@ -47,6 +41,7 @@ def test_coolix_state(
         mode=mode,
         fan=fan,
         temperature=expected,
+        zone_follow=False,
     )
 
 
@@ -65,8 +60,10 @@ def test_coolix_state(
         pytest.param(
             CoolixMode.COOL, 24, CoolixFanSpeed.AUTO, 0xB2BF40, id="cool24-auto"
         ),
-        pytest.param(CoolixMode.AUTO, 24, CoolixFanSpeed.AUTO, 0xB21F48, id="auto24"),
-        pytest.param(CoolixMode.DRY, 24, CoolixFanSpeed.AUTO, 0xB21F44, id="dry24"),
+        pytest.param(
+            CoolixMode.AUTO, 24, CoolixFanSpeed.AUTO_ALT, 0xB21F48, id="auto24"
+        ),
+        pytest.param(CoolixMode.DRY, 24, CoolixFanSpeed.AUTO_ALT, 0xB21F44, id="dry24"),
         pytest.param(
             CoolixMode.FAN_ONLY, 24, CoolixFanSpeed.AUTO, 0xB2BFE4, id="fan-only"
         ),
@@ -84,3 +81,65 @@ def test_coolix_unknown_state() -> None:
     """Unknown raw control fields remain raw data without raising on state access."""
     sent = CoolixCommand(first=0xB2FFF0)
     assert sent.state is None
+
+
+@pytest.mark.parametrize("fan", list(CoolixFanSpeed))
+def test_native_fan_rebuild(fan: CoolixFanSpeed) -> None:
+    """Distinct fan nibbles survive state readback and rebuilding."""
+    word = 0xB21F40 | int(fan) << 13
+    received = CoolixCommand(first=word, second=word)
+    state = received.state
+    assert state is not None
+    assert state.fan is fan
+    assert state.mode is not None
+    assert state.temperature is not None
+    rebuilt = CoolixCommand.climate(
+        mode=state.mode, temperature=int(state.temperature), fan=state.fan
+    )
+    assert rebuilt.first == rebuilt.second == word
+
+
+@pytest.mark.parametrize("mode", [CoolixMode.AUTO, CoolixMode.DRY])
+def test_native_default_fan(mode: CoolixMode) -> None:
+    """The default auto/dry fan is the remote's alternate automatic code."""
+    sent = CoolixCommand.climate(mode=mode, temperature=24)
+    assert sent.state is not None
+    assert sent.state.fan is CoolixFanSpeed.AUTO_ALT
+
+
+@pytest.mark.parametrize(
+    "word,sensor_temperature",
+    [
+        pytest.param(0xBAC042, 0, id="sensor-0"),
+        pytest.param(0xBACF42, 15, id="sensor-15"),
+        pytest.param(0xBAD042, 16, id="sensor-16"),
+        pytest.param(0xBADE42, 30, id="sensor-30"),
+        pytest.param(0xBADF42, None, id="sensor-absent"),
+    ],
+)
+def test_zone_follow_sensor(word: int, sensor_temperature: int | None) -> None:
+    """The fifth sensor bit must not become part of the native fan value."""
+    sent = CoolixCommand(first=word, second=word)
+    received = CoolixCommand.from_raw_timings(sent.get_raw_timings())
+    assert received is not None
+    state = received.state
+    assert state is not None
+    assert state.fan is CoolixFanSpeed.ZONE_FOLLOW
+    assert state.sensor_temperature == sensor_temperature
+    assert state.zone_follow is True
+    assert state.mode is CoolixMode.COOL
+    assert state.temperature == 24
+    rebuilt = CoolixCommand.climate(
+        mode=state.mode,
+        temperature=state.temperature,
+        fan=state.fan,
+        sensor_temperature=state.sensor_temperature,
+        zone_follow=state.zone_follow,
+    )
+    assert rebuilt.first == rebuilt.second == word
+
+
+@pytest.mark.parametrize("word", [0xB2DF42, 0xBADF40])
+def test_inconsistent_zone_flags(word: int) -> None:
+    """A single zone-follow flag is not a recognized climate state."""
+    assert CoolixCommand(first=word).state is None

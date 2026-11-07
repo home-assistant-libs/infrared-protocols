@@ -5,6 +5,16 @@ from statistics import median
 from ._timing import close
 
 
+def validate_pulse_prefix(
+    actual: list[int], expected: list[int], *, tolerance: float = 0.25
+) -> None:
+    """Require every available duration of a clipped pulse-distance repeat to match."""
+    for index, (duration, reference) in enumerate(zip(actual, expected, strict=False)):
+        window = 350 if index > 1 and index % 2 else 225
+        if not close(duration, reference, tolerance, absolute=window):
+            raise ValueError("clipped repeat differs from the expected frame")
+
+
 def frames(
     timings: list[int],
     *,

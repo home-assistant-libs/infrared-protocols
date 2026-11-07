@@ -42,7 +42,6 @@ class HitachiState:
     fan: HitachiFanSpeed | None = None
     swing_v: bool | None = None
     swing_h: bool | None = None
-    is_fahrenheit: bool = False
 
 
 _MODES = {

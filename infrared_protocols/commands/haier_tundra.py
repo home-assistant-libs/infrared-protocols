@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 
 from ._climate import ClimatePacket
-from ._climate_fields import decoded, selection, temperature_value
+from ._climate_fields import temperature_value
 from .haier import HaierCommand
 
 
@@ -37,22 +37,6 @@ class HaierTundraState:
     fan: HaierTundraFanSpeed | None = None
     swing_v: bool | None = None
     swing_h: bool | None = None
-    is_fahrenheit: bool = False
-
-
-_MODES = {
-    HaierTundraMode.AUTO: 0,
-    HaierTundraMode.COOL: 1,
-    HaierTundraMode.DRY: 2,
-    HaierTundraMode.HEAT: 4,
-    HaierTundraMode.FAN_ONLY: 6,
-}
-_FANS = {
-    HaierTundraFanSpeed.AUTO: 5,
-    HaierTundraFanSpeed.HIGH: 1,
-    HaierTundraFanSpeed.MEDIUM: 2,
-    HaierTundraFanSpeed.LOW: 3,
-}
 
 
 class HaierUnit(IntEnum):
@@ -104,7 +88,7 @@ class HaierTundraCommand(ClimatePacket[HaierTundraState]):
         turbo: bool = False,
     ) -> None:
         """Build a state for 16..30 °C with optional health, quiet or turbo."""
-        selection(mode, _MODES)
+        int(HaierTundraMode(mode))
         temp = temperature_value(temperature, 16, 30)
         if (
             quiet
@@ -123,9 +107,9 @@ class HaierTundraCommand(ClimatePacket[HaierTundraState]):
                 0xE0 if swing_h else 0,
                 2 if health else 0,
                 64 if power else 0,
-                selection(fan, _FANS) << 5,
+                int(HaierTundraFanSpeed(fan)) << 5,
                 (128 if quiet else 0) | (64 if turbo else 0),
-                selection(mode, _MODES) << 5 if power else 0,
+                int(HaierTundraMode(mode)) << 5 if power else 0,
                 0,
                 0,
                 16 if button == HaierButton.SELF_CLEAN else 0,
@@ -170,9 +154,9 @@ class HaierTundraCommand(ClimatePacket[HaierTundraState]):
         temperature_value(temperature, 16, 30)
         return HaierTundraState(
             power=bool(data[4] & 64),
-            mode=decoded(data[7] >> 5, _MODES) if bool(data[4] & 64) else None,
+            mode=HaierTundraMode(data[7] >> 5) if bool(data[4] & 64) else None,
             temperature=temperature,
-            fan=decoded(data[5] >> 5, _FANS),
+            fan=HaierTundraFanSpeed(data[5] >> 5),
             swing_v=(data[1] & 15 == 12) if data[4] & 64 else None,
             swing_h=data[2] >> 5 == 7,
         )

@@ -20,12 +20,15 @@ class CoolixMode(IntEnum):
 
 
 class CoolixFanSpeed(IntEnum):
-    """Coolix fan speeds."""
+    """Three-bit fan codes, separate from the adjacent sensor temperature."""
 
-    AUTO = 0xB
-    LOW = 0x9
-    MEDIUM = 0x5
-    HIGH = 0x3
+    AUTO = 0x5
+    AUTO_ALT = 0x0
+    ZONE_FOLLOW = 0x6
+    FIXED = 0x7
+    LOW = 0x4
+    MEDIUM = 0x2
+    HIGH = 0x1
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -34,11 +37,10 @@ class CoolixState:
 
     power: bool | None = None
     mode: CoolixMode | None = None
-    temperature: float | None = None
+    temperature: int | None = None
     fan: CoolixFanSpeed | None = None
-    swing_v: bool | None = None
-    swing_h: bool | None = None
-    is_fahrenheit: bool = False
+    sensor_temperature: int | None = None
+    zone_follow: bool | None = None
 
 
 _TIMING = PulseTiming(560, 560, 1680)
@@ -104,19 +106,29 @@ class CoolixCommand(Command):
         *,
         mode: CoolixMode,
         temperature: int,
-        fan: CoolixFanSpeed = CoolixFanSpeed.AUTO,
+        fan: CoolixFanSpeed | None = None,
+        sensor_temperature: int | None = None,
+        zone_follow: bool = False,
     ) -> Self:
         """Build an on-state; power off and swing use separate button commands."""
         temp = temperature_value(temperature, 17, 30)
         mode_code = selection(mode, _MODES)
-        if mode in (CoolixMode.AUTO, CoolixMode.DRY):
-            if fan != CoolixFanSpeed.AUTO:
-                raise ValueError("automatic and dry modes require automatic fan")
-            fan_code = 1
-        else:
-            fan_code = selection(fan, _FANS)
+        if fan is None:
+            fan = (
+                CoolixFanSpeed.AUTO_ALT
+                if mode in (CoolixMode.AUTO, CoolixMode.DRY)
+                else CoolixFanSpeed.AUTO
+            )
+        fan_code = int(CoolixFanSpeed(fan))
         temp_code = 14 if mode == CoolixMode.FAN_ONLY else _TEMPERATURES[temp]
-        word = 0xB20F00 | fan_code << 12 | temp_code << 4 | mode_code
+        sensor = (
+            31
+            if sensor_temperature is None
+            else temperature_value(sensor_temperature, 0, 30)
+        )
+        word = 0xB20000 | fan_code << 13 | sensor << 8 | temp_code << 4 | mode_code
+        if zone_follow:
+            word |= 0x80002
         return cls(first=word, second=word)
 
     @property
@@ -125,9 +137,9 @@ class CoolixCommand(Command):
         value = self.second if self.second is not None else self.first
         if value == 0xB27BE0:
             return CoolixState(power=False)
-        if value & 0xFF0F03 != 0xB20F00:
+        if value & 0xF70001 != 0xB20000 or bool(value & 2) != bool(value & 0x80000):
             return None
-        fan_code, temp_code = value >> 12 & 15, value >> 4 & 15
+        fan_code, temp_code = value >> 13 & 7, value >> 4 & 15
         mode_code = value & 12
         mode = (
             CoolixMode.FAN_ONLY
@@ -137,14 +149,22 @@ class CoolixCommand(Command):
         if (
             temp_code not in _TEMPERATURES
             and mode != CoolixMode.FAN_ONLY
-            or fan_code not in (*_FANS.values(), 1)
+            or fan_code not in CoolixFanSpeed
         ):
             return None
         temperature = (
             None if mode == CoolixMode.FAN_ONLY else _TEMPERATURES.index(temp_code) + 17
         )
-        fan = CoolixFanSpeed.AUTO if fan_code == 1 else decoded(fan_code, _FANS)
-        return CoolixState(power=True, mode=mode, temperature=temperature, fan=fan)
+        fan = CoolixFanSpeed(fan_code)
+        sensor = value >> 8 & 31
+        return CoolixState(
+            power=True,
+            mode=mode,
+            temperature=temperature,
+            fan=fan,
+            sensor_temperature=None if sensor == 31 else sensor,
+            zone_follow=bool(value & 2),
+        )
 
 
 _MODES = {
@@ -153,11 +173,5 @@ _MODES = {
     CoolixMode.AUTO: 8,
     CoolixMode.HEAT: 12,
     CoolixMode.FAN_ONLY: 4,
-}
-_FANS = {
-    CoolixFanSpeed.AUTO: 11,
-    CoolixFanSpeed.LOW: 9,
-    CoolixFanSpeed.MEDIUM: 5,
-    CoolixFanSpeed.HIGH: 3,
 }
 _TEMPERATURES = (0, 1, 3, 2, 6, 7, 5, 4, 12, 13, 9, 8, 10, 11)

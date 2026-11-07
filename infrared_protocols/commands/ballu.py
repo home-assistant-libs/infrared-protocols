@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 
 from ._climate import ClimatePacket
-from ._climate_fields import decoded, selection, temperature_value
+from ._climate_fields import temperature_value
 from ._timing import PulseTiming
 
 
@@ -37,22 +37,6 @@ class BalluState:
     fan: BalluFanSpeed | None = None
     swing_v: bool | None = None
     swing_h: bool | None = None
-    is_fahrenheit: bool = False
-
-
-_MODES = {
-    BalluMode.AUTO: 0,
-    BalluMode.COOL: 1,
-    BalluMode.DRY: 2,
-    BalluMode.HEAT: 4,
-    BalluMode.FAN_ONLY: 6,
-}
-_FANS = {
-    BalluFanSpeed.AUTO: 5,
-    BalluFanSpeed.HIGH: 1,
-    BalluFanSpeed.MEDIUM: 2,
-    BalluFanSpeed.LOW: 3,
-}
 
 
 class BalluCommand(ClimatePacket[BalluState]):
@@ -73,7 +57,7 @@ class BalluCommand(ClimatePacket[BalluState]):
         swing_h: bool = False,
     ) -> None:
         """Build a state for 16..32 °C in whole degrees."""
-        selection(mode, _MODES)
+        int(BalluMode(mode))
         temp = temperature_value(temperature, 16, 32) + 8
         data = bytes(
             [
@@ -81,9 +65,9 @@ class BalluCommand(ClimatePacket[BalluState]):
                 temp << 3 | (0 if swing_v else 7),
                 0 if swing_h else 0xE0,
                 0,
-                selection(fan, _FANS) << 5,
+                int(BalluFanSpeed(fan)) << 5,
                 0,
-                selection(mode, _MODES) << 5 if power else 0,
+                int(BalluMode(mode)) << 5 if power else 0,
                 0,
                 0,
                 0x20 if power else 0,
@@ -103,9 +87,9 @@ class BalluCommand(ClimatePacket[BalluState]):
         temperature_value(temperature, 16, 32)
         return BalluState(
             power=bool(data[9] & 32),
-            mode=decoded(data[6] >> 5, _MODES) if bool(data[9] & 32) else None,
+            mode=BalluMode(data[6] >> 5) if bool(data[9] & 32) else None,
             temperature=temperature,
-            fan=decoded(data[4] >> 5, _FANS),
+            fan=BalluFanSpeed(data[4] >> 5),
             swing_v=data[1] & 7 == 0,
             swing_h=data[2] & 0xE0 == 0,
         )

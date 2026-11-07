@@ -23,6 +23,7 @@ class Toshiba48FanSpeed(IntEnum):
     """Toshiba48 fan speeds."""
 
     AUTO = 0xBF
+    AUTO_ALT = 0x1F
     LOW = 0x9F
     MEDIUM = 0x5F
     HIGH = 0x3F
@@ -35,11 +36,10 @@ class Toshiba48State:
 
     power: bool | None = None
     mode: Toshiba48Mode | None = None
-    temperature: float | None = None
+    temperature: int | None = None
     fan: Toshiba48FanSpeed | None = None
     swing_v: bool | None = None
-    swing_h: bool | None = None
-    is_fahrenheit: bool = False
+    is_fahrenheit: bool | None = None
 
 
 _TEMPS_C = (0x10, 0, 1, 3, 2, 6, 7, 5, 4, 12, 13, 9, 8, 10, 11)
@@ -53,13 +53,6 @@ _MODES = {
     Toshiba48Mode.AUTO: 8,
     Toshiba48Mode.HEAT: 12,
     Toshiba48Mode.FAN_ONLY: 4,
-}
-_FANS = {
-    Toshiba48FanSpeed.AUTO: 0xBF,
-    Toshiba48FanSpeed.LOW: 0x9F,
-    Toshiba48FanSpeed.MEDIUM: 0x5F,
-    Toshiba48FanSpeed.HIGH: 0x3F,
-    Toshiba48FanSpeed.QUIET: 0xFF,
 }
 
 
@@ -162,51 +155,37 @@ class ToshibaRacCommand(Toshiba48Command):
             0x7E: Toshiba48Mode.HEAT,
         }[self.first[4]]
 
-    @property
-    def is_fahrenheit(self) -> bool | None:
-        """Return the native unit flag, absent in standalone actions."""
-        _ = self.state
-        return bool(self.second[3] & 1) if self.second is not None else None
-
-    @property
-    def temperature(self) -> int | None:
-        """Return the native setpoint accepted by climate(), without conversion."""
-        _ = self.state
-        second = self.second
-        if second is None or self.state.mode == Toshiba48Mode.FAN_ONLY:
-            return None
-        value = (self.first[4] >> 4) | (second[2] & 32) | (second[3] & 16)
-        return (
-            _TEMPS_F.index(value) + 60
-            if self.is_fahrenheit
-            else _TEMPS_C.index(value) + 16
-        )
-
     @classmethod
     def climate(
         cls,
         *,
         mode: Toshiba48Mode,
         temperature: int,
-        fan: Toshiba48FanSpeed = Toshiba48FanSpeed.AUTO,
+        fan: Toshiba48FanSpeed | None = None,
         is_fahrenheit: bool = False,
     ) -> Self:
         """Build an on-state, using 16..30 °C or 60..86 °F."""
         index = temperature_value(
             temperature, 60 if is_fahrenheit else 16, 86 if is_fahrenheit else 30
         )
+        auto = mode in (Toshiba48Mode.AUTO, Toshiba48Mode.DRY)
+        if fan is None:
+            fan = Toshiba48FanSpeed.AUTO_ALT if auto else Toshiba48FanSpeed.AUTO
         fan2_codes = {
             Toshiba48FanSpeed.AUTO: 0x66,
+            Toshiba48FanSpeed.AUTO_ALT: 0x65,
             Toshiba48FanSpeed.LOW: 0x28,
             Toshiba48FanSpeed.MEDIUM: 0x3C,
             Toshiba48FanSpeed.HIGH: 0x64,
         }
         fan2 = selection(fan, fan2_codes)
-        fan1 = selection(fan, _FANS)
+        fan1 = int(Toshiba48FanSpeed(fan))
         if mode in (Toshiba48Mode.AUTO, Toshiba48Mode.DRY):
-            if fan != Toshiba48FanSpeed.AUTO:
+            if fan != Toshiba48FanSpeed.AUTO_ALT:
                 raise ValueError("automatic and dry modes require automatic fan")
             fan1, fan2 = 0x1F, 0x65
+        elif fan == Toshiba48FanSpeed.AUTO_ALT:
+            raise ValueError("RAC alternate automatic fan requires auto or dry mode")
         temp = (
             14
             if mode == Toshiba48Mode.FAN_ONLY
@@ -278,7 +257,7 @@ class ToshibaRacCommand(Toshiba48Command):
             else decoded(first[4] & 15, _MODES)
         )
         auto = mode in (Toshiba48Mode.AUTO, Toshiba48Mode.DRY)
-        fan = Toshiba48FanSpeed.AUTO if auto else decoded(first[2], _FANS)
+        fan = Toshiba48FanSpeed.AUTO_ALT if auto else Toshiba48FanSpeed(first[2])
         expected2 = (
             0x65
             if auto
@@ -295,7 +274,7 @@ class ToshibaRacCommand(Toshiba48Command):
         if second[1] != expected2 or auto and first[2] != 0x1F:
             raise ValueError("inconsistent RAC fan fields")
         temp = (first[4] >> 4) | (second[2] & 32) | (second[3] & 16)
-        temperature: float | None = None
+        temperature: int | None = None
         if mode != Toshiba48Mode.FAN_ONLY:
             if second[3] & 1:
                 temperature = _TEMPS_F.index(temp) + 60
@@ -319,25 +298,29 @@ class ToshibaRas2819Command(Toshiba48Command):
         *,
         mode: Toshiba48Mode,
         temperature: int,
-        fan: Toshiba48FanSpeed = Toshiba48FanSpeed.AUTO,
+        fan: Toshiba48FanSpeed | None = None,
     ) -> Self:
         """Build an 18..30 °C state; automatic/dry modes use automatic fan."""
         index = temperature_value(temperature, 18, 30)
         auto = mode in (Toshiba48Mode.AUTO, Toshiba48Mode.DRY)
-        if auto and fan != Toshiba48FanSpeed.AUTO:
+        if fan is None:
+            fan = Toshiba48FanSpeed.AUTO_ALT if auto else Toshiba48FanSpeed.AUTO
+        if auto and fan != Toshiba48FanSpeed.AUTO_ALT:
             raise ValueError("automatic and dry modes require automatic fan")
+        if mode == Toshiba48Mode.FAN_ONLY and fan == Toshiba48FanSpeed.AUTO_ALT:
+            raise ValueError("alternate automatic fan is ambiguous with dry mode")
         temp = _TEMPS_C[index + 2] << 4
         temp |= selection(mode, _MODES)
         if mode == Toshiba48Mode.DRY:
             temp |= 0x20
         elif mode == Toshiba48Mode.FAN_ONLY:
             temp = 0xE4
-        first = _paired((0xC2, 0x1F if auto else selection(fan, _FANS), temp))
+        first = _paired((0xC2, 0x1F if auto else int(Toshiba48FanSpeed(fan)), temp))
         return cls(first=first, second=cls._extension(mode, fan))
 
     @staticmethod
     def _extension(mode: Toshiba48Mode, fan: Toshiba48FanSpeed) -> bytes:
-        if mode in (Toshiba48Mode.AUTO, Toshiba48Mode.DRY):
+        if fan == Toshiba48FanSpeed.AUTO_ALT:
             return bytes([0xD5, 0x65, 0, 0, 0, 0x3A])
         fan_code = selection(
             fan,
@@ -413,12 +396,10 @@ class ToshibaRas2819Command(Toshiba48Command):
             if first[4] == 0xE4 and first[2] != 0x1F
             else decoded(first[4] & 15, _MODES)
         )
-        fan = Toshiba48FanSpeed.AUTO if first[2] == 0x1F else decoded(first[2], _FANS)
+        fan = Toshiba48FanSpeed(first[2])
         if mode in (Toshiba48Mode.AUTO, Toshiba48Mode.DRY) and first[2] != 0x1F:
             raise ValueError("RAS-2819T auto and dry require automatic fan")
-        expected = self._extension(
-            Toshiba48Mode.AUTO if first[2] == 0x1F else mode, fan
-        )
+        expected = self._extension(mode, fan)
         if second != expected:
             raise ValueError("inconsistent RAS-2819T extension")
         candidates = self._temperature_candidates()

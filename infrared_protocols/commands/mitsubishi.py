@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import IntEnum, StrEnum
 
 from ._climate import ClimatePacket
-from ._climate_fields import decoded, selection, temperature_value
+from ._climate_fields import temperature_value
 from ._timing import PulseTiming
 
 
@@ -18,7 +18,7 @@ class MitsubishiMode(IntEnum):
     FAN_ONLY = 0x38
 
 
-class MitsubishiFan(IntEnum):
+class MitsubishiFanSpeed(IntEnum):
     """Native levels; three-speed units use 1/2/3, four-speed units 1/2/3/4."""
 
     AUTO = 0
@@ -36,19 +36,9 @@ class MitsubishiState:
     power: bool | None = None
     mode: MitsubishiMode | None = None
     temperature: float | None = None
-    fan: MitsubishiFan | None = None
+    fan: MitsubishiFanSpeed | None = None
     swing_v: bool | None = None
     swing_h: bool | None = None
-    is_fahrenheit: bool = False
-
-
-_MODES = {
-    MitsubishiMode.HEAT: 8,
-    MitsubishiMode.DRY: 16,
-    MitsubishiMode.COOL: 24,
-    MitsubishiMode.AUTO: 32,
-    MitsubishiMode.FAN_ONLY: 56,
-}
 
 
 class MitsubishiPreset(StrEnum):
@@ -75,8 +65,8 @@ class MitsubishiCommand(ClimatePacket[MitsubishiState]):
         mode: MitsubishiMode,
         temperature: float,
         power: bool = True,
-        is_fahrenheit: bool = False,
-        fan: MitsubishiFan = MitsubishiFan.AUTO,
+        fahrenheit_compatibility: bool = False,
+        fan: MitsubishiFanSpeed = MitsubishiFanSpeed.AUTO,
         swing_v: bool = False,
         swing_h: bool = False,
         vertical_position: int = 0,
@@ -88,10 +78,10 @@ class MitsubishiCommand(ClimatePacket[MitsubishiState]):
 
         Vertical positions are 0 (auto) through 5 (down). Horizontal positions
         are 1..5 (left to right) or 8 (split). Dry mode sends 24 °C.
-        With is_fahrenheit=True, temperature is 61..88 °F and uses the remote's
-        lookup table. Decoded state reports the corresponding wire Celsius value.
+        With fahrenheit_compatibility=True, temperature is 61..88 °F and uses
+        the remote's lookup table. Decoded state reports the wire Celsius value.
         """
-        if is_fahrenheit:
+        if fahrenheit_compatibility:
             temperature_value(temperature, 61, 88)
             codes = (
                 0x00, 0x10, 0x01, 0x11, 0x02, 0x12, 0x03, 0x04,
@@ -112,12 +102,14 @@ class MitsubishiCommand(ClimatePacket[MitsubishiState]):
             8,
         ):
             raise ValueError("invalid Mitsubishi vane position")
-        mode_code = selection(mode, _MODES)
+        mode_code = int(MitsubishiMode(mode))
         effective_temp = 24 if mode == MitsubishiMode.DRY else temperature
         temp_code = int(effective_temp) - 16 | (16 if effective_temp % 1 else 0)
         mode_aux = {MitsubishiMode.HEAT: 0, MitsubishiMode.DRY: 2}.get(mode, 6)
         vane_fan = (
-            int(MitsubishiFan(fan)) | ((7 if swing_v else vertical_position) << 3) | 64
+            int(MitsubishiFanSpeed(fan))
+            | ((7 if swing_v else vertical_position) << 3)
+            | 64
         )
         preset = MitsubishiPreset(preset)
         eco, boost = 0, 0
@@ -150,21 +142,6 @@ class MitsubishiCommand(ClimatePacket[MitsubishiState]):
             ]
         )
         super().__init__(data=data + bytes([self.checksum(data)]))
-
-    @property
-    def is_fahrenheit(self) -> bool:
-        """The packet carries Celsius; Fahrenheit input is converted before encoding."""
-        return False
-
-    @property
-    def temperature(self) -> float | None:
-        """Return the wire Celsius set point, excluding the dry-mode placeholder."""
-        return self.state.temperature
-
-    @property
-    def fan(self) -> MitsubishiFan:
-        """Return the native fan level without assuming a unit's speed count."""
-        return MitsubishiFan(self.data[9] & 7)
 
     @property
     def preset(self) -> MitsubishiPreset:
@@ -200,8 +177,8 @@ class MitsubishiCommand(ClimatePacket[MitsubishiState]):
             raise ValueError("invalid Mitsubishi signature")
         temperature = 16 + (data[7] & 15) + (0.5 if data[7] & 16 else 0)
         temperature_value(temperature, 16, 31.5, 0.5)
-        fan = MitsubishiFan(data[9] & 7)
-        mode = decoded(data[6] & 0x38, _MODES)
+        fan = MitsubishiFanSpeed(data[9] & 7)
+        mode = MitsubishiMode(data[6] & 0x38)
         return MitsubishiState(
             power=bool(data[5] & 32),
             mode=mode,

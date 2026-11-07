@@ -2,9 +2,11 @@
 
 import pytest
 
+from infrared_protocols.commands._climate import ClimatePacket
 from infrared_protocols.commands.airton import (
     AirtonCommand,
     AirtonDirection,
+    AirtonFanSpeed,
     AirtonMode,
 )
 
@@ -67,3 +69,47 @@ def test_auto_temperature(power: bool, expected: int | None) -> None:
     assert received is not None
     assert received.state.power is power
     assert received.state.temperature == expected
+
+
+@pytest.mark.parametrize(
+    "fan,packet",
+    [
+        pytest.param(AirtonFanSpeed.LEVEL_2, "d311290800c48a", id="level-2"),
+        pytest.param(AirtonFanSpeed.LEVEL_4, "d311490800c4aa", id="level-4"),
+    ],
+)
+def test_native_intermediate_fan(fan: AirtonFanSpeed, packet: str) -> None:
+    """Decoding and rebuilding must preserve intermediate handheld fan levels."""
+    command = AirtonCommand(mode=AirtonMode.COOL, temperature=24, fan=fan)
+    assert command.data == bytes.fromhex(packet)
+    received = AirtonCommand.from_raw_timings(command.get_raw_timings())
+    assert received is not None
+    state = received.state
+    assert state.fan is fan
+    assert state.fan is not None
+    rebuilt = AirtonCommand(mode=AirtonMode.COOL, temperature=24, fan=state.fan)
+    assert rebuilt.data == received.data
+
+
+@pytest.mark.parametrize(
+    "packet,turbo,economy,health",
+    [
+        pytest.param("d311090800842a", False, False, False, id="False-False-False"),
+        pytest.param("d31189080084aa", True, False, False, id="True-False-False"),
+        pytest.param("d3110908008529", False, True, False, id="False-True-False"),
+        pytest.param("d311090800c4ea", False, False, True, id="False-False-True"),
+        pytest.param("d311890800c569", True, True, True, id="True-True-True"),
+    ],
+)
+def test_native_auxiliary_bits(
+    packet: str, turbo: bool, economy: bool, health: bool
+) -> None:
+    """Independent auxiliary bits remain available on received handheld packets."""
+    sent = AirtonCommand.__new__(AirtonCommand)
+    ClimatePacket.__init__(sent, data=bytes.fromhex(packet))
+    received = AirtonCommand.from_raw_timings(sent.get_raw_timings())
+    assert received is not None
+    assert received.data == bytes.fromhex(packet)
+    assert received.turbo is turbo
+    assert received.economy is economy
+    assert received.health is health

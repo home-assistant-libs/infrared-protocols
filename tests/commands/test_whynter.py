@@ -22,7 +22,6 @@ def test_whynter_native_units(temperature: int, is_fahrenheit: bool) -> None:
     )
     received = WhynterCommand.from_raw_timings(sent.get_raw_timings())
     assert received is not None
-    assert received.is_fahrenheit is is_fahrenheit
-    assert received.temperature == temperature
+    assert received.state.is_fahrenheit is is_fahrenheit
     assert received.state.temperature == temperature
     assert received.state.is_fahrenheit is is_fahrenheit

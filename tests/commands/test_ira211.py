@@ -6,17 +6,17 @@ from infrared_protocols.commands._timing import bits, runs
 from infrared_protocols.commands.ira211 import (
     Ira211Action,
     Ira211Command,
-    Ira211Fan,
+    Ira211FanSpeed,
     Ira211Mode,
 )
 
 
 def test_ira211_partial_state() -> None:
     """A fan action contains no mode or temperature."""
-    sent = Ira211Command(action=Ira211Action.FAN, fan=Ira211Fan.HIGH)
+    sent = Ira211Command(action=Ira211Action.FAN, fan=Ira211FanSpeed.HIGH)
     received = Ira211Command.from_raw_timings(sent.get_raw_timings())
     assert received is not None
-    assert received.fan == Ira211Fan.HIGH
+    assert received.fan == Ira211FanSpeed.HIGH
     assert received.mode is None
     assert received.temperature is None
 
@@ -41,7 +41,7 @@ def test_ira211_actions(action: Ira211Action, temperature: float) -> None:
         action=action,
         temperature=temperature,
         mode=Ira211Mode.TIMER,
-        fan=Ira211Fan.HIGH,
+        fan=Ira211FanSpeed.HIGH,
     )
     decoded = Ira211Command.from_raw_timings(command.get_raw_timings())
     assert decoded is not None

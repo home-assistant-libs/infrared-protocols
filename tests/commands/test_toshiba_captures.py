@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from infrared_protocols.commands.toshiba import (
-    ToshibaFan,
+    ToshibaFanSpeed,
     ToshibaMode,
     ToshibaPowerSelection,
     ToshibaPreset,
@@ -22,13 +22,13 @@ _CASES = [
         ToshibaRas25j2kvsgNdCommand.climate(
             mode=ToshibaMode[case["mode"].upper()],
             temperature=case["temperature"],
-            fan=ToshibaFan(case["fan"]),
+            fan=ToshibaFanSpeed(case["fan"]),
             preset=ToshibaPreset(case["preset"]),
             power_selection=ToshibaPowerSelection(case["power_selection"]),
         ),
         ToshibaMode[case["mode"].upper()],
         case["temperature"],
-        ToshibaFan(case["fan"]),
+        ToshibaFanSpeed(case["fan"]),
         ToshibaPreset(case["preset"]),
         ToshibaPowerSelection(case["power_selection"]),
         id=f"{case['mode']}-{case['temperature']}-fan{case['fan']}-{case['preset']}-power{case['power_selection']}",
@@ -43,7 +43,7 @@ def test_handheld_state(
     command: ToshibaRas25j2kvsgNdCommand,
     mode: ToshibaMode,
     temperature: int | None,
-    fan: ToshibaFan,
+    fan: ToshibaFanSpeed,
     preset: ToshibaPreset,
     power: ToshibaPowerSelection,
 ) -> None:
@@ -55,6 +55,6 @@ def test_handheld_state(
     assert received is not None
     assert received.state.mode == mode
     assert received.state.temperature == temperature
-    assert received.fan == fan
+    assert received.state.fan == fan
     assert received.preset == preset
     assert received.power_selection == power

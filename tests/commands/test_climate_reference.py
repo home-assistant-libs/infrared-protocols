@@ -47,11 +47,12 @@ from infrared_protocols.commands.friedrich import (
     FriedrichUtilityCommand,
 )
 from infrared_protocols.commands.gree_models import (
+    GreeAcFanSpeed,
+    GreeAcMode,
     GreeFeature,
     GreeModel,
     GreeModelCommand,
-    GreeModelFanSpeed,
-    GreeModelMode,
+    GreeYx1ffFanSpeed,
 )
 from infrared_protocols.commands.haier_tundra import (
     HaierTundraCommand,
@@ -77,7 +78,7 @@ from infrared_protocols.commands.mistral import (
 )
 from infrared_protocols.commands.mitsubishi import (
     MitsubishiCommand,
-    MitsubishiFan,
+    MitsubishiFanSpeed,
     MitsubishiMode,
     MitsubishiPreset,
 )
@@ -95,7 +96,7 @@ from infrared_protocols.commands.remko_ar715 import (
 from infrared_protocols.commands.tcl112 import Tcl112Command, Tcl112FanSpeed, Tcl112Mode
 from infrared_protocols.commands.toshiba import (
     ToshibaCommand,
-    ToshibaFan,
+    ToshibaFanSpeed,
     ToshibaMode,
     ToshibaMotion,
     ToshibaPowerSelection,
@@ -124,13 +125,12 @@ from infrared_protocols.commands.whynter import (
     WhynterMode,
 )
 from infrared_protocols.commands.zhlt01 import Zhlt01Command, Zhlt01FanSpeed, Zhlt01Mode
-from tests.climate_reference import ClimateFan, ClimateMode, ClimateState
 
 
 @dataclass(frozen=True, kw_only=True)
 class _Arguments:
-    mode: ClimateMode = ClimateMode.COOL
-    fan: ClimateFan = ClimateFan.AUTO
+    mode: str = "COOL"
+    fan: str = "AUTO"
     temperature: float = 24
     power: bool = True
     swing_v: bool = False
@@ -145,6 +145,7 @@ class _Arguments:
     power_toggle: bool = False
     off_command: bool = False
     is_fahrenheit: bool = False
+    fahrenheit_compatibility: bool = False
     model: GreeModel = GreeModel.GENERIC
     blade: int = 0
     enabled: bool = False
@@ -188,21 +189,6 @@ class _State(Protocol):
         """Return the decoded fan."""
         ...
 
-    @property
-    def swing_v(self) -> bool | None:
-        """Return the decoded swing_v."""
-        ...
-
-    @property
-    def swing_h(self) -> bool | None:
-        """Return the decoded swing_h."""
-        ...
-
-    @property
-    def is_fahrenheit(self) -> bool:
-        """Return the decoded is_fahrenheit."""
-        ...
-
 
 class _ClimateCommand(Protocol):
     """The state projection shared by the reference-tested climate commands."""
@@ -227,9 +213,9 @@ class _Factory(NamedTuple):
 _FACTORIES: dict[str, _Factory] = {
     "ToshibaRas25j2kvsgNdCommand.climate": _Factory(
         lambda a: ToshibaRas25j2kvsgNdCommand.climate(
-            mode=ToshibaMode[a.mode.name],
+            mode=ToshibaMode[a.mode],
             temperature=int(a.temperature),
-            fan=ToshibaFan[a.fan.name],
+            fan=ToshibaFanSpeed[a.fan],
             power=a.power,
             preset=ToshibaPreset(a.preset),
             power_selection=ToshibaPowerSelection(a.power_selection),
@@ -242,7 +228,7 @@ _FACTORIES: dict[str, _Factory] = {
     ),
     "ToshibaRacCommand.comfort_sense": _Factory(
         lambda a: ToshibaRacCommand.comfort_sense(
-            mode=Toshiba48Mode[a.mode.name],
+            mode=Toshiba48Mode[a.mode],
             temperature=int(a.temperature),
             enabled=a.enabled,
             send_temperature=a.send_temperature,
@@ -259,10 +245,10 @@ _FACTORIES: dict[str, _Factory] = {
     ),
     "BalluCommand": _Factory(
         lambda a: BalluCommand(
-            mode=BalluMode[a.mode.name],
+            mode=BalluMode[a.mode],
             temperature=a.temperature,
             power=a.power,
-            fan=BalluFanSpeed[a.fan.name],
+            fan=BalluFanSpeed[a.fan],
             swing_v=a.swing_v,
             swing_h=a.swing_h,
         ),
@@ -270,29 +256,29 @@ _FACTORIES: dict[str, _Factory] = {
     ),
     "DelonghiCommand": _Factory(
         lambda a: DelonghiCommand(
-            mode=DelonghiMode[a.mode.name],
+            mode=DelonghiMode[a.mode],
             temperature=a.temperature,
             power=a.power,
-            fan=DelonghiFanSpeed[a.fan.name],
+            fan=DelonghiFanSpeed[a.fan],
         ),
         DelonghiCommand.from_raw_timings,
     ),
     "Tcl112Command": _Factory(
         lambda a: Tcl112Command(
-            mode=Tcl112Mode[a.mode.name],
+            mode=Tcl112Mode[a.mode],
             temperature=a.temperature,
             power=a.power,
-            fan=Tcl112FanSpeed[a.fan.name],
+            fan=Tcl112FanSpeed[a.fan],
             swing_v=a.swing_v,
         ),
         Tcl112Command.from_raw_timings,
     ),
     "Zhlt01Command": _Factory(
         lambda a: Zhlt01Command(
-            mode=Zhlt01Mode[a.mode.name],
+            mode=Zhlt01Mode[a.mode],
             temperature=a.temperature,
             power=a.power,
-            fan=Zhlt01FanSpeed[a.fan.name],
+            fan=Zhlt01FanSpeed[a.fan],
             swing_v=a.swing_v,
             swing_h=a.swing_h,
             boost=a.boost,
@@ -301,54 +287,48 @@ _FACTORIES: dict[str, _Factory] = {
     ),
     "WhynterCommand": _Factory(
         lambda a: WhynterCommand(
-            mode=WhynterMode[a.mode.name],
+            mode=WhynterMode[a.mode],
             temperature=int(a.temperature),
             power=a.power,
-            fan=WhynterFanSpeed[a.fan.name],
+            fan=WhynterFanSpeed[a.fan],
             is_fahrenheit=a.is_fahrenheit,
         ),
         WhynterCommand.from_raw_timings,
     ),
     "RemkoAr715Command": _Factory(
         lambda a: RemkoAr715Command(
-            mode=RemkoAr715Mode[a.mode.name],
+            mode=RemkoAr715Mode[a.mode],
             temperature=int(a.temperature),
             power=a.power,
-            fan=RemkoAr715FanSpeed[a.fan.name],
+            fan=RemkoAr715FanSpeed[a.fan],
             swing_v=a.swing_v,
         ),
         RemkoAr715Command.from_raw_timings,
     ),
     "IslandaireCommand": _Factory(
         lambda a: IslandaireCommand(
-            mode=IslandaireMode[a.mode.name],
+            mode=IslandaireMode[a.mode],
             temperature=int(a.temperature),
             power=a.power,
-            fan=IslandaireFanSpeed[a.fan.name],
+            fan=IslandaireFanSpeed[a.fan],
         ),
         IslandaireCommand.from_raw_timings,
     ),
     "MistralCommand": _Factory(
         lambda a: MistralCommand(
-            mode=MistralMode[a.mode.name],
+            mode=MistralMode[a.mode],
             temperature=a.temperature,
             power=a.power,
-            fan=MistralFanSpeed[a.fan.name],
+            fan=MistralFanSpeed[a.fan],
         ),
         MistralCommand.from_raw_timings,
     ),
     "DaikinArcCommand": _Factory(
         lambda a: DaikinArcCommand(
-            mode=DaikinAcMode[a.mode.name],
+            mode=DaikinAcMode[a.mode],
             temperature=a.temperature,
             power=a.power,
-            fan={
-                ClimateFan.LOW: DaikinAcFanSpeed.LEVEL_1,
-                ClimateFan.MEDIUM: DaikinAcFanSpeed.LEVEL_3,
-                ClimateFan.HIGH: DaikinAcFanSpeed.LEVEL_5,
-                ClimateFan.QUIET: DaikinAcFanSpeed.SILENT,
-                ClimateFan.AUTO: DaikinAcFanSpeed.AUTO,
-            }[a.fan],
+            fan=DaikinAcFanSpeed[a.fan],
             swing_v=a.swing_v,
             swing_h=a.swing_h,
             humidity=DaikinHumidity(a.humidity),
@@ -359,10 +339,10 @@ _FACTORIES: dict[str, _Factory] = {
     "DaikinBrcCommand": _Factory(
         lambda a: DaikinBrcCommand(
             is_fahrenheit=a.is_fahrenheit,
-            mode=DaikinBrcMode[a.mode.name],
+            mode=DaikinBrcMode[a.mode],
             temperature=int(a.temperature),
             power=a.power,
-            fan=DaikinBrcFanSpeed[a.fan.name],
+            fan=DaikinBrcFanSpeed[a.fan],
             swing=a.swing,
             sub_unit=a.sub_unit,
             mode_button=a.mode_button,
@@ -371,10 +351,10 @@ _FACTORIES: dict[str, _Factory] = {
     ),
     "HaierTundraCommand": _Factory(
         lambda a: HaierTundraCommand(
-            mode=HaierTundraMode[a.mode.name],
+            mode=HaierTundraMode[a.mode],
             temperature=a.temperature,
             power=a.power,
-            fan=HaierTundraFanSpeed[a.fan.name],
+            fan=HaierTundraFanSpeed[a.fan],
             swing_v=a.swing_v,
             swing_h=a.swing_h,
         ),
@@ -382,10 +362,10 @@ _FACTORIES: dict[str, _Factory] = {
     ),
     "AirtonCommand": _Factory(
         lambda a: AirtonCommand(
-            mode=AirtonMode[a.mode.name],
+            mode=AirtonMode[a.mode],
             temperature=a.temperature,
             power=a.power,
-            fan=AirtonFanSpeed[a.fan.name],
+            fan=AirtonFanSpeed[a.fan],
             direction=AirtonDirection(a.direction),
             display=a.display,
             sleep=a.sleep,
@@ -394,9 +374,9 @@ _FACTORIES: dict[str, _Factory] = {
     ),
     "FriedrichCommand": _Factory(
         lambda a: FriedrichCommand(
-            mode=FriedrichMode[a.mode.name],
+            mode=FriedrichMode[a.mode],
             temperature=int(a.temperature),
-            fan=FriedrichFanSpeed[a.fan.name],
+            fan=FriedrichFanSpeed[a.fan],
             swing_v=a.swing_v,
         ),
         FriedrichCommand.from_raw_timings,
@@ -407,12 +387,12 @@ _FACTORIES: dict[str, _Factory] = {
     ),
     "MitsubishiCommand": _Factory(
         lambda a: MitsubishiCommand(
-            mode=MitsubishiMode[a.mode.name],
+            mode=MitsubishiMode[a.mode],
             temperature=a.temperature,
             power=a.power,
-            fan=MitsubishiFan(a.native_fan),
+            fan=MitsubishiFanSpeed[a.fan],
             preset=MitsubishiPreset(a.preset),
-            is_fahrenheit=a.is_fahrenheit,
+            fahrenheit_compatibility=a.fahrenheit_compatibility,
             vertical_position=a.vertical_position,
             horizontal_position=a.horizontal_position,
             dual_vanes=a.dual_vanes,
@@ -423,9 +403,9 @@ _FACTORIES: dict[str, _Factory] = {
     ),
     "WhirlpoolCommand": _Factory(
         lambda a: WhirlpoolCommand(
-            mode=WhirlpoolMode[a.mode.name],
+            mode=WhirlpoolMode[a.mode],
             temperature=int(a.temperature),
-            fan=WhirlpoolFanSpeed[a.fan.name],
+            fan=WhirlpoolFanSpeed[a.fan],
             power_toggle=a.power_toggle,
             off_command=a.off_command,
             swing_toggle=a.swing_toggle,
@@ -434,10 +414,10 @@ _FACTORIES: dict[str, _Factory] = {
     ),
     "HitachiAc344Command": _Factory(
         lambda a: HitachiAc344Command(
-            mode=HitachiMode[a.mode.name],
+            mode=HitachiMode[a.mode],
             temperature=int(a.temperature),
             power=a.power,
-            fan=HitachiFanSpeed[a.fan.name],
+            fan=HitachiFanSpeed[a.fan],
             swing_v=a.swing_v,
             horizontal_position=a.horizontal_position,
             button=HitachiButton(a.button),
@@ -446,10 +426,10 @@ _FACTORIES: dict[str, _Factory] = {
     ),
     "HitachiAc424Command": _Factory(
         lambda a: HitachiAc424Command(
-            mode=HitachiMode[a.mode.name],
+            mode=HitachiMode[a.mode],
             temperature=int(a.temperature),
             power=a.power,
-            fan=HitachiFanSpeed[a.fan.name],
+            fan=HitachiFanSpeed[a.fan],
             swing_v=a.swing_v,
             horizontal_position=a.horizontal_position,
         ),
@@ -457,30 +437,30 @@ _FACTORIES: dict[str, _Factory] = {
     ),
     "NoblexCommand": _Factory(
         lambda a: NoblexCommand(
-            mode=NoblexMode[a.mode.name],
+            mode=NoblexMode[a.mode],
             temperature=int(a.temperature),
             power=a.power,
-            fan=NoblexFanSpeed[a.fan.name],
+            fan=NoblexFanSpeed[a.fan],
             swing_v=a.swing_v,
         ),
         NoblexCommand.from_raw_timings,
     ),
     "EmmetiCommand": _Factory(
         lambda a: EmmetiCommand(
-            mode=EmmetiMode[a.mode.name],
+            mode=EmmetiMode[a.mode],
             temperature=int(a.temperature),
             power=a.power,
-            fan=EmmetiFanSpeed[a.fan.name],
+            fan=EmmetiFanSpeed[a.fan],
             blade=EmmetiBlade(a.blade),
         ),
         EmmetiCommand.from_raw_timings,
     ),
     "PdPioneerClimateCommand": _Factory(
         lambda a: PdPioneerClimateCommand(
-            mode=PdPioneerClimateMode[a.mode.name],
+            mode=PdPioneerClimateMode[a.mode],
             temperature=a.temperature,
             power=a.power,
-            fan=PdPioneerClimateFanSpeed[a.fan.name],
+            fan=PdPioneerClimateFanSpeed[a.fan],
             swing_v=a.swing_v,
             swing_h=a.swing_h,
             economy=a.economy,
@@ -489,46 +469,46 @@ _FACTORIES: dict[str, _Factory] = {
     ),
     "ToshibaCommand.climate": _Factory(
         lambda a: ToshibaCommand.climate(
-            mode=ToshibaMode[a.mode.name],
+            mode=ToshibaMode[a.mode],
             temperature=int(a.temperature),
             power=a.power,
-            fan=ToshibaFan[a.fan.name],
+            fan=ToshibaFanSpeed[a.fan],
         ),
         ToshibaCommand.from_raw_timings,
     ),
     "ToshibaRasB10n3kv2Command.climate": _Factory(
         lambda a: ToshibaRasB10n3kv2Command.climate(
-            mode=ToshibaMode[a.mode.name],
+            mode=ToshibaMode[a.mode],
             temperature=int(a.temperature),
             power=a.power,
-            fan=ToshibaFan[a.fan.name],
+            fan=ToshibaFanSpeed[a.fan],
         ),
         ToshibaRasB10n3kv2Command.from_raw_timings,
     ),
     "ToshibaSeiyaCommand.climate": _Factory(
         lambda a: ToshibaSeiyaCommand.climate(
-            mode=ToshibaMode[a.mode.name],
+            mode=ToshibaMode[a.mode],
             temperature=int(a.temperature),
             power=a.power,
-            fan=ToshibaFan[a.fan.name],
+            fan=ToshibaFanSpeed[a.fan],
             swing=ToshibaSeiyaSwing(a.swing_code),
         ),
         ToshibaSeiyaCommand.from_raw_timings,
     ),
     "ToshibaRacCommand.climate": _Factory(
         lambda a: ToshibaRacCommand.climate(
-            mode=Toshiba48Mode[a.mode.name],
+            mode=Toshiba48Mode[a.mode],
             temperature=int(a.temperature),
-            fan=Toshiba48FanSpeed[a.fan.name],
+            fan=Toshiba48FanSpeed[a.fan],
             is_fahrenheit=a.is_fahrenheit,
         ),
         ToshibaRacCommand.from_raw_timings,
     ),
     "ToshibaRas2819Command.climate": _Factory(
         lambda a: ToshibaRas2819Command.climate(
-            mode=Toshiba48Mode[a.mode.name],
+            mode=Toshiba48Mode[a.mode],
             temperature=int(a.temperature),
-            fan=Toshiba48FanSpeed[a.fan.name],
+            fan=Toshiba48FanSpeed[a.fan],
         ),
         ToshibaRas2819Command.from_raw_timings,
     ),
@@ -543,13 +523,14 @@ _FACTORIES: dict[str, _Factory] = {
 
 
 def _gree_factory(model: GreeModel) -> _Factory:
+    fan_type = GreeYx1ffFanSpeed if model == GreeModel.YX1FF else GreeAcFanSpeed
     return _Factory(
         lambda a: GreeModelCommand(
             model=model,
-            mode=GreeModelMode[a.mode.name],
+            mode=GreeAcMode[a.mode],
             temperature=a.temperature,
             power=a.power,
-            fan=GreeModelFanSpeed[a.fan.name],
+            fan=fan_type[a.fan],
             swing_v=a.swing_v,
             swing_h=a.swing_h,
             is_fahrenheit=a.is_fahrenheit,
@@ -563,9 +544,9 @@ def _gree_factory(model: GreeModel) -> _Factory:
 def _whirlpool_factory(cls: type[WhirlpoolCommand]) -> _Factory:
     return _Factory(
         lambda a: cls(
-            mode=WhirlpoolMode[a.mode.name],
+            mode=WhirlpoolMode[a.mode],
             temperature=int(a.temperature),
-            fan=WhirlpoolFanSpeed[a.fan.name],
+            fan=WhirlpoolFanSpeed[a.fan],
             power_toggle=a.power_toggle,
             off_command=a.off_command,
             swing_toggle=a.swing_toggle,
@@ -587,7 +568,7 @@ class _Case(NamedTuple):
     command: _ClimateCommand
     decoder: Callable[[list[int]], _ClimateCommand | None]
     timings: list[int]
-    expected_state: ClimateState
+    expected_state: dict[str, object]
 
 
 _CORPUS = json.loads(
@@ -598,10 +579,7 @@ _IDS: list[str] = []
 for _case in _CORPUS["cases"]:
     _raw_args = _case["arguments"].copy()
     _args = _Arguments(
-        mode=ClimateMode(_raw_args.pop("mode", "cool")),
-        fan=ClimateFan(_raw_args.pop("fan", "auto")),
         model=GreeModel(_raw_args.pop("model", "generic")),
-        is_fahrenheit=_raw_args.pop("fahrenheit", False),
         **_raw_args,
     )
     _tag = _case["factory"]
@@ -611,33 +589,17 @@ for _case in _CORPUS["cases"]:
             _factory.build(_args),
             _factory.decode,
             [_case["palette"][int(c, 36)] for c in _case["timings"]],
-            ClimateState(**_case["expected_state"]),
+            _case["expected_state"],
         )
     )
     _IDS.append(_case["key"])
 
 
-def _assert_reference_state(state: _State, expected: ClimateState) -> None:
-    """Compare native state with the corpus's Celsius and named-mode projection."""
-    assert state.power is expected.power
-    assert (
-        state.mode.name.lower() if state.mode is not None else None
-    ) == expected.mode
-    # The corpus describes temperatures in Celsius and selected native fan codes.
-    temperature = state.temperature
-    if temperature is not None and state.is_fahrenheit:
-        temperature = (temperature - 32) * 5 / 9
-    assert (
-        temperature == pytest.approx(expected.temperature)
-        if expected.temperature is not None
-        else temperature is None
-    )
-    fan = state.fan
-    assert (
-        fan.name.lower() if fan is not None and isinstance(expected.fan, str) else fan
-    ) == expected.fan
-    assert state.swing_v is expected.swing_v
-    assert state.swing_h is expected.swing_h
+def _assert_reference_state(state: _State, expected: dict[str, object]) -> None:
+    """Compare exactly the fields and native enum names exposed by this family."""
+    assert {
+        name: getattr(value, "name", value) for name, value in vars(state).items()
+    } == expected
 
 
 @pytest.mark.parametrize("case", _CASES, ids=_IDS)
@@ -659,7 +621,7 @@ def test_climate_reference(case: _Case) -> None:
 _FRAMING = {}
 for _case, _id in zip(_CASES, _IDS, strict=True):
     _FRAMING.setdefault(
-        (_case.decoder, len(_case.timings), _case.expected_state.power), (_case, _id)
+        (_case.decoder, len(_case.timings), _case.expected_state["power"]), (_case, _id)
     )
 _FRAME_CASES = [entry[0] for entry in _FRAMING.values()]
 _FRAME_IDS = [entry[1] for entry in _FRAMING.values()]

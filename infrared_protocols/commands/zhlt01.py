@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 
 from ._climate import ClimatePacket
-from ._climate_fields import decoded, selection, temperature_value
+from ._climate_fields import temperature_value
 from ._timing import PulseTiming
 
 
@@ -38,23 +38,6 @@ class Zhlt01State:
     fan: Zhlt01FanSpeed | None = None
     swing_v: bool | None = None
     swing_h: bool | None = None
-    is_fahrenheit: bool = False
-
-
-_MODES = {
-    Zhlt01Mode.AUTO: 0,
-    Zhlt01Mode.COOL: 1,
-    Zhlt01Mode.DRY: 2,
-    Zhlt01Mode.FAN_ONLY: 3,
-    Zhlt01Mode.HEAT: 4,
-}
-_FANS = {
-    Zhlt01FanSpeed.AUTO: 0,
-    Zhlt01FanSpeed.HIGH: 0x20,
-    Zhlt01FanSpeed.MEDIUM: 0x40,
-    Zhlt01FanSpeed.LOW: 0x60,
-    Zhlt01FanSpeed.QUIET: 1,
-}
 
 
 class Zhlt01Command(ClimatePacket[Zhlt01State]):
@@ -76,17 +59,17 @@ class Zhlt01Command(ClimatePacket[Zhlt01State]):
         boost: bool = False,
     ) -> None:
         """Build a state for 16..32 °C; QUIET selects the sleep fan setting."""
-        selection(mode, _MODES)
+        int(Zhlt01Mode(mode))
         temp = temperature_value(temperature, 16, 32)
         control = (2 if power else 0) | (4 if swing_v else 8) | (0 if swing_h else 16)
-        control |= selection(Zhlt01FanSpeed.HIGH if boost else fan, _FANS)
+        control |= int(Zhlt01FanSpeed(Zhlt01FanSpeed.HIGH if boost else fan))
         values = bytes(
             [
                 0,
                 8 if boost else 0,
                 0,
                 control,
-                (selection(mode, _MODES) << 5 if power else 0) | temp,
+                (int(Zhlt01Mode(mode)) << 5 if power else 0) | temp,
                 0xD5,
             ]
         )
@@ -111,9 +94,9 @@ class Zhlt01Command(ClimatePacket[Zhlt01State]):
         temperature_value(temperature, 16, 32)
         return Zhlt01State(
             power=bool(data[7] & 2),
-            mode=decoded(data[9] >> 5, _MODES) if bool(data[7] & 2) else None,
+            mode=Zhlt01Mode(data[9] >> 5) if bool(data[7] & 2) else None,
             temperature=temperature,
-            fan=decoded(data[7] & 0xE1, _FANS),
+            fan=Zhlt01FanSpeed(data[7] & 0xE1),
             swing_v=data[7] & 12 != 8,
             swing_h=not bool(data[7] & 16),
         )

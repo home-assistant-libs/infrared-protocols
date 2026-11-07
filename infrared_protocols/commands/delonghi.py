@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 
 from ._climate import ClimatePacket
-from ._climate_fields import decoded, selection, temperature_value
+from ._climate_fields import temperature_value
 from ._timing import PulseTiming
 
 
@@ -33,26 +33,9 @@ class DelonghiState:
 
     power: bool | None = None
     mode: DelonghiMode | None = None
-    temperature: float | None = None
+    temperature: int | None = None
     fan: DelonghiFanSpeed | None = None
-    swing_v: bool | None = None
-    swing_h: bool | None = None
     is_fahrenheit: bool = False
-
-
-_MODES = {
-    DelonghiMode.COOL: 0,
-    DelonghiMode.DRY: 2,
-    DelonghiMode.FAN_ONLY: 4,
-    DelonghiMode.HEAT: 6,
-    DelonghiMode.AUTO: 8,
-}
-_FANS = {
-    DelonghiFanSpeed.AUTO: 0,
-    DelonghiFanSpeed.HIGH: 1,
-    DelonghiFanSpeed.MEDIUM: 2,
-    DelonghiFanSpeed.LOW: 3,
-}
 
 
 class DelonghiCommand(ClimatePacket[DelonghiState]):
@@ -66,26 +49,38 @@ class DelonghiCommand(ClimatePacket[DelonghiState]):
         self,
         *,
         mode: DelonghiMode,
-        temperature: float,
+        temperature: float | None,
+        is_fahrenheit: bool = False,
         power: bool = True,
         fan: DelonghiFanSpeed = DelonghiFanSpeed.AUTO,
     ) -> None:
-        """Build a command: heat 13..27 °C, other modes 17..32 °C.
+        """Build a command: heat 13..27 °C, other modes 17..32 °C, or 64..90 °F.
 
-        The four-bit heat field uses a 12 °C offset. An off command has no
+        The Celsius heat field uses a 12 °C offset. An off command has no
         retained operating-mode field, so its temperature uses the cool offset.
+        Fahrenheit auto/dry packets can use None for the zero placeholder.
         """
-        selection(mode, _MODES)
+        int(DelonghiMode(mode))
         heat = mode == DelonghiMode.HEAT
-        temperature_value(temperature, 13 if heat else 17, 27 if heat else 32)
-        temp = (
-            int(temperature) - 12 if heat and power else max(17, int(temperature)) - 17
-        )
+        if temperature is None:
+            if not (is_fahrenheit and mode in (DelonghiMode.AUTO, DelonghiMode.DRY)):
+                raise ValueError("temperature is required for this mode and unit")
+            temp = 0
+        elif is_fahrenheit:
+            temperature_value(temperature, 64, 90)
+            temp = int(temperature) - 63
+        else:
+            temperature_value(temperature, 13 if heat else 17, 27 if heat else 32)
+            temp = (
+                int(temperature) - 12
+                if heat and power
+                else max(17, int(temperature)) - 17
+            )
         data = bytes(
             [
                 0x53,
-                temp | selection(fan, _FANS) << 5,
-                selection(mode, _MODES) | 1 if power else 0,
+                temp | int(DelonghiFanSpeed(fan)) << 5 | int(is_fahrenheit) << 7,
+                int(DelonghiMode(mode)) | 1 if power else 0,
                 0,
                 0,
                 0,
@@ -94,6 +89,16 @@ class DelonghiCommand(ClimatePacket[DelonghiState]):
         )
         super().__init__(data=data + bytes([self.checksum(data)]))
 
+    @property
+    def boost(self) -> bool:
+        """Return the remote's boost flag."""
+        return bool(self.data[2] & 16)
+
+    @property
+    def sleep(self) -> bool:
+        """Return the remote's sleep flag."""
+        return bool(self.data[2] & 32)
+
     @classmethod
     def parse(cls, data: bytes) -> DelonghiState:
         """Validate and recover the state."""
@@ -101,13 +106,26 @@ class DelonghiCommand(ClimatePacket[DelonghiState]):
         if data[0] != 0x53:
             raise ValueError("invalid DeLonghi address")
         power = bool(data[2] & 1)
-        mode = decoded(data[2] & 14, _MODES) if power else None
+        mode = DelonghiMode(data[2] & 14) if power else None
         heat = power and mode == DelonghiMode.HEAT
-        temperature = (data[1] & 15) + (12 if heat else 17)
-        temperature_value(temperature, 13 if heat else 17, 27 if heat else 32)
+        is_fahrenheit = bool(data[1] & 128)
+        temperature = (data[1] & 31) + (63 if is_fahrenheit else 12 if heat else 17)
+        if (
+            is_fahrenheit
+            and data[1] & 31 == 0
+            and (not power or mode in (DelonghiMode.AUTO, DelonghiMode.DRY))
+        ):
+            temperature = None
+        else:
+            temperature_value(
+                temperature,
+                64 if is_fahrenheit else 13 if heat else 17,
+                90 if is_fahrenheit else 27 if heat else 32,
+            )
         return DelonghiState(
             power=power,
             mode=mode,
             temperature=temperature if power else None,
-            fan=decoded(data[1] >> 5, _FANS),
+            fan=DelonghiFanSpeed(data[1] >> 5 & 3),
+            is_fahrenheit=is_fahrenheit,
         )

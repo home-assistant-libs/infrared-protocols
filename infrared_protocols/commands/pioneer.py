@@ -3,7 +3,7 @@
 from typing import Self, override
 
 from . import Command
-from ._decode import frames
+from ._decode import frames, validate_pulse_prefix
 from ._timing import PulseTiming, Reader, pack_bytes
 from .nec import NECCommand
 
@@ -114,6 +114,8 @@ class PioneerCommand(Command):
             packets = frames(timings, period=PIONEER_FRAME_PERIOD_US)
             for index, frame in enumerate(packets):
                 if len(messages) >= 2 and len(frame) < 67 and index == len(packets) - 1:
+                    expected = messages[index % 2]
+                    validate_pulse_prefix(frame, cls._frame(*expected))
                     break
                 reader = Reader(timings=frame)
                 reader.expect(9000, -4500)

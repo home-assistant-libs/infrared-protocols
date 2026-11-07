@@ -4,15 +4,15 @@ import pytest
 
 from infrared_protocols.commands.mitsubishi import (
     MitsubishiCommand,
-    MitsubishiFan,
+    MitsubishiFanSpeed,
     MitsubishiMode,
     MitsubishiPreset,
 )
 
 
-@pytest.mark.parametrize("fan", list(MitsubishiFan))
+@pytest.mark.parametrize("fan", list(MitsubishiFanSpeed))
 @pytest.mark.parametrize("temperature", [16, 16.5, 30.5, 31])
-def test_mitsubishi_native_fields(fan: MitsubishiFan, temperature: float) -> None:
+def test_mitsubishi_native_fields(fan: MitsubishiFanSpeed, temperature: float) -> None:
     """Intermediate speeds, both vanes and half degrees remain observable."""
     sent = MitsubishiCommand(
         mode=MitsubishiMode.COOL,
@@ -25,7 +25,7 @@ def test_mitsubishi_native_fields(fan: MitsubishiFan, temperature: float) -> Non
     )
     received = MitsubishiCommand.from_raw_timings(sent.get_raw_timings())
     assert received is not None
-    assert received.fan == fan
+    assert received.state.fan == fan
     assert received.state.fan is not None
     assert received.state.temperature == temperature
     assert received.preset == MitsubishiPreset.ECONO_COOL
@@ -78,14 +78,12 @@ def test_mitsubishi_presets(
 def test_mitsubishi_fahrenheit(temperature: int, wire_celsius: float) -> None:
     """Fahrenheit uses the remote lookup table, not arithmetic rounding."""
     command = MitsubishiCommand(
-        mode=MitsubishiMode.COOL, temperature=temperature, is_fahrenheit=True
+        mode=MitsubishiMode.COOL, temperature=temperature, fahrenheit_compatibility=True
     )
     assert command.state.temperature == wire_celsius
     received = MitsubishiCommand.from_raw_timings(command.get_raw_timings())
     assert received is not None
-    assert received.temperature == wire_celsius
-    assert received.is_fahrenheit is False
-    assert received.state.is_fahrenheit is False
+    assert received.state.temperature == wire_celsius
 
 
 def test_mitsubishi_checksum_corruption() -> None:
@@ -124,11 +122,10 @@ def test_dry_temperature_is_not_a_setpoint(temperature: int) -> None:
     assert received is not None
     assert received.data[7] == 8
     assert received.state.temperature is None
-    assert received.temperature is None
 
 
-@pytest.mark.parametrize("fan", list(MitsubishiFan))
-def test_all_fan_levels_use_native_enum(fan: MitsubishiFan) -> None:
+@pytest.mark.parametrize("fan", list(MitsubishiFanSpeed))
+def test_all_fan_levels_use_native_enum(fan: MitsubishiFanSpeed) -> None:
     """A family does not switch fan enum types when its level changes."""
     command = MitsubishiCommand(mode=MitsubishiMode.COOL, temperature=24, fan=fan)
     assert command.state.fan is fan

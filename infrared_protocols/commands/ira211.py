@@ -26,7 +26,7 @@ class Ira211Mode(IntEnum):
     COMFORT = 170
 
 
-class Ira211Fan(IntEnum):
+class Ira211FanSpeed(IntEnum):
     """Thermostat fan levels."""
 
     AUTO = 3
@@ -66,7 +66,7 @@ class Ira211Command(Command):
         action: Ira211Action = Ira211Action.SYNC,
         temperature: float | None = 20,
         mode: Ira211Mode | None = Ira211Mode.COMFORT,
-        fan: Ira211Fan | None = Ira211Fan.AUTO,
+        fan: Ira211FanSpeed | None = Ira211FanSpeed.AUTO,
         modulation: int = 38000,
     ) -> None:
         """Initialize valid half-degree settings."""
@@ -82,7 +82,7 @@ class Ira211Command(Command):
             Ira211Action(action),
             temperature if "t" in fields else None,
             Ira211Mode(mode) if "m" in fields and mode is not None else None,
-            Ira211Fan(fan) if "f" in fields and fan is not None else None,
+            Ira211FanSpeed(fan) if "f" in fields and fan is not None else None,
         )
 
     @override
@@ -146,7 +146,7 @@ class Ira211Command(Command):
             if "m" in fields:
                 mode = Ira211Mode(values.pop(0))
             if "f" in fields:
-                fan = Ira211Fan(values.pop(0))
+                fan = Ira211FanSpeed(values.pop(0))
             return cls(action=action, temperature=temperature, mode=mode, fan=fan)
         except ValueError:
             return None

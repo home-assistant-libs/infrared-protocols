@@ -22,7 +22,7 @@ from infrared_protocols.commands.midea import (
             temp,
             mode if power else None,
             None if power and mode == MideaMode.FAN_ONLY else expected,
-            id=f"{mode}-{power}-{temp}-is_fahrenheit{is_fahrenheit}",
+            id=f"{mode.name}-{power}-{temp}-is_fahrenheit{is_fahrenheit}",
         )
         for mode, power, (is_fahrenheit, temp, expected) in product(
             MideaMode, (False, True), [(False, 21, 21), (True, 68, 68)]
@@ -35,7 +35,7 @@ def test_midea_state(
     is_fahrenheit: bool,
     temperature: int,
     expected_mode: MideaMode | None,
-    expected: float | None,
+    expected: int | None,
 ) -> None:
     """Native temperatures retain their units and off remains explicit."""
     command = MideaCommand.climate(
@@ -47,6 +47,7 @@ def test_midea_state(
         temperature=expected,
         is_fahrenheit=is_fahrenheit,
         fan=MideaFanSpeed.AUTO,
+        sleep=False,
     )
 
 
@@ -109,8 +110,8 @@ def test_midea_sleep_decode() -> None:
     sent = MideaCommand.climate(mode=MideaMode.COOL, temperature=23, sleep=True)
     received = MideaCommand.from_raw_timings(sent.get_raw_timings())
     assert received is not None
-    assert received.sleep is True
     assert received.state is not None
+    assert received.state.sleep is True
     assert received.state.temperature == 23
 
 
@@ -153,8 +154,34 @@ def test_native_temperature(temperature: int, is_fahrenheit: bool) -> None:
     )
     received = MideaCommand.from_raw_timings(command.get_raw_timings())
     assert received is not None
-    assert received.is_fahrenheit is is_fahrenheit
-    assert received.temperature == temperature
+    assert received.state is not None
+    assert received.state.is_fahrenheit is is_fahrenheit
+    assert received.state.temperature == temperature
     assert received.state is not None
     assert received.state.temperature == temperature
+    assert received.state is not None
     assert received.state.is_fahrenheit is is_fahrenheit
+
+
+@pytest.mark.parametrize(
+    "sleep", [pytest.param(False, id="awake"), pytest.param(True, id="sleep")]
+)
+def test_sleep_in_native_state(sleep: bool) -> None:
+    """The control-state sleep bit is available when rebuilding decoded settings."""
+    command = MideaCommand.climate(mode=MideaMode.COOL, temperature=24, sleep=sleep)
+    received = MideaCommand.from_raw_timings(command.get_raw_timings())
+    assert received is not None
+    state = received.state
+    assert state is not None
+    assert state.sleep is sleep
+    assert state.mode is not None
+    assert state.temperature is not None
+    assert state.fan is not None
+    rebuilt = MideaCommand.climate(
+        mode=state.mode,
+        temperature=state.temperature,
+        fan=state.fan,
+        sleep=state.sleep,
+        is_fahrenheit=state.is_fahrenheit,
+    )
+    assert rebuilt.data == command.data

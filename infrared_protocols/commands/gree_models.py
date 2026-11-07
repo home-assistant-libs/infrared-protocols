@@ -5,28 +5,19 @@ from enum import IntEnum, IntFlag, StrEnum
 from typing import Self, override
 
 from . import Command
-from ._climate_fields import decoded, selection, temperature_value
+from ._climate_fields import temperature_value
 from ._timing import PulseTiming, Reader, byte_bits, pack_bytes
+from .gree_ac import GreeAcFanSpeed, GreeAcMode
 
 
-class GreeModelMode(IntEnum):
-    """GreeModel operating modes."""
+class GreeYx1ffFanSpeed(IntEnum):
+    """YX1FF fan bits, with the byte-2 turbo bit included for high speed."""
 
-    AUTO = 0x0
-    COOL = 0x1
-    DRY = 0x2
-    FAN_ONLY = 0x3
-    HEAT = 0x4
-
-
-class GreeModelFanSpeed(IntEnum):
-    """GreeModel fan speeds."""
-
-    AUTO = 0x0
-    QUIET = 0x1
-    LOW = 0x2
-    MEDIUM = 0x3
-    HIGH = 0x4
+    AUTO = 0
+    QUIET = 1
+    LOW = 2
+    MEDIUM = 3
+    HIGH = 0x13
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -34,9 +25,9 @@ class GreeModelState:
     """Settings carried by a GreeModel packet, using its native enums and units."""
 
     power: bool | None = None
-    mode: GreeModelMode | None = None
+    mode: GreeAcMode | None = None
     temperature: float | None = None
-    fan: GreeModelFanSpeed | None = None
+    fan: GreeAcFanSpeed | GreeYx1ffFanSpeed | None = None
     swing_v: bool | None = None
     swing_h: bool | None = None
     is_fahrenheit: bool = False
@@ -88,19 +79,6 @@ _LAYOUTS = {
     GreeModel.YAG: _Layout(0, byte2=0x60, byte5=0x40),
     GreeModel.YAW1F: _Layout(0, byte2=0x60, byte5=0x80, header_space=4500, gap=19980),
 }
-_MODES = {
-    GreeModelMode.AUTO: 0,
-    GreeModelMode.COOL: 1,
-    GreeModelMode.DRY: 2,
-    GreeModelMode.FAN_ONLY: 3,
-    GreeModelMode.HEAT: 4,
-}
-_FANS = {
-    GreeModelFanSpeed.AUTO: 0,
-    GreeModelFanSpeed.LOW: 1,
-    GreeModelFanSpeed.MEDIUM: 2,
-    GreeModelFanSpeed.HIGH: 3,
-}
 _TIMING = PulseTiming(620, 540, 1600)
 _FOLLOWUP = bytes([0, 0, 0, 0xA0, 0, 0, 0, 0xA0])
 
@@ -128,10 +106,10 @@ class GreeModelCommand(Command):
         self,
         *,
         model: GreeModel,
-        mode: GreeModelMode,
+        mode: GreeAcMode,
         temperature: float,
         power: bool = True,
-        fan: GreeModelFanSpeed = GreeModelFanSpeed.AUTO,
+        fan: GreeAcFanSpeed | GreeYx1ffFanSpeed | None = None,
         swing_v: bool = False,
         swing_h: bool = False,
         features: GreeFeature | None = None,
@@ -163,22 +141,18 @@ class GreeModelCommand(Command):
         if feature_bits & ~layout.features:
             raise ValueError("unsupported Gree feature for this model")
         if model == GreeModel.YB1FA and feature_bits & GreeFeature.TURBO:
-            fan = GreeModelFanSpeed.HIGH
-        fans = (
-            {
-                GreeModelFanSpeed.AUTO: 0,
-                GreeModelFanSpeed.QUIET: 1,
-                GreeModelFanSpeed.LOW: 2,
-                GreeModelFanSpeed.MEDIUM: 3,
-                GreeModelFanSpeed.HIGH: 3,
-            }
-            if model == GreeModel.YX1FF
-            else _FANS
-        )
+            fan = GreeAcFanSpeed.HIGH
+        if model == GreeModel.YX1FF:
+            if fan is not None and not isinstance(fan, GreeYx1ffFanSpeed):
+                raise ValueError("YX1FF requires GreeYx1ffFanSpeed")
+            fan = GreeYx1ffFanSpeed.AUTO if fan is None else fan
+        else:
+            if fan is not None and not isinstance(fan, GreeAcFanSpeed):
+                raise ValueError("this model requires GreeAcFanSpeed")
+            fan = GreeAcFanSpeed.AUTO if fan is None else fan
         data = bytearray(
             [
-                selection(fan, fans) << 4
-                | (selection(mode, _MODES) | 8 if power else 0),
+                (int(fan) & 3) << 4 | (int(GreeAcMode(mode)) | 8 if power else 0),
                 int(temperature) - 16,
                 feature_bits | layout.byte2,
                 layout.byte3,
@@ -190,7 +164,7 @@ class GreeModelCommand(Command):
         )
         if model in (GreeModel.YB1FA, GreeModel.YX1FF) and power:
             data[2] |= 64
-        if model == GreeModel.YX1FF and fan == GreeModelFanSpeed.HIGH:
+        if model == GreeModel.YX1FF and fan == GreeYx1ffFanSpeed.HIGH:
             data[2] |= 16
         if both_axes:
             data[4] = int(swing_v) | int(swing_h) << 4
@@ -221,15 +195,15 @@ class GreeModelCommand(Command):
         return None
 
     @property
-    def is_fahrenheit(self) -> bool:
+    def _is_fahrenheit(self) -> bool:
         """Return the remote's display-unit flag."""
         return bool(self.data[3] & 8)
 
     @property
-    def temperature(self) -> float:
+    def _temperature(self) -> float:
         """Return the set point in the remote's display units."""
         half_steps = 2 * (self.data[1] & 15) + bool(self.data[3] & 4)
-        if self.is_fahrenheit:
+        if self._is_fahrenheit:
             return (608 + 9 * half_steps) // 10
         return 16 + half_steps / 2
 
@@ -246,22 +220,15 @@ class GreeModelCommand(Command):
         temperature_value(
             16 + (data[1] & 15) + (0.5 if data[3] & 4 else 0), 16, 30, 0.5
         )
-        mode = decoded(data[0] & 7, _MODES)
+        mode = GreeAcMode(data[0] & 7)
         code = data[0] >> 4 & 3
-        fan = decoded(code, _FANS)
-        if model == GreeModel.YX1FF:
-            fan = (
-                GreeModelFanSpeed.HIGH
-                if data[2] & 16
-                else (
-                    GreeModelFanSpeed.AUTO,
-                    GreeModelFanSpeed.QUIET,
-                    GreeModelFanSpeed.LOW,
-                    GreeModelFanSpeed.MEDIUM,
-                )[code]
-            )
+        fan = (
+            GreeYx1ffFanSpeed(code | (data[2] & 16))
+            if model == GreeModel.YX1FF
+            else GreeAcFanSpeed(code)
+        )
         if model == GreeModel.YB1FA and data[2] & 16:
-            fan = GreeModelFanSpeed.HIGH
+            fan = GreeAcFanSpeed.HIGH
         vertical = data[4] & 15
         swinging = bool(data[0] & 64)
         swing_v = swinging or vertical in (1, 7, 9, 11)
@@ -295,8 +262,8 @@ class GreeModelCommand(Command):
         return GreeModelState(
             power=bool(data[0] & 8),
             mode=mode if data[0] & 8 else None,
-            temperature=self.temperature,
-            is_fahrenheit=self.is_fahrenheit,
+            temperature=self._temperature,
+            is_fahrenheit=self._is_fahrenheit,
             fan=fan,
             swing_v=swing_v,
             swing_h=swing_h,

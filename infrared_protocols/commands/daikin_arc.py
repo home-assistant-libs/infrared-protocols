@@ -5,7 +5,7 @@ from enum import IntEnum
 from typing import Self
 
 from ._climate import ClimatePacket, FramePart
-from ._climate_fields import decoded, selection, temperature_value
+from ._climate_fields import temperature_value
 from ._daikin import checked, validate_sections
 from ._timing import PulseTiming, Reader, pack_bytes
 from .daikin_ac import DaikinAcFanSpeed, DaikinAcMode
@@ -21,45 +21,29 @@ class DaikinArcState:
     fan: DaikinAcFanSpeed | None = None
     swing_v: bool | None = None
     swing_h: bool | None = None
-    is_fahrenheit: bool = False
 
 
-_MODES = {
-    DaikinAcMode.AUTO: 0,
-    DaikinAcMode.DRY: 2,
-    DaikinAcMode.COOL: 3,
-    DaikinAcMode.HEAT: 4,
-    DaikinAcMode.FAN_ONLY: 6,
-}
-
-_FANS = {
-    DaikinAcFanSpeed.AUTO: 10,
-    DaikinAcFanSpeed.SILENT: 11,
-    DaikinAcFanSpeed.LEVEL_1: 3,
-    DaikinAcFanSpeed.LEVEL_3: 5,
-    DaikinAcFanSpeed.LEVEL_5: 7,
-}
-
-
-def state_packet(
+def _state_packet(
     *,
     mode: DaikinAcMode,
-    temperature: float,
+    temperature: float | None,
     power: bool,
     fan: DaikinAcFanSpeed,
     swing_v: bool,
     swing_h: bool,
 ) -> bytearray:
-    """Build common state fields, before variant-specific bytes and checksum."""
-    selection(mode, _MODES)
-    temperature_value(temperature, 10, 30, 0.5)
-    effective_temp = (
-        0xC0
-        if power and mode == DaikinAcMode.DRY
-        else 0x32
-        if power and mode == DaikinAcMode.FAN_ONLY
-        else int(temperature * 2)
-    )
+    """Build the ARC state section before humidity and checksum fields."""
+    int(DaikinAcMode(mode))
+    if temperature is not None:
+        temperature_value(temperature, 10, 30, 0.5)
+    if power and mode in (DaikinAcMode.AUTO, DaikinAcMode.DRY):
+        effective_temp = 0xC0
+    elif power and mode == DaikinAcMode.FAN_ONLY:
+        effective_temp = 0x32
+    else:
+        if temperature is None:
+            raise ValueError("temperature is required for this mode and power state")
+        effective_temp = int(temperature * 2)
     return bytearray(
         [
             0x11,
@@ -67,7 +51,7 @@ def state_packet(
             0x27,
             0,
             0,
-            selection(mode, _MODES) << 4 | 1 if power else 0,
+            int(DaikinAcMode(mode)) << 4 | 1 if power else 0,
             effective_temp,
             0,
             (int(DaikinAcFanSpeed(fan))) << 4 | (15 if swing_v else 0),
@@ -84,10 +68,10 @@ def state_packet(
     )
 
 
-def parse_state(data: bytes) -> DaikinArcState:
-    """Extract common state without reporting sentinel temperatures as set points."""
+def _parse_state(data: bytes) -> DaikinArcState:
+    """Decode ARC settings without treating fixed temperatures as set points."""
     power = bool(data[5] & 1)
-    mode = decoded(data[5] >> 4, _MODES) if power else None
+    mode = DaikinAcMode(data[5] >> 4) if power else None
     temperature = (
         None if data[6] == 0xC0 or mode == DaikinAcMode.FAN_ONLY else data[6] / 2
     )
@@ -131,7 +115,7 @@ class DaikinArcCommand(ClimatePacket[DaikinArcState]):
         self,
         *,
         mode: DaikinAcMode,
-        temperature: float,
+        temperature: float | None = None,
         power: bool = True,
         fan: DaikinAcFanSpeed = DaikinAcFanSpeed.AUTO,
         swing_v: bool = False,
@@ -140,7 +124,7 @@ class DaikinArcCommand(ClimatePacket[DaikinArcState]):
         humidity_changed: bool = False,
     ) -> None:
         """Build a state; humidity_changed records an explicit humidity adjustment."""
-        state = state_packet(
+        state = _state_packet(
             mode=mode,
             temperature=temperature,
             power=power,
@@ -149,8 +133,6 @@ class DaikinArcCommand(ClimatePacket[DaikinArcState]):
             swing_h=swing_h,
         )
         state[5] |= 8
-        if mode == DaikinAcMode.AUTO and power:
-            state[6] = 0xC0
         state[7] = DaikinHumidity(humidity)
         state[14:18] = bytes([10, 0xC4, 0x80, 0x24])
         header = bytes(
@@ -179,11 +161,6 @@ class DaikinArcCommand(ClimatePacket[DaikinArcState]):
         super().__init__(data=checked(header) + checked(bytes(state)))
 
     @property
-    def fan(self) -> DaikinAcFanSpeed:
-        """Return every native Daikin speed without folding adjacent levels."""
-        return DaikinAcFanSpeed(self.data[28] >> 4)
-
-    @property
     def humidity_changed(self) -> bool:
         """Return whether this powered-on command explicitly adjusts humidity."""
         return bool(self.data[9] & 0x10)
@@ -200,7 +177,7 @@ class DaikinArcCommand(ClimatePacket[DaikinArcState]):
         if data[4] != 2 or data[24] != 0:
             raise ValueError("unexpected Daikin ARC frame type")
         DaikinHumidity(data[27])
-        return parse_state(data[20:])
+        return _parse_state(data[20:])
 
 
 class DaikinArcQueryCommand(ClimatePacket[DaikinArcState]):

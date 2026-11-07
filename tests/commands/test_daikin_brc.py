@@ -41,7 +41,7 @@ def test_brc_temperature_units(
     )
     received = DaikinBrcCommand.from_raw_timings(sent.get_raw_timings())
     assert received is not None
-    assert received.is_fahrenheit is is_fahrenheit
+    assert received.state.is_fahrenheit is is_fahrenheit
     assert received.state == sent.state
 
 
@@ -73,13 +73,41 @@ def test_native_temperature(temperature: int, is_fahrenheit: bool) -> None:
     )
     received = DaikinBrcCommand.from_raw_timings(command.get_raw_timings())
     assert received is not None
-    assert received.is_fahrenheit is is_fahrenheit
-    assert received.temperature == temperature
+    assert received.state.is_fahrenheit is is_fahrenheit
     assert received.state.temperature == temperature
-    assert isinstance(received.temperature, int)
+    assert isinstance(received.state.temperature, int)
     rebuilt = DaikinBrcCommand(
         mode=DaikinBrcMode.COOL,
-        temperature=received.temperature,
-        is_fahrenheit=received.is_fahrenheit,
+        temperature=received.state.temperature,
+        is_fahrenheit=received.state.is_fahrenheit,
     )
     assert rebuilt.get_raw_timings() == command.get_raw_timings()
+
+
+@pytest.mark.parametrize(
+    "mode",
+    [
+        pytest.param(DaikinBrcMode.DRY, id="dry"),
+        pytest.param(DaikinBrcMode.FAN_ONLY, id="fan_only"),
+    ],
+)
+def test_rebuild_absent_setpoint(mode: DaikinBrcMode) -> None:
+    """Modes with fixed wire temperatures can be rebuilt without inventing a target."""
+    command = DaikinBrcCommand(mode=mode)
+    received = DaikinBrcCommand.from_raw_timings(command.get_raw_timings())
+    assert received is not None
+    assert received.state.mode is not None
+    assert received.state.temperature is None
+    rebuilt = DaikinBrcCommand(
+        mode=received.state.mode, temperature=received.state.temperature
+    )
+    assert rebuilt.data == command.data
+
+
+@pytest.mark.parametrize(
+    "power", [pytest.param(True, id="on"), pytest.param(False, id="off")]
+)
+def test_required_setpoint(power: bool) -> None:
+    """Frames that carry a set point require one explicitly."""
+    with pytest.raises(ValueError, match="temperature is required"):
+        DaikinBrcCommand(mode=DaikinBrcMode.COOL, power=power)

@@ -8,8 +8,8 @@ from infrared_protocols.commands.zhlt01 import Zhlt01Command, Zhlt01FanSpeed, Zh
 @pytest.mark.parametrize(
     "boost,fan,expected",
     [
-        (True, Zhlt01FanSpeed.LOW, Zhlt01FanSpeed.HIGH),
-        (False, Zhlt01FanSpeed.QUIET, Zhlt01FanSpeed.QUIET),
+        pytest.param(True, Zhlt01FanSpeed.LOW, Zhlt01FanSpeed.HIGH, id="boost"),
+        pytest.param(False, Zhlt01FanSpeed.QUIET, Zhlt01FanSpeed.QUIET, id="quiet"),
     ],
 )
 def test_zhlt_boost_and_quiet(

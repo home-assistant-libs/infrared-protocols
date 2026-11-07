@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 
 from ._climate import ClimatePacket
-from ._climate_fields import decoded, selection, temperature_value
+from ._climate_fields import temperature_value
 from ._timing import PulseTiming
 
 
@@ -20,6 +20,7 @@ class IslandaireFanSpeed(IntEnum):
     """Islandaire fan speeds."""
 
     AUTO = 0x0
+    LOW_ALT = 0x1
     LOW = 0x2
     HIGH = 0x4
 
@@ -30,19 +31,9 @@ class IslandaireState:
 
     power: bool | None = None
     mode: IslandaireMode | None = None
-    temperature: float | None = None
+    temperature: int | None = None
     fan: IslandaireFanSpeed | None = None
-    swing_v: bool | None = None
-    swing_h: bool | None = None
     is_fahrenheit: bool = False
-
-
-_MODES = {IslandaireMode.HEAT: 1, IslandaireMode.COOL: 3, IslandaireMode.FAN_ONLY: 4}
-_FANS = {
-    IslandaireFanSpeed.AUTO: 0,
-    IslandaireFanSpeed.LOW: 2,
-    IslandaireFanSpeed.HIGH: 4,
-}
 
 
 class IslandaireCommand(ClimatePacket[IslandaireState]):
@@ -64,15 +55,15 @@ class IslandaireCommand(ClimatePacket[IslandaireState]):
         """Build a state with a whole-degree 61..88 °F set point."""
         if not is_fahrenheit:
             raise ValueError("this remote only supports Fahrenheit set points")
-        selection(mode, _MODES)
+        int(IslandaireMode(mode))
         temperature_value(temperature, 61, 88)
         data = bytes(
             [
                 *([0x22] * 5),
                 0x24 if power else 0x20,
-                selection(mode, _MODES) if power else 3,
+                int(IslandaireMode(mode)) if power else 3,
                 temperature,
-                selection(fan, _FANS),
+                int(IslandaireFanSpeed(fan)),
                 0,
                 0,
                 0,
@@ -80,16 +71,6 @@ class IslandaireCommand(ClimatePacket[IslandaireState]):
             ]
         )
         super().__init__(data=data + bytes([self.checksum(data)]))
-
-    @property
-    def is_fahrenheit(self) -> bool:
-        """Return the fixed native temperature unit."""
-        return True
-
-    @property
-    def temperature(self) -> int:
-        """Return the native Fahrenheit set point."""
-        return self.data[7]
 
     @classmethod
     def parse(cls, data: bytes) -> IslandaireState:
@@ -101,8 +82,8 @@ class IslandaireCommand(ClimatePacket[IslandaireState]):
         fan_code = data[8] & ~0x40
         return IslandaireState(
             power=bool(data[5] & 4),
-            mode=decoded(data[6], _MODES) if bool(data[5] & 4) else None,
+            mode=IslandaireMode(data[6]) if bool(data[5] & 4) else None,
             temperature=data[7],
             is_fahrenheit=True,
-            fan=decoded(2 if fan_code == 1 else fan_code, _FANS),
+            fan=IslandaireFanSpeed(fan_code),
         )

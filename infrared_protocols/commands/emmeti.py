@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from enum import IntEnum
 
-from ._climate_fields import decoded, selection, temperature_value
+from ._climate_fields import temperature_value
 from ._split_climate import SplitClimateCommand
 from ._timing import PulseTiming, bits, number
 
@@ -36,23 +36,8 @@ class EmmetiState:
     temperature: float | None = None
     fan: EmmetiFanSpeed | None = None
     swing_v: bool | None = None
-    swing_h: bool | None = None
-    is_fahrenheit: bool = False
 
 
-_MODES = {
-    EmmetiMode.AUTO: 0,
-    EmmetiMode.COOL: 1,
-    EmmetiMode.DRY: 2,
-    EmmetiMode.FAN_ONLY: 3,
-    EmmetiMode.HEAT: 4,
-}
-_FANS = {
-    EmmetiFanSpeed.AUTO: 0,
-    EmmetiFanSpeed.LOW: 1,
-    EmmetiFanSpeed.MEDIUM: 2,
-    EmmetiFanSpeed.HIGH: 3,
-}
 _OFF = number(
     bits(9, 12)
     + bits(0, 8)
@@ -101,7 +86,7 @@ class EmmetiCommand(SplitClimateCommand[EmmetiState]):
     ) -> None:
         """Build a 16..30 °C state or the protocol's fixed power-off message."""
         temp = temperature_value(temperature, 16, 30)
-        mode_code = selection(mode, _MODES)
+        mode_code = int(EmmetiMode(mode))
         blade = EmmetiBlade(blade)
         swing = blade in (
             EmmetiBlade.FULL_SWING,
@@ -111,7 +96,7 @@ class EmmetiCommand(SplitClimateCommand[EmmetiState]):
         first = (
             bits(mode_code, 3, lsb=True)
             + [1]
-            + bits(selection(fan, _FANS), 2, lsb=True)
+            + bits(int(EmmetiFanSpeed(fan)), 2, lsb=True)
             + [int(swing), 0]
         )
         first += bits(temp, 4, lsb=True) + bits(0, 8) + [0, 1, 1, 0] + bits(0x52, 11)
@@ -149,8 +134,8 @@ class EmmetiCommand(SplitClimateCommand[EmmetiState]):
         EmmetiBlade(number(values[35:39], lsb=True))
         return EmmetiState(
             power=True,
-            mode=decoded(mode_code, _MODES),
+            mode=EmmetiMode(mode_code),
             temperature=temp + 16,
-            fan=decoded(number(values[4:6], lsb=True), _FANS),
+            fan=EmmetiFanSpeed(number(values[4:6], lsb=True)),
             swing_v=bool(values[6]),
         )

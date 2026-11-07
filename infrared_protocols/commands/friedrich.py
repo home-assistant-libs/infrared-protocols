@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 
 from ._aeha_climate import AehaClimatePacket
-from ._climate_fields import decoded, selection, temperature_value
+from ._climate_fields import temperature_value
 from ._timing import bits, number
 
 
@@ -34,27 +34,10 @@ class FriedrichState:
 
     power: bool | None = None
     mode: FriedrichMode | None = None
-    temperature: float | None = None
+    temperature: int | None = None
     fan: FriedrichFanSpeed | None = None
     swing_v: bool | None = None
-    swing_h: bool | None = None
-    is_fahrenheit: bool = False
-
-
-_MODES = {
-    FriedrichMode.AUTO: 0,
-    FriedrichMode.COOL: 0x80,
-    FriedrichMode.DRY: 0x40,
-    FriedrichMode.FAN_ONLY: 0xC0,
-    FriedrichMode.HEAT: 0x20,
-}
-_FANS = {
-    FriedrichFanSpeed.AUTO: 0,
-    FriedrichFanSpeed.HIGH: 0x80,
-    FriedrichFanSpeed.MEDIUM: 0x40,
-    FriedrichFanSpeed.LOW: 0xC0,
-    FriedrichFanSpeed.QUIET: 0x20,
-}
+    is_fahrenheit: bool | None = None
 
 
 def _reverse(value: int, width: int = 8) -> int:
@@ -92,8 +75,8 @@ class FriedrichCommand(AehaClimatePacket[FriedrichState]):
                 0x90,
                 12,
                 128 | _reverse((temperature - 60) // 2, 4),
-                selection(mode, _MODES),
-                selection(fan, _FANS) | (8 if swing_v else 0),
+                int(FriedrichMode(mode)),
+                int(FriedrichFanSpeed(fan)) | (8 if swing_v else 0),
                 0,
                 0,
                 0,
@@ -106,16 +89,6 @@ class FriedrichCommand(AehaClimatePacket[FriedrichState]):
     def checksum(data: bytes) -> int:
         """Checksum the variable portion in native byte order."""
         return _reverse(208 - sum(_reverse(value) for value in data[8:]))
-
-    @property
-    def is_fahrenheit(self) -> bool:
-        """Return the fixed native temperature unit."""
-        return True
-
-    @property
-    def temperature(self) -> int:
-        """Return the native Fahrenheit set point."""
-        return 60 + _reverse(self.data[8] & 15, 4) * 2
 
     @property
     def economy(self) -> bool:
@@ -131,7 +104,7 @@ class FriedrichCommand(AehaClimatePacket[FriedrichState]):
             or data[8] & 0xF0 != 128
         ):
             raise ValueError("invalid Friedrich signature")
-        mode = decoded(data[9], _MODES)
+        mode = FriedrichMode(data[9])
         temp_f = 60 + _reverse(data[8] & 15, 4) * 2
         temperature_value(temp_f, 60 if mode == FriedrichMode.HEAT else 64, 88, 2)
         return FriedrichState(
@@ -139,7 +112,7 @@ class FriedrichCommand(AehaClimatePacket[FriedrichState]):
             mode=mode,
             temperature=temp_f,
             is_fahrenheit=True,
-            fan=decoded(data[10] & ~8, _FANS),
+            fan=FriedrichFanSpeed(data[10] & ~8),
             swing_v=bool(data[10] & 8),
         )
 

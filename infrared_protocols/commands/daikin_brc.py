@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 
 from ._climate import ClimatePacket, FramePart
-from ._climate_fields import decoded, selection, temperature_value
+from ._climate_fields import temperature_value
 from ._daikin import checked, validate_sections
 from ._timing import PulseTiming
 
@@ -33,25 +33,10 @@ class DaikinBrcState:
 
     power: bool | None = None
     mode: DaikinBrcMode | None = None
-    temperature: float | None = None
+    temperature: int | None = None
     fan: DaikinBrcFanSpeed | None = None
-    swing_v: bool | None = None
-    swing_h: bool | None = None
+    swing: bool | None = None
     is_fahrenheit: bool = False
-
-
-_MODES = {
-    DaikinBrcMode.AUTO: 3,
-    DaikinBrcMode.COOL: 2,
-    DaikinBrcMode.HEAT: 1,
-    DaikinBrcMode.DRY: 7,
-    DaikinBrcMode.FAN_ONLY: 0,
-}
-_FANS = {
-    DaikinBrcFanSpeed.LOW: 1,
-    DaikinBrcFanSpeed.MEDIUM: 3,
-    DaikinBrcFanSpeed.HIGH: 5,
-}
 
 
 class DaikinBrcCommand(ClimatePacket[DaikinBrcState]):
@@ -72,7 +57,7 @@ class DaikinBrcCommand(ClimatePacket[DaikinBrcState]):
         self,
         *,
         mode: DaikinBrcMode,
-        temperature: int,
+        temperature: int | None = None,
         is_fahrenheit: bool = False,
         power: bool = True,
         fan: DaikinBrcFanSpeed = DaikinBrcFanSpeed.LOW,
@@ -81,20 +66,21 @@ class DaikinBrcCommand(ClimatePacket[DaikinBrcState]):
         mode_button: bool = False,
     ) -> None:
         """Build a state in 16..32 °C, or 60..90 °F with is_fahrenheit=True."""
-        selection(mode, _MODES)
-        temperature_value(
-            temperature, 60 if is_fahrenheit else 16, 90 if is_fahrenheit else 32
-        )
+        int(DaikinBrcMode(mode))
+        if temperature is not None:
+            temperature_value(
+                temperature, 60 if is_fahrenheit else 16, 90 if is_fahrenheit else 32
+            )
         if not 0 <= sub_unit <= 5:
             raise ValueError("sub_unit must be 0..5")
-        no_temp = power and mode in (DaikinBrcMode.DRY, DaikinBrcMode.FAN_ONLY)
-        temp = (
-            (72 if is_fahrenheit else 16)
-            if no_temp
-            else temperature
-            if is_fahrenheit
-            else (temperature - 9) * 2
-        )
+        if power and mode in (DaikinBrcMode.DRY, DaikinBrcMode.FAN_ONLY):
+            temp = 72 if is_fahrenheit else 16
+        else:
+            if temperature is None:
+                raise ValueError(
+                    "temperature is required for this mode and power state"
+                )
+            temp = temperature if is_fahrenheit else (temperature - 9) * 2
         header = bytes([0x11, 0xDA, 0x17, 0x18 | sub_unit])
         preamble = checked(header + bytes([4, 0]))
         alt = (
@@ -107,28 +93,16 @@ class DaikinBrcCommand(ClimatePacket[DaikinBrcState]):
                 0,
                 alt,
                 4 if mode_button else 0,
-                selection(mode, _MODES) << 4 | 1 if power else 0,
+                int(DaikinBrcMode(mode)) << 4 | 1 if power else 0,
                 0,
                 0,
                 temp,
-                selection(fan, _FANS) << 4 | (5 if swing else 6),
+                int(DaikinBrcFanSpeed(fan)) << 4 | (5 if swing else 6),
                 0,
                 32,
             ]
         )
         super().__init__(data=preamble + checked(state))
-
-    @property
-    def is_fahrenheit(self) -> bool:
-        """Return the native units identified by the temperature encoding."""
-        return self.state.is_fahrenheit
-
-    @property
-    def temperature(self) -> int | None:
-        """Return the native set point, excluding dry/fan-only placeholders."""
-        if self.state.temperature is None:
-            return None
-        return self.data[17] if self.is_fahrenheit else self.data[17] // 2 + 9
 
     @property
     def sub_unit(self) -> int:
@@ -153,7 +127,7 @@ class DaikinBrcCommand(ClimatePacket[DaikinBrcState]):
         ):
             raise ValueError("invalid BRC sub-unit or frame type")
         power = bool(data[14] & 1)
-        mode = decoded(data[14] >> 4, _MODES) if power else None
+        mode = DaikinBrcMode(data[14] >> 4) if power else None
         is_fahrenheit = data[17] >= 60
         temperature_value(
             data[17] if is_fahrenheit else data[17] / 2 + 9,
@@ -168,7 +142,6 @@ class DaikinBrcCommand(ClimatePacket[DaikinBrcState]):
             if power and mode in (DaikinBrcMode.DRY, DaikinBrcMode.FAN_ONLY)
             else temperature,
             is_fahrenheit=is_fahrenheit,
-            fan=decoded(data[18] >> 4, _FANS),
-            swing_v=data[18] & 15 == 5,
-            swing_h=data[18] & 15 == 5,
+            fan=DaikinBrcFanSpeed(data[18] >> 4),
+            swing=data[18] & 15 == 5,
         )
