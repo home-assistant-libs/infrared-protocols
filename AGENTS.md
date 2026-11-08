@@ -21,6 +21,7 @@
 - Write code that reads like the surrounding code. `infrared_protocols/commands/nec.py` and `infrared_protocols/codes/lg/tv.py` are good references.
 - No `Any`; avoid `cast`; prefer real type narrowing.
 - Constructor arguments are keyword-only (use the `*` separator).
+- Code tables annotate `to_command()` as `-> Command`.
 - Use `# fmt: skip` on long arrays of numbers to avoid having one number per line. Break them at around 100 column length.
 - Keep comments concise. Prefer one short line stating the non-obvious constraint, or no comment at all.
 - Do not add comments that just restate the code on the following line(s) (e.g. `# Check if initialized` above `if self.initialized:`). Comments should only explain why (non-obvious constraints, surprising behavior, or workarounds), never what. Comments in tests that explain why a function call or assertion is made are ok.
@@ -36,32 +37,19 @@
 - Only expose repeat handling when the protocol itself defines how a held key is transmitted: either a distinct repeat-code frame (NEC, Kaseikyo) or retransmission of the full frame on a fixed frame period (RC-5, RC-6, Samsung32).
 - Do not add a generic "send it N times" knob to an encoder whose protocol says nothing about repetition, and do not invent a frame period the protocol does not specify.
 
-### Before implementing a protocol
-
-- Read the existing implementations and tests before designing a new class. Identify overlapping transports, models, enums and timing helpers; reuse them where their semantics match.
-- Decide the model boundaries and public API before expanding to more families. Identical framing does not establish identical model semantics: require an explicit model when the signal cannot identify it, and document overlapping decoders and intentional differences.
-- Preserve this library's MIT license. Implement from protocol facts and captured signals; do not copy incompatible licensed implementation code into the library. Keep external reference implementations confined to the comparison harness.
-
-### Native APIs and state
-
-- Represent the device's native models, values and capabilities. Home Assistant integrations own normalization; do not introduce shared climate enums or a universal state template that loses native fan levels, units, vane positions or alternate codes.
-- Follow existing naming and constructor conventions, including `<Family>FanSpeed` and `is_fahrenheit` where the protocol carries a unit choice. An input-only display conversion must have a distinct name and documented readback semantics.
-- Include only fields the family can carry. Within that family, use `None` for fields absent, inactive or ambiguous in a particular command. Fixed off/auto/dry/fan-only/frost bytes are not automatically an active mode or setpoint. Keep retained wire values separate when needed to rebuild a packet.
-- Distinguish absolute state, toggles, relative actions, auxiliary frames and sensor reports. Do not manufacture a complete state from an action or treat a follow-up packet as a new climate setting.
-- Keep constructor and decoded-state types compatible: whole-degree temperatures use `int`, fractional setpoints use `float`, and native units and enum types survive readback. Accept `None` where a decoded command legitimately lacks mode or temperature; require values where the frame needs them. Validate explicitly supplied invalid values even when a mode uses a fixed wire value.
-- Expose meaningful received fields through the public API and provide corresponding encoder inputs where supported. Rebuilding a command must not silently lose features, positions, units or action details. Avoid duplicate readback paths for fields already in `state`.
-- Reuse enums for identical fields. Use wire-valued enums where there is a direct mapping, without identity lookup tables. When different model enums share a public union, check equality and dictionary-key behavior: unrelated `IntEnum` members with the same integer collide; use plain `Enum` where identity must remain distinct.
-- Keep one authoritative payload. Encoding, state and native properties must describe the same validated bytes after any supported mutation; avoid independently writable copies or stale caches.
-- Use inheritance only where the public contract holds. Keep internal helpers private and share framing/checksum code instead of duplicating it or exposing options that a subclass can only reject.
+- Reuse existing transports, models, enums and timing helpers when semantics match.
+- Implement from protocol facts and captures; don't copy code under non-MIT-compatible licenses. Reference comparison tooling belongs in `script/reference/`; extracted external code stays in its temporary build directory.
+- Store one validated payload; derive encoding, state and properties from it. Avoid independently writable copies or stale caches.
+- Subclass only when the parent's public contract holds. Share framing/checksum code; don't expose options a subclass must reject.
+- For climate/AC commands, read [Climate command guidance](docs/climate.md).
 
 ### Receiver and transmission behavior
 
-- Check the complete transmission: carrier, bit order, header variant, checksums/parity, required copies, follow-up frames, gaps and held-key cadence. Do not equate mandatory copies with optional held-key repeats, or identical application sections with repeats.
-- Preserve the detected variant and meaningful framing when re-encoding. When accepting a standalone state section, reconstruct required constant sections for a valid transmission where the protocol defines them.
-- Design for actual receiver boundaries. ESPHome defaults to a 10 ms idle timeout; headers, section gaps and inter-copy gaps can split a press. Test single and joined captures, all public capture entry points, custom idle values and jitter near a split threshold. Document caller grouping requirements and ambiguities.
-- Handle clock scaling in both directions, fixed mark/space bias, trailing idle and a final space merged into idle. Choose tolerances from protocol evidence and captures. Manchester/NRZ run quantization must not silently change decoded bits.
-- Validate all complete frames and repeated payloads. Tolerate a clipped final repeat only when the available prefix matches the expected next frame and a complete command is already known. Reject damaged intermediate frames, conflicting trailers and incomplete preamble/button pairs.
-- Validate model-specific field combinations, not just individual ranges. A decoder may accept documented captured variants that the encoder does not generate; make that distinction explicit and test it.
+- Verify the full transmission: carrier, bit order, headers, checksums/parity, required copies, follow-ups, gaps and held-key cadence. Distinguish mandatory copies and application sections from held-key repeats.
+- ESPHome's default 10 ms receiver idle can split a press at headers, section gaps or inter-copy gaps. Document caller grouping requirements and ambiguities.
+- Choose timing tolerances from protocol evidence and captures. Manchester/NRZ run quantization must not silently change decoded bits.
+- Validate all complete frames. Accept a clipped final repeat only after a complete command and when its available prefix matches the expected next frame. Reject damaged intermediate frames and conflicting trailers.
+- Validate field combinations, not just individual ranges. Document and test captured variants accepted by a decoder but not generated by its encoder.
 
 ## Error Handling
 
@@ -73,31 +61,30 @@
 - Prefer `@pytest.mark.usefixtures` over arguments when the argument is not used.
 - Avoid conditions/branching in tests: split tests or adjust the parametrization to cover all cases without branching.
 - If multiple tests share most of their code, merge them with `pytest.mark.parametrize`, naming cases via `pytest.param` with an `id`.
-- Keep protocol tests in `tests/commands/test_<protocol>.py` and code-table tests in `tests/codes/test_<brand>_<module>.py`. Reserve cross-family tests for shared helpers or fixture contracts; do not create files named after review rounds. Test code-table uniqueness and follow the existing `to_command() -> Command` convention.
-- Establish independent expected bytes/timings and decoded native values. Encoder-to-decoder round trips alone cannot catch a shared wrong lookup table or checksum. Assert all relevant public fields and their types; numeric equality alone misses `24.0` versus `24` and collisions between enums.
-- Test decode → rebuild through the public constructor → encode using only received values, including auxiliary properties, without borrowing original constructor inputs. Cover off frames with `mode=None`, fixed-temperature modes with `temperature=None`, native units, retained fields and ambiguous candidates. Include typed calls so static incompatibilities are caught. Explicitly identify action factories or captured variants outside this rebuild contract.
-- Build a coverage matrix for each family: models, modes (including off/auto/dry/fan-only), temperature limits and increments, fans, units, features, positions and actions. Cover meaningful interactions and every distinct packet shape; avoid repeating timing-only checks for every equivalent setting.
-- Add recorded captures where available and realistic scaling/bias/split/truncation cases. Assert exact decoded fields under distortion, not merely a non-`None` result. Synthetic signals are not evidence of hardware validation.
-- Exercise rejection rules with bad checksums/parity, headers, polarity, lengths, model identifiers, conflicting repeats and invalid field combinations. Ask whether deleting a validation or changing a wire constant would leave the tests green.
-- Keep fixture expectations native, without converting through a generic climate vocabulary. Use explicit per-factory build/decode/rebuild callbacks instead of family type switches or string-based exclusions. Remove redundant assertions and generic scaffolding when moving tests into protocol files.
+- Protocol tests go in `tests/commands/test_<protocol>.py`, code-table tests in `tests/codes/test_<brand>_<module>.py`. Test code-table uniqueness.
+- Use independent expected bytes/timings: round trips alone cannot catch a shared wrong table or checksum. Assert all relevant public fields and their types.
+- Test single and joined captures, every public capture entry point, custom idle values and jitter near split thresholds.
+- Cover scaling in both directions, fixed mark/space bias, trailing or merged idle, and truncation. Assert exact decoded fields. Use recorded captures where available; synthetic signals do not establish hardware compatibility.
+- Test rejection of bad checksums/parity, headers, polarity, lengths, model IDs, conflicting repeats and invalid field combinations.
 
 ## Reference Fixtures
 
-- Fixture metadata must retain source repositories, full revisions, inputs and whether signals are recorded captures or synthetic encoder outputs. A link in the PR body alone is insufficient. Record each capture's source and distinguish encoder output from harness-added repeats or framing.
+- Fixture metadata records source repo, full revision, inputs, and whether each signal is a recorded capture or synthetic. Mark harness-added repeats/framing.
 - Regenerate ESPHome fixtures from a clean checkout at the recorded revision with a C++20 compiler:
 
   ```bash
   uv run python script/reference/generate.py /path/to/ESPHome --output /tmp/infrared-reference
   ```
 
-- Compare every generated fixture with the committed version before replacing it. Pin source revisions for reproducibility and explicitly review changes when updating them.
-- Use the source encoder in the comparison harness rather than retyping its logic. Keep cases independent; model stateful transitions with explicit setup. Capture every transmission, and fail on omitted cases or extraction drift instead of silently dropping unmatched rows.
-- Keep inputs, native expectations and case generation together. Cover boundaries and non-default features, not thousands of combinations at one temperature. Store inspectable outputs so failures show what differs, rather than hashes alone. Document evidence-backed deviations from reference behavior instead of reproducing reference bugs.
+- Compare every regenerated fixture with the committed version before replacing it; review revision bumps explicitly.
+- Run the reference encoder rather than retyping its logic. Keep cases independent and set up stateful transitions explicitly.
+- Capture every transmission; fail on omitted cases or extraction drift.
+- Keep inputs, native expectations and case generation together. Cover boundaries and non-default features. Store inspectable outputs, not just hashes. Document evidence-backed deviations instead of reproducing reference bugs.
 
 ## Before Requesting Review
 
-- Audit the whole affected family set when fixing a shared invariant. A finding about absent temperatures, native types, stale state or capture boundaries is a prompt to check sibling implementations, not just the cited line.
-- Review the full diff for consistency with existing APIs, tests and docstrings. After an API refactor, remove obsolete adapters, unused tables, duplicate properties and stale documentation. Run relevant tests and all required hooks on the final changes; verify CI belongs to the current head.
+- When fixing a shared invariant, check every sibling family, not just the cited line.
+- Review the full diff against existing APIs, tests and docstrings; remove obsolete adapters, tables, properties and docs after refactors. Verify CI ran on the current head.
 
 ## AI policy
 
