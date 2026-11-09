@@ -21,6 +21,7 @@ class EdifierCommandSet(StrEnum):
     S360DB = "s360db"
     RC20G = "rc20g"
     RC2_1B = "rc2_1b"
+    RC80B = "rc80b"
     S3000PRO = "s3000pro"
 
 
@@ -36,7 +37,6 @@ class EdifierModel(StrEnum):
     D12 = "D12"
     RC12D = "RC12D"
     RC17A = "RC17A"
-    RC80B = "RC80B"
     R1855DB = "R1855DB"
     # R1380DB command set
     R1380DB = "R1380DB"
@@ -58,6 +58,8 @@ class EdifierModel(StrEnum):
     # RC2.1B command set
     S530D = "S530D"
     S730 = "S730"
+    # RC80B command set (toggle input buttons)
+    RC80B = "RC80B"
     # S3000 Pro command set (RCA10B remote)
     S3000PRO = "S3000 Pro"
 
@@ -70,7 +72,6 @@ MODEL_TO_COMMAND_SET: dict[EdifierModel, EdifierCommandSet] = {
     # R1700BTs command set
     EdifierModel.R1700BTS: EdifierCommandSet.R1700BTS,
     EdifierModel.RC17A: EdifierCommandSet.R1700BTS,
-    EdifierModel.RC80B: EdifierCommandSet.R1700BTS,
     EdifierModel.R1855DB: EdifierCommandSet.R1700BTS,
     EdifierModel.D12: EdifierCommandSet.R1700BTS,
     EdifierModel.RC12D: EdifierCommandSet.R1700BTS,
@@ -94,6 +95,8 @@ MODEL_TO_COMMAND_SET: dict[EdifierModel, EdifierCommandSet] = {
     # RC2.1B command set
     EdifierModel.S530D: EdifierCommandSet.RC2_1B,
     EdifierModel.S730: EdifierCommandSet.RC2_1B,
+    # RC80B command set
+    EdifierModel.RC80B: EdifierCommandSet.RC80B,
     # S3000 Pro command set
     EdifierModel.S3000PRO: EdifierCommandSet.S3000PRO,
 }
