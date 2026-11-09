@@ -3,12 +3,13 @@
 Inputs are selected with toggle buttons (Line 1/2 and Opt/Coax).
 """
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.nec import NECCommand
 
 
+@unique
 class EdifierRC80BCode(IntEnum):
     """Edifier RC80B remote IR command codes."""
 
