@@ -3,12 +3,13 @@
 Edifier lists the RC31A remote for R2600 units without A.P.F.S.
 """
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.nec import NECCommand
 
 
+@unique
 class EdifierR2600Code(IntEnum):
     """Edifier R2600 speaker IR command codes."""
 
