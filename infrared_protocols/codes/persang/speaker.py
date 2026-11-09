@@ -5,7 +5,7 @@ handset as a spare for its other Bluetooth speakers, so other models are likely
 to share these codes, but only the Octane 9 has been verified.
 """
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.nec import NECCommand
@@ -13,6 +13,7 @@ from ...commands.nec import NECCommand
 PERSANG_ADDRESS = 0x80
 
 
+@unique
 class PersangSpeakerCode(IntEnum):
     """Persang speaker IR command codes."""
 

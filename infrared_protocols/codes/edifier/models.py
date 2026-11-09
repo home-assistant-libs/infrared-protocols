@@ -4,9 +4,10 @@ Mappings can also be found in
 https://support.edifier-online.com/hc/en-us/articles/4412111975059-Speaker-Remote-Control-Compatibility-List
 """
 
-from enum import StrEnum
+from enum import StrEnum, unique
 
 
+@unique
 class EdifierCommandSet(StrEnum):
     """Edifier command set groupings."""
 
@@ -24,6 +25,7 @@ class EdifierCommandSet(StrEnum):
     S3000PRO = "s3000pro"
 
 
+@unique
 class EdifierModel(StrEnum):
     """Edifier speaker models."""
 

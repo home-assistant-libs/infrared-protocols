@@ -1,11 +1,12 @@
 """Dyson AM09 (Hot+Cool) command codes."""
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.dyson import DysonAm09Command
 
 
+@unique
 class DysonAm09Code(IntEnum):
     """Dyson AM09 IR command codes."""
 

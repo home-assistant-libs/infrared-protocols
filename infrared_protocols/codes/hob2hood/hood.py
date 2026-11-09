@@ -1,11 +1,12 @@
 """Hob2Hood extractor fan and light commands."""
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.hob2hood import Hob2HoodCommand
 
 
+@unique
 class Hob2HoodCode(IntEnum):
     """Commands shared by compatible Hob2Hood extractors."""
 

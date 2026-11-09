@@ -1,11 +1,12 @@
 """Command codes for Edifier R1280DB speakers."""
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.nec import NECCommand
 
 
+@unique
 class EdifierR1280DBCode(IntEnum):
     """Edifier R1280DB speaker IR command codes."""
 

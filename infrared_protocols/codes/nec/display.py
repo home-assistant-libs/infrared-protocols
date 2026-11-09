@@ -6,7 +6,7 @@ volume, channel, menu and guide keys are confirmed against a second NEC
 television remote.
 """
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.proton import ProtonCommand
@@ -14,6 +14,7 @@ from ...commands.proton import ProtonCommand
 NEC_DISPLAY_ADDRESS = 0xF4
 
 
+@unique
 class NECDisplayCode(IntEnum):
     """NEC display IR command codes."""
 

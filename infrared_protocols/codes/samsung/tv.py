@@ -1,11 +1,12 @@
 """Command codes for Samsung TVs (Samsung32 protocol)."""
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.samsung import Samsung32Command
 
 
+@unique
 class SamsungTVCode(IntEnum):
     """Samsung TV IR command codes."""
 

@@ -3,12 +3,13 @@
 The Line/Bal and Opt/Coax buttons each toggle between their two inputs.
 """
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.nec import NECCommand
 
 
+@unique
 class EdifierS3000ProCode(IntEnum):
     """Edifier S3000 Pro remote IR command codes."""
 

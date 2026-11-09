@@ -3,12 +3,13 @@
 Command set used by R1380DB (remote model RC13D).
 """
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.nec import NECCommand
 
 
+@unique
 class EdifierR1380DBCode(IntEnum):
     """Edifier R1380DB speaker IR command codes."""
 

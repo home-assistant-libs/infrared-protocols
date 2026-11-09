@@ -7,7 +7,7 @@ codes. All NAD components share one NEC address.
 DELETE is captured from a NAD AVR 4 remote.
 """
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.nec import NECCommand
@@ -15,6 +15,7 @@ from ...commands.nec import NECCommand
 NAD_TUNER_ADDRESS = 0x7C87
 
 
+@unique
 class NADTunerCode(IntEnum):
     """NAD tuner IR command codes."""
 

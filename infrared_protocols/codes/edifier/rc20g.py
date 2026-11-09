@@ -3,12 +3,13 @@
 This remote has separate left/right volume controls.
 """
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.nec import NECCommand
 
 
+@unique
 class EdifierRC20GCode(IntEnum):
     """Edifier RC20G remote IR command codes."""
 

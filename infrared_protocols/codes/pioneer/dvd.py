@@ -6,7 +6,7 @@ suggests the set is shared across Pioneer DVD devices rather than specific to
 one player.
 """
 
-from enum import Enum
+from enum import Enum, unique
 
 from ...commands import Command
 from ...commands.pioneer import PioneerCommand
@@ -26,6 +26,7 @@ _EXTENDED = (
 )
 
 
+@unique
 class PioneerDVDCode(Enum):
     """IR command code for a Pioneer DVD player.
 
