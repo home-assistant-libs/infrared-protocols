@@ -113,6 +113,7 @@ class PioneerCommand(Command):
         try:
             packets = frames(timings, period=PIONEER_FRAME_PERIOD_US)
             for index, frame in enumerate(packets):
+                # A clipped second frame may be the button, not a held-key repeat.
                 if len(messages) >= 2 and len(frame) < 67 and index == len(packets) - 1:
                     expected = messages[index % 2]
                     validate_pulse_prefix(frame, cls._frame(*expected))
