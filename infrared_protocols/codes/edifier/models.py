@@ -63,6 +63,7 @@ class EdifierModel(StrEnum):
     S3000PRO = "S3000 Pro"
     # S351DB command set (RCA10C remote)
     S351DB = "S351DB"
+    RCA10C = "RCA10C"
 
 
 MODEL_TO_COMMAND_SET: dict[EdifierModel, EdifierCommandSet] = {
@@ -101,4 +102,5 @@ MODEL_TO_COMMAND_SET: dict[EdifierModel, EdifierCommandSet] = {
     EdifierModel.S3000PRO: EdifierCommandSet.S3000PRO,
     # S351DB command set
     EdifierModel.S351DB: EdifierCommandSet.S351DB,
+    EdifierModel.RCA10C: EdifierCommandSet.S351DB,
 }

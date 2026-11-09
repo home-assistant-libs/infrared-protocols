@@ -3,12 +3,13 @@
 The remote's OPT button has not been captured yet.
 """
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.nec import NECCommand
 
 
+@unique
 class EdifierS351DBCode(IntEnum):
     """Edifier S351DB speaker IR command codes."""
 

@@ -6,12 +6,6 @@ from infrared_protocols.codes.edifier.s351db import EdifierS351DBCode
 from infrared_protocols.commands.nec import NECCommand
 
 
-def test_edifier_s351db_codes_are_unique() -> None:
-    """Every code must be distinct, since duplicates become silent aliases."""
-    members = EdifierS351DBCode.__members__
-    assert len(members) == len(set(members.values()))
-
-
 @pytest.mark.parametrize(
     ("code", "command"),
     [
