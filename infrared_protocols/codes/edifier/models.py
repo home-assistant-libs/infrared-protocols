@@ -22,6 +22,7 @@ class EdifierCommandSet(StrEnum):
     RC20G = "rc20g"
     RC2_1B = "rc2_1b"
     S3000PRO = "s3000pro"
+    S351DB = "s351db"
 
 
 class EdifierModel(StrEnum):
@@ -60,6 +61,8 @@ class EdifierModel(StrEnum):
     S730 = "S730"
     # S3000 Pro command set (RCA10B remote)
     S3000PRO = "S3000 Pro"
+    # S351DB command set (RCA10C remote)
+    S351DB = "S351DB"
 
 
 MODEL_TO_COMMAND_SET: dict[EdifierModel, EdifierCommandSet] = {
@@ -96,4 +99,6 @@ MODEL_TO_COMMAND_SET: dict[EdifierModel, EdifierCommandSet] = {
     EdifierModel.S730: EdifierCommandSet.RC2_1B,
     # S3000 Pro command set
     EdifierModel.S3000PRO: EdifierCommandSet.S3000PRO,
+    # S351DB command set
+    EdifierModel.S351DB: EdifierCommandSet.S351DB,
 }
