@@ -39,9 +39,9 @@
 
 - Reuse existing transports, models, enums and timing helpers when semantics match.
 - Implement from protocol facts and captures; don't copy code under non-MIT-compatible licenses. Reference comparison tooling belongs in `script/reference/`; extracted external code stays in its temporary build directory.
-- Store one validated payload; derive encoding, state and properties from it. Avoid independently writable copies or stale caches.
+- Read decoded properties from the same payload that the encoder sends. If the payload changes, properties such as temperature must reflect the new bytes.
 - Subclass only when the parent's public contract holds. Share framing/checksum code; don't expose options a subclass must reject.
-- For climate/AC commands, read [Climate command guidance](docs/climate.md).
+- For climate/AC commands, read [Climate command guidance](agent-docs/climate.md).
 
 ### Receiver and transmission behavior
 
@@ -61,7 +61,7 @@
 - Prefer `@pytest.mark.usefixtures` over arguments when the argument is not used.
 - Avoid conditions/branching in tests: split tests or adjust the parametrization to cover all cases without branching.
 - If multiple tests share most of their code, merge them with `pytest.mark.parametrize`, naming cases via `pytest.param` with an `id`.
-- Protocol tests go in `tests/commands/test_<protocol>.py`, code-table tests in `tests/codes/test_<brand>_<module>.py`. Test code-table uniqueness.
+- Protocol tests go in `tests/commands/test_<protocol>.py`, code-table tests in `tests/codes/test_<brand>_<module>.py`.
 - Use independent expected bytes/timings: round trips alone cannot catch a shared wrong table or checksum. Assert all relevant public fields and their types.
 - Test single and joined captures, every public capture entry point, custom idle values and jitter near split thresholds.
 - Cover scaling in both directions, fixed mark/space bias, trailing or merged idle, and truncation. Assert exact decoded fields. Use recorded captures where available; synthetic signals do not establish hardware compatibility.

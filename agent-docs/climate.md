@@ -5,7 +5,7 @@ Read this when adding or changing climate/AC commands. General contributor rules
 ## Native models and state
 
 - Model the device's native values. No shared climate enums or universal state templates; Home Assistant integrations normalize.
-- Require an explicit model when identical framing has different meanings. Document overlapping decoders and model differences.
+- If two models interpret the same bytes differently, require the caller to select the model. For example, one model may use a bit for swing while another uses it for a fixed vane position. Document these differences; do not guess the model from the signal.
 - Name fan enums `<Family>FanSpeed` and the wire unit flag `is_fahrenheit`. For input conversion without a wire unit flag, use a distinct name such as Mitsubishi's `fahrenheit_compatibility`.
 - Include only fields the family can carry. Decode absent or ambiguous fields (e.g. temperature in fan-only) as `None`; constructors accept `None` there. Keep retained wire values separate when needed to rebuild a packet.
 - Distinguish absolute state, toggles, relative actions, auxiliary frames and sensor reports. An action or follow-up packet must not manufacture a complete climate state.
