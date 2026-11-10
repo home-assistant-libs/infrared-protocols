@@ -1,11 +1,12 @@
 """Coolix climate button commands."""
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.coolix import CoolixCommand
 
 
+@unique
 class CoolixCode(IntEnum):
     """Dedicated commands; toggle actions require caller-maintained state."""
 

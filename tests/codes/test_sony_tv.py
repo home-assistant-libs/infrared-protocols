@@ -14,12 +14,6 @@ SIRC12_ENTRIES = 26
 SIRC_FRAME_PERIOD_US = 45000
 
 
-def test_sony_tv_codes_are_unique() -> None:
-    """Every code must be distinct, since duplicates become silent aliases."""
-    members = SonyTVCode.__members__
-    assert len(members) == len(set(members.values()))
-
-
 def test_sony_tv_code_get_raw_timings_power() -> None:
     """Test the encoded frame for a Sony television power press."""
     expected_raw_timings = [

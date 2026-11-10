@@ -9,12 +9,6 @@ from infrared_protocols.codes.nad.amplifier import (
 from infrared_protocols.commands.nec import NECCommand
 
 
-def test_nad_amplifier_codes_are_unique() -> None:
-    """Every code must be distinct, since duplicates become silent aliases."""
-    members = NADAmplifierCode.__members__
-    assert len(members) == len(set(members.values()))
-
-
 @pytest.mark.parametrize(
     ("code", "command"),
     [

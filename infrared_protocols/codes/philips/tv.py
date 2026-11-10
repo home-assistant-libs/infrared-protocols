@@ -1,6 +1,6 @@
 """Command codes for Philips TVs."""
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.rc6 import RC6Command
@@ -8,6 +8,7 @@ from ...commands.rc6 import RC6Command
 PHILIPS_TV_ADDRESS = 0x00
 
 
+@unique
 class PhilipsTVCode(IntEnum):
     """Philips TV IR command codes."""
 

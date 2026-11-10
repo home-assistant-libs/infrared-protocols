@@ -6,18 +6,6 @@ from infrared_protocols.codes.philips.tv import PhilipsTVCode
 from infrared_protocols.commands.rc6 import RC6Command
 
 
-def test_philips_tv_codes_are_unique() -> None:
-    """Every code must be distinct.
-
-    ``IntEnum`` silently aliases duplicate values, so a transcription slip
-    would otherwise turn two buttons into one without failing anything. The
-    check has to go through ``__members__``, because iterating the enum
-    itself already hides aliases and would compare equal either way.
-    """
-    members = PhilipsTVCode.__members__
-    assert len(members) == len(set(members.values()))
-
-
 @pytest.mark.parametrize(
     ("code", "expected_command"),
     [

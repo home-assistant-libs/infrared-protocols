@@ -3,7 +3,7 @@
 Power is a toggle; the TV has no discrete on or off codes.
 """
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.nec import NECCommand
@@ -12,6 +12,7 @@ from ...commands.nec import NECCommand
 CROMA_ADDRESS = 0xBF40
 
 
+@unique
 class CromaTVCode(IntEnum):
     """Croma TV IR command codes."""
 

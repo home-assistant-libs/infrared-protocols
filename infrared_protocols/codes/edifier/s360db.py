@@ -3,12 +3,13 @@
 Shared command set used by S360DB and RC31A.
 """
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.nec import NECCommand
 
 
+@unique
 class EdifierS360DBCode(IntEnum):
     """Edifier S360DB speaker IR command codes."""
 
