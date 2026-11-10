@@ -4,12 +4,13 @@ Each value is the message type byte of a 7-byte util message the remote emits ve
 unlike the state frames built by ``FujitsuAcCommand``.
 """
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.fujitsu_ac import FujitsuAcFixedCommand
 
 
+@unique
 class FujitsuACCode(IntEnum):
     """Fujitsu General AC fixed-code button; value is the message type byte."""
 

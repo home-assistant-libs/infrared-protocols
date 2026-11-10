@@ -5,13 +5,14 @@ SR-19, SR-7000/7300, SR7200, SR670, AV-9000). Not every model responds to
 every code; see ``models.py`` for per-model support.
 """
 
-from enum import Enum
+from enum import Enum, unique
 
 from ...commands import Command
 from ...commands.marantz_extended import MarantzExtendedCommand
 from ...commands.rc5 import RC5Command
 
 
+@unique
 class MarantzAudioCode(Enum):
     """IR command code for a Marantz audio amplifier or receiver.
 

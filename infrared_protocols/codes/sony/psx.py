@@ -16,7 +16,7 @@ multiple PSX units to be controlled independently in the same room.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, unique
 
 from ...commands import Command
 from ...commands.sony import SonyCommand
@@ -28,6 +28,7 @@ _SWITCH_TO_ADDRESS = {
 }
 
 
+@unique
 class SonyPSXCode(Enum):
     """Sony PSX IR command codes.
 

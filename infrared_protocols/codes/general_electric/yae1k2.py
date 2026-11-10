@@ -1,6 +1,6 @@
 """Command codes for the GE YAE1K2 AC remote."""
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.general_electric import GEACCommand
@@ -8,6 +8,7 @@ from ...commands.general_electric import GEACCommand
 YAE1K2_ADDRESS = 0xEB
 
 
+@unique
 class YAE1K2Code(IntEnum):
     """GE YAE1K2 AC remote IR command codes."""
 

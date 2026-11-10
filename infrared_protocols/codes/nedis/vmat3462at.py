@@ -1,11 +1,12 @@
 """Command codes for the Nedis VMAT3462AT HDMI switch."""
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.nec import NECCommand
 
 
+@unique
 class NedisVMAT3462ATCode(IntEnum):
     """Nedis VMAT3462AT HDMI switch IR command codes."""
 

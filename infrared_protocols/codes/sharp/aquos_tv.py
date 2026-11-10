@@ -1,11 +1,12 @@
 """Command codes for Sharp AQUOS TVs."""
 
-from enum import Enum
+from enum import Enum, unique
 
 from ...commands import Command
 from ...commands.sharp import SharpCommand
 
 
+@unique
 class SharpAquosTVCode(Enum):
     """Sharp AQUOS TV IR command codes.
 

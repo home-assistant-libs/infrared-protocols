@@ -4,12 +4,13 @@ Each value is the 16-bit body of an LG2 frame the remote emits verbatim, unlike 
 state frames built by ``LgAcCommand``.
 """
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.lg_ac import LgAcFixedCommand
 
 
+@unique
 class LGACCode(IntEnum):
     """LG AC fixed-code button; value is the 16-bit frame body."""
 
