@@ -18,6 +18,7 @@ class EdifierCommandSet(StrEnum):
     R1280DB = "r1280db"
     R1280T = "r1280t"
     R2000DB = "r2000db"
+    S351DB = "s351db"
     R2730DB = "r2730db"
     S360DB = "s360db"
     RC20G = "rc20g"
@@ -25,7 +26,6 @@ class EdifierCommandSet(StrEnum):
     RC80B = "rc80b"
     S3000PRO = "s3000pro"
     R2600 = "r2600"
-    S351DB = "s351db"
 
 
 @unique
@@ -58,6 +58,9 @@ class EdifierModel(StrEnum):
     # R2000DB command set (RC10D remote)
     R2000DB = "R2000DB"
     RC10D = "RC10D"
+    # S351DB command set (RCA10C remote)
+    S351DB = "S351DB"
+    RCA10C = "RCA10C"
     # R2730DB command set (RC10D1 remote)
     R2730DB = "R2730DB"
     RC10D1 = "RC10D1"
@@ -79,9 +82,6 @@ class EdifierModel(StrEnum):
     # R2600 command set (RC31A remote)
     R2600 = "R2600"
     RC31A = "RC31A"
-    # S351DB command set (RCA10C remote)
-    S351DB = "S351DB"
-    RCA10C = "RCA10C"
 
 
 MODEL_TO_COMMAND_SET: dict[EdifierModel, EdifierCommandSet] = {
@@ -111,6 +111,9 @@ MODEL_TO_COMMAND_SET: dict[EdifierModel, EdifierCommandSet] = {
     # R2000DB command set
     EdifierModel.R2000DB: EdifierCommandSet.R2000DB,
     EdifierModel.RC10D: EdifierCommandSet.R2000DB,
+    # S351DB command set
+    EdifierModel.S351DB: EdifierCommandSet.S351DB,
+    EdifierModel.RCA10C: EdifierCommandSet.S351DB,
     # R2730DB command set
     EdifierModel.R2730DB: EdifierCommandSet.R2730DB,
     EdifierModel.RC10D1: EdifierCommandSet.R2730DB,
@@ -132,7 +135,4 @@ MODEL_TO_COMMAND_SET: dict[EdifierModel, EdifierCommandSet] = {
     # R2600 command set
     EdifierModel.R2600: EdifierCommandSet.R2600,
     EdifierModel.RC31A: EdifierCommandSet.R2600,
-    # S351DB command set
-    EdifierModel.S351DB: EdifierCommandSet.S351DB,
-    EdifierModel.RCA10C: EdifierCommandSet.S351DB,
 }
