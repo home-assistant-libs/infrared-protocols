@@ -75,6 +75,33 @@ PM6006 = MarantzModel(
     ),
 )
 
+
+PM8006 = MarantzModel(
+    name="PM8006 Integrated Amplifier",
+    codes=_STANDARD_AUDIO
+    | frozenset(
+        {
+            MarantzAudioCode.SPEAKER_AB,
+            MarantzAudioCode.SPEAKER_A_ON,
+            MarantzAudioCode.SPEAKER_A_OFF,
+            MarantzAudioCode.SPEAKER_B_ON,
+            MarantzAudioCode.SPEAKER_B_OFF,
+            MarantzAudioCode.INPUT_NEXT,
+            MarantzAudioCode.INPUT_PREVIOUS,
+            MarantzAudioCode.SOURCE_DIRECT,
+            MarantzAudioCode.POWER_AMP_DIRECT_ON,
+            MarantzAudioCode.POWER_AMP_DIRECT_OFF,
+            MarantzAudioCode.SOURCE_PHONO,
+            MarantzAudioCode.SOURCE_CD,
+            MarantzAudioCode.SOURCE_NETWORK,
+            MarantzAudioCode.SOURCE_TUNER,
+            MarantzAudioCode.SOURCE_DVD_PM8006,
+            MarantzAudioCode.SOURCE_AUX_PM8006,
+            MarantzAudioCode.SOURCE_CDR,
+        }
+    ),
+)
+
 RC042SR = MarantzModel(
     name="RC042SR Audio Receiver",
     codes=_STANDARD_AUDIO
@@ -239,6 +266,7 @@ AV_9000 = MarantzModel(
 ALL_MODELS: tuple[MarantzModel, ...] = (
     GENERIC,
     PM6006,
+    PM8006,
     RC042SR,
     SR_19,
     SR_7000,
