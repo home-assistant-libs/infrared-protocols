@@ -1,6 +1,6 @@
 """Shared IR command codes for Marantz audio amplifiers and receivers.
 
-Codes are unioned across publicly documented Marantz remotes (PM6006, RC042SR,
+Codes are unioned across publicly documented Marantz remotes (PM6006, PM8006, RC042SR,
 SR-19, SR-7000/7300, SR7200, SR670, AV-9000). Not every model responds to
 every code; see ``models.py`` for per-model support.
 """
@@ -37,6 +37,10 @@ class MarantzAudioCode(Enum):
     TREBLE_UP = (0x10, 0x18)
     TREBLE_DOWN = (0x10, 0x19)
     SPEAKER_AB = (0x10, 0x1D)
+    SPEAKER_A_ON = (0x10, 0x23, 0x00)
+    SPEAKER_A_OFF = (0x10, 0x23, 0x01)
+    SPEAKER_B_ON = (0x10, 0x27, 0x00)
+    SPEAKER_B_OFF = (0x10, 0x27, 0x01)
     POWER_AMP_DIRECT_ON = (0x10, 0x01, 0x1E)
     POWER_AMP_DIRECT_OFF = (0x10, 0x01, 0x1F)
     SOURCE_DIRECT = (0x10, 0x22)
@@ -46,6 +50,8 @@ class MarantzAudioCode(Enum):
     REWIND = (0x10, 0x2C)
     LOUDNESS = (0x10, 0x32)
     INPUT_CYCLE = (0x10, 0x40)
+    INPUT_NEXT = (0x10, 0x00, 0x0D)
+    INPUT_PREVIOUS = (0x10, 0x00, 0x0E)
     SURROUND_UP = (0x10, 0x41)
     SURROUND_DOWN = (0x10, 0x42)
     # Cursor pad (RC5X — command bit 6 set).
@@ -101,6 +107,7 @@ class MarantzAudioCode(Enum):
     # Marantz extended — auxiliary / DVD source slots.
     SOURCE_DVD = (0x16, 0x00, 0x10)
     SOURCE_DVD_PM8006 = (0x10, 0x00, 0x0A)
+    SOURCE_AUX_PM8006 = (0x10, 0x00, 0x06)
     SOURCE_AUX_1 = (0x16, 0x00, 0x06)
     SOURCE_AUX_2 = (0x16, 0x00, 0x07)
     SOURCE_AUX_3 = (0x16, 0x00, 0x08)

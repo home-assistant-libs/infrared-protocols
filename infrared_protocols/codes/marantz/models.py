@@ -82,6 +82,12 @@ PM8006 = MarantzModel(
     | frozenset(
         {
             MarantzAudioCode.SPEAKER_AB,
+            MarantzAudioCode.SPEAKER_A_ON,
+            MarantzAudioCode.SPEAKER_A_OFF,
+            MarantzAudioCode.SPEAKER_B_ON,
+            MarantzAudioCode.SPEAKER_B_OFF,
+            MarantzAudioCode.INPUT_NEXT,
+            MarantzAudioCode.INPUT_PREVIOUS,
             MarantzAudioCode.SOURCE_DIRECT,
             MarantzAudioCode.POWER_AMP_DIRECT_ON,
             MarantzAudioCode.POWER_AMP_DIRECT_OFF,
@@ -90,6 +96,7 @@ PM8006 = MarantzModel(
             MarantzAudioCode.SOURCE_NETWORK,
             MarantzAudioCode.SOURCE_TUNER,
             MarantzAudioCode.SOURCE_DVD_PM8006,
+            MarantzAudioCode.SOURCE_AUX_PM8006,
             MarantzAudioCode.SOURCE_CDR,
         }
     ),
