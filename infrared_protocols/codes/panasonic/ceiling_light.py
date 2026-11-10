@@ -1,11 +1,12 @@
 """Command codes for Panasonic Ceiling Lights (Kaseikyo protocol)."""
 
-from enum import Enum
+from enum import Enum, unique
 
 from ...commands import Command
 from ...commands.kaseikyo import KaseikyoCommand
 
 
+@unique
 class PanasonicCeilingLightCode(Enum):
     """Panasonic Ceiling Light IR command codes."""
 

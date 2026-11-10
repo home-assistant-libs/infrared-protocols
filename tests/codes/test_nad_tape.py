@@ -10,12 +10,6 @@ from infrared_protocols.codes.nad.tape import NAD_TAPE_ADDRESS, NADTapeCode
 from infrared_protocols.commands.nec import NECCommand
 
 
-def test_nad_tape_codes_are_unique() -> None:
-    """Every code must be distinct, since duplicates become silent aliases."""
-    members = NADTapeCode.__members__
-    assert len(members) == len(set(members.values()))
-
-
 def test_nad_tape_codes_do_not_overlap_amplifier() -> None:
     """All NAD components share one address, so their codes must not collide."""
     assert NAD_TAPE_ADDRESS == NAD_AMPLIFIER_ADDRESS

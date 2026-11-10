@@ -6,12 +6,6 @@ from infrared_protocols.codes.coolix.climate import CoolixCode
 from infrared_protocols.commands.coolix import CoolixCommand
 
 
-def test_codes_are_unique() -> None:
-    """Named buttons must not silently become aliases."""
-    members = CoolixCode.__members__
-    assert len(members) == len(set(members.values()))
-
-
 @pytest.mark.parametrize("code", list(CoolixCode))
 def test_coolix_buttons(code: CoolixCode) -> None:
     """Known button actions retain their complete command word."""

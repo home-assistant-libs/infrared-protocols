@@ -1,6 +1,6 @@
 """Command codes for OSRAM LEDVANCE RGB light bulbs."""
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.nec import NECCommand
@@ -8,6 +8,7 @@ from ...commands.nec import NECCommand
 OSRAM_ADDRESS = 0xFF00
 
 
+@unique
 class OsramLightCode(IntEnum):
     """OSRAM LEDVANCE RGB light bulb IR command codes."""
 

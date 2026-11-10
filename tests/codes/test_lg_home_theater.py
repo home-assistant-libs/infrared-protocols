@@ -6,12 +6,6 @@ from infrared_protocols.codes.lg.home_theater import LGHomeTheaterCode
 from infrared_protocols.commands.samsung import Samsung32Command
 
 
-def test_lg_home_theater_codes_are_unique() -> None:
-    """Every code must be distinct, since duplicates become silent aliases."""
-    members = LGHomeTheaterCode.__members__
-    assert len(members) == len(set(members.values()))
-
-
 @pytest.mark.parametrize(
     ("code", "command"),
     [

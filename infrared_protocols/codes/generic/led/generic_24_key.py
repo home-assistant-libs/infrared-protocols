@@ -1,10 +1,13 @@
 """Command codes for generic 24-key LED remote control."""
 
+from enum import unique
+
 from ....commands import Command
 from ....commands.nec import NECCommand
 from .base import BaseGenericLEDCode
 
 
+@unique
 class Generic24KeyCode(BaseGenericLEDCode):
     """Generic 24-key LED remote control IR command codes."""
 

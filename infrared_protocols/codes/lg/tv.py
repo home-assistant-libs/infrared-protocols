@@ -1,6 +1,6 @@
 """Command codes for LG TVs."""
 
-from enum import Enum, IntEnum
+from enum import Enum, IntEnum, unique
 
 from ...commands import Command
 from ...commands.nec import NECCommand
@@ -8,6 +8,7 @@ from ...commands.nec import NECCommand
 LG_ADDRESS = 0xFB04
 
 
+@unique
 class LGTVCode(IntEnum):
     """LG TV IR command codes."""
 
@@ -70,6 +71,7 @@ class LGTVCode(IntEnum):
         )
 
 
+@unique
 class LGTVCodeJP(Enum):
     """Japan-specific LG TV IR command codes.
 

@@ -5,7 +5,7 @@ on NAD receiver and amplifier remotes. All NAD components share one NEC
 address, so amplifiers and receivers ignore these codes and the CD player responds.
 """
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.nec import NECCommand
@@ -13,6 +13,7 @@ from ...commands.nec import NECCommand
 NAD_CD_ADDRESS = 0x7C87
 
 
+@unique
 class NADCDCode(IntEnum):
     """NAD CD player IR command codes."""
 

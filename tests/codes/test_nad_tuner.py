@@ -12,12 +12,6 @@ from infrared_protocols.codes.nad.tuner import NAD_TUNER_ADDRESS, NADTunerCode
 from infrared_protocols.commands.nec import NECCommand
 
 
-def test_nad_tuner_codes_are_unique() -> None:
-    """Every code must be distinct, since duplicates become silent aliases."""
-    members = NADTunerCode.__members__
-    assert len(members) == len(set(members.values()))
-
-
 @pytest.mark.parametrize(
     "other",
     [

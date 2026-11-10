@@ -7,12 +7,6 @@ from infrared_protocols.commands.nec import NECCommand
 from infrared_protocols.commands.pronto import ProntoCommand
 
 
-def test_generic_10_key_b708_codes_are_unique() -> None:
-    """Every code must be distinct, since duplicates become silent aliases."""
-    members = Generic10KeyB708Code.__members__
-    assert len(members) == len(set(members.values()))
-
-
 # Captured from the original remote of a Flinq LED candle.
 @pytest.mark.parametrize(
     ("code", "pronto_hex"),

@@ -9,12 +9,6 @@ from infrared_protocols.codes.nec.display import (
 from infrared_protocols.commands.proton import ProtonCommand
 
 
-def test_nec_display_codes_are_unique() -> None:
-    """Every code must be distinct, since duplicates become silent aliases."""
-    members = NECDisplayCode.__members__
-    assert len(members) == len(set(members.values()))
-
-
 @pytest.mark.parametrize(
     ("code", "command"),
     [
