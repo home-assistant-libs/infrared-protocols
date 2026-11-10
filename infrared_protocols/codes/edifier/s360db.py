@@ -1,7 +1,4 @@
-"""Command codes for Edifier S360DB speakers.
-
-Shared command set used by S360DB and RC31A.
-"""
+"""Command codes for Edifier S360DB speakers."""
 
 from enum import IntEnum, unique
 
