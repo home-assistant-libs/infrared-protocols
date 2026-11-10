@@ -6,7 +6,7 @@ address. Dual-cassette decks use both sets; single-cassette decks respond to
 the deck B codes.
 """
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.nec import NECCommand
@@ -14,6 +14,7 @@ from ...commands.nec import NECCommand
 NAD_TAPE_ADDRESS = 0x7C87
 
 
+@unique
 class NADTapeCode(IntEnum):
     """NAD cassette deck IR command codes."""
 

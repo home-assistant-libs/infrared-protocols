@@ -1,6 +1,6 @@
 """Command codes for Vizio TVs."""
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.nec import NECCommand
@@ -8,6 +8,7 @@ from ...commands.nec import NECCommand
 VIZIO_ADDRESS = 0x04
 
 
+@unique
 class VizioTVCode(IntEnum):
     """Vizio TV IR command codes."""
 

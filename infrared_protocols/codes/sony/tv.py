@@ -11,7 +11,7 @@ every code. Older sets in particular use ENTER rather than OK to confirm a
 selection.
 """
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.sony import SonyCommand
@@ -20,6 +20,7 @@ SONY_TV_ADDRESS = 0x01
 SONY_TV_ADDRESS_BITS = 5
 
 
+@unique
 class SonyTVCode(IntEnum):
     """Sony television IR command codes."""
 

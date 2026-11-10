@@ -15,7 +15,7 @@ For PSX (DESR-XXXX) models, see psx.py.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, unique
 
 from ...commands import Command
 from ...commands.sony import SonyCommand
@@ -24,6 +24,7 @@ _DVD_ADDRESS = 0x1A49
 _PS2_ADDRESS = 0x1ADA
 
 
+@unique
 class SonyPlayStation2Code(Enum):
     """Sony PlayStation 2 IR command codes.
 
