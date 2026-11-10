@@ -1,9 +1,11 @@
-name: Verify PR labels
+name: PR labels
 
 on:
-  pull_request:
+  pull_request_target: # zizmor: ignore[dangerous-triggers] -- safe: only reads PR metadata from the event payload, never checks out PR code
     types:
       - opened
+      - edited
+      - reopened
       - synchronize
       - labeled
       - unlabeled
@@ -14,12 +16,73 @@ permissions: {}
 
 jobs:
   verify:
+    # Labeling and verification share one job: labels added with GITHUB_TOKEN
+    # do not trigger a new run, so a separate check would never see them.
     name: Verify PR labels
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write # To label pull requests
     steps:
-      - name: Verify PR has a valid label
-        uses: ludeeus/action-require-labels@be19cd7f04c6fad46a85336f9e9cebdf961807bb # 2.0.0
+      - name: Apply labels from template and verify
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
-          labels: >-
-            breaking-change, bugfix, ci, dependencies, documentation,
-            enhancement, maintenance, new-feature
+          script: |
+            // PR template "Type of change" option text -> label.
+            const TYPE_LABELS = {
+              "Breaking change": "breaking-change",
+              "New feature": "new-feature",
+              "Enhancement": "enhancement",
+              "Bugfix": "bugfix",
+              "Dependency upgrade": "dependencies",
+              "Maintenance": "maintenance",
+              "CI": "ci",
+              "Documentation": "documentation",
+            };
+            const REQUIRED_LABELS = Object.values(TYPE_LABELS);
+
+            const checkedLabels = (body) => {
+              const checked = new Set();
+              for (const [text, label] of Object.entries(TYPE_LABELS)) {
+                const re = new RegExp(`^\\s*[-*] \\[[xX]\\] ${text}\\b`, "m");
+                if (re.test(body ?? "")) {
+                  checked.add(label);
+                }
+              }
+              return checked;
+            };
+
+            const { action, changes, pull_request: pr } = context.payload;
+            const issue = { ...context.repo, issue_number: pr.number };
+            const current = new Set(
+              (await github.rest.issues.listLabelsOnIssue({ ...issue, per_page: 100 }))
+                .data.map((label) => label.name),
+            );
+
+            // Only act on boxes the author toggled, so labels set manually by
+            // maintainers are left alone.
+            if (["opened", "reopened"].includes(action) || changes?.body) {
+              const now = checkedLabels(pr.body);
+              const before = action === "edited" ? checkedLabels(changes.body.from) : new Set();
+              const toAdd = [...now].filter((l) => !before.has(l) && !current.has(l));
+              const toRemove = [...before].filter((l) => !now.has(l) && current.has(l));
+              if (toAdd.length) {
+                core.info(`Adding labels: ${toAdd.join(", ")}`);
+                await github.rest.issues.addLabels({ ...issue, labels: toAdd });
+                toAdd.forEach((l) => current.add(l));
+              }
+              for (const name of toRemove) {
+                core.info(`Removing label: ${name}`);
+                await github.rest.issues.removeLabel({ ...issue, name });
+                current.delete(name);
+              }
+            }
+
+            const matching = REQUIRED_LABELS.filter((l) => current.has(l));
+            if (matching.length) {
+              core.info(`Found matching label(s): ${matching.join(", ")}`);
+            } else {
+              core.setFailed(
+                `PR needs one of these labels: ${REQUIRED_LABELS.join(", ")}. ` +
+                  'Check the matching box under "Type of change" in the PR description.',
+              );
+            }

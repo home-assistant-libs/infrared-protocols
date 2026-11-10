@@ -3,12 +3,13 @@
 Shared command set used by R2730DB and RC10D1.
 """
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.nec import NECCommand
 
 
+@unique
 class EdifierR2730DBCode(IntEnum):
     """Edifier R2730DB speaker IR command codes."""
 

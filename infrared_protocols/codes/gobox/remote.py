@@ -1,11 +1,12 @@
 """Go-Box remote button codes."""
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.gobox import GoboxCommand
 
 
+@unique
 class GoboxCode(IntEnum):
     """Go-Box navigation, playback and adjustment buttons."""
 

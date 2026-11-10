@@ -3,12 +3,13 @@
 The 2017 revision of the R1700BT uses the RC10G remote (6 buttons, including power).
 """
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.nec import NECCommand
 
 
+@unique
 class EdifierR1700BT2017Code(IntEnum):
     """Edifier R1700BT (2017) speaker IR command codes."""
 

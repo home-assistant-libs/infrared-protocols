@@ -1,11 +1,12 @@
 """Command codes for SilverCrest fans."""
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.symphony import SymphonyCommand, SymphonyKey
 
 
+@unique
 class SilverCrestFanCode(IntEnum):
     """Command codes for SilverCrest fans."""
 

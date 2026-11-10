@@ -21,12 +21,6 @@ def test_pioneer_dvd_codes_have_no_private_members() -> None:
     assert [name for name in PioneerDVDCode.__members__ if name.startswith("_")] == []
 
 
-def test_pioneer_dvd_codes_are_unique() -> None:
-    """Every code must be distinct, since duplicates become silent aliases."""
-    members = PioneerDVDCode.__members__
-    assert len(members) == len(set(members.values()))
-
-
 @pytest.mark.parametrize(
     ("code", "address", "command"),
     [

@@ -13,7 +13,7 @@ older models: FRONT is the CD input and MP the Phono/Disc input.
 MENU, SOURCE_UP and SOURCE_DOWN are captured from a NAD AVR 4 remote.
 """
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.nec import NECCommand
@@ -23,6 +23,7 @@ from ...commands.nec import NECCommand
 NAD_AMPLIFIER_ADDRESS = 0x7C87
 
 
+@unique
 class NADAmplifierCode(IntEnum):
     """NAD amplifier IR command codes."""
 

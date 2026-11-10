@@ -3,7 +3,7 @@
 Captured from the AKB73775801 remote that ships with the BH4030S.
 """
 
-from enum import IntEnum
+from enum import IntEnum, unique
 
 from ...commands import Command
 from ...commands.samsung import Samsung32Command
@@ -11,6 +11,7 @@ from ...commands.samsung import Samsung32Command
 LG_HOME_THEATER_ADDRESS = 0x2C
 
 
+@unique
 class LGHomeTheaterCode(IntEnum):
     """LG home theater IR command codes."""
 
