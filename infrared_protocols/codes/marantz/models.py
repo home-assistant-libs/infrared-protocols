@@ -89,7 +89,7 @@ PM8006 = MarantzModel(
             MarantzAudioCode.SOURCE_CD,
             MarantzAudioCode.SOURCE_NETWORK,
             MarantzAudioCode.SOURCE_TUNER,
-            MarantzAudioCode.SOURCE_DVD,
+            MarantzAudioCode.SOURCE_DVD_PM8006,
             MarantzAudioCode.SOURCE_CDR,
         }
     ),

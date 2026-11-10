@@ -100,6 +100,7 @@ class MarantzAudioCode(Enum):
 
     # Marantz extended — auxiliary / DVD source slots.
     SOURCE_DVD = (0x16, 0x00, 0x10)
+    SOURCE_DVD_PM8006 = (0x10, 0x00, 0x0A)
     SOURCE_AUX_1 = (0x16, 0x00, 0x06)
     SOURCE_AUX_2 = (0x16, 0x00, 0x07)
     SOURCE_AUX_3 = (0x16, 0x00, 0x08)
