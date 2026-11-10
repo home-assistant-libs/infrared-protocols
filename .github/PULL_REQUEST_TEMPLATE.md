@@ -15,6 +15,23 @@
 
 <!-- Describe what this PR changes and why. -->
 
+## Type of change
+
+<!--
+  Check the box(es) that apply. The matching label is applied to the PR
+  automatically and determines the release notes section and version bump.
+  Do not edit the text of the options.
+-->
+
+- [ ] Breaking change (changes existing public API or behavior in an incompatible way)
+- [ ] New feature (new protocol, device codes, or functionality)
+- [ ] Enhancement (improves existing code without adding new functionality)
+- [ ] Bugfix (fixes an issue in existing code)
+- [ ] Dependency upgrade
+- [ ] Maintenance (cleanup, tooling, or other housekeeping)
+- [ ] CI (GitHub Actions workflows)
+- [ ] Documentation (documentation-only change)
+
 ## Additional information
 
 <!--
