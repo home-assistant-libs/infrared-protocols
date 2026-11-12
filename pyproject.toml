@@ -33,6 +33,9 @@ include-package-data = false
 [tool.setuptools.packages.find]
 include = ["infrared_protocols*"]
 
+[tool.setuptools.package-data]
+infrared_protocols = ["py.typed"]
+
 [tool.ruff.lint]
 select = [
     # pycodestyle
