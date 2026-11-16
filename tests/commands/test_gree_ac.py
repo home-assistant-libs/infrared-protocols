@@ -190,16 +190,62 @@ _YB1F2_HEAT_24 = [
     631, -579, 631, -579, 631, -579, 631,
 ]  # fmt: skip
 
+# Fan only, as received from a YT1F remote: block B leaves bit 13 clear, which the
+# encoder always sets.
+_YT1F_FAN_24_ON = [
+    8944, -4447, 650, -1634, 651, -1634, 650, -545, 650, -1635, 651, -544, 651, -546,
+    649, -545, 650, -546, 650, -545, 651, -545, 650, -545, 650, -1634, 650, -546, 651,
+    -544, 650, -545, 651, -545, 650, -546, 650, -545, 650, -546, 649, -546, 650, -545,
+    650, -1635, 650, -1635, 649, -546, 650, -546, 649, -546, 650, -545, 650, -545, 650,
+    -1635, 650, -545, 650, -1635, 650, -546, 650, -545, 650, -1635, 649, -546, 650,
+    -19857, 650, -546, 650, -545, 650, -545, 650, -546, 650, -545, 650, -545, 651, -545,
+    650, -545, 650, -546, 650, -545, 650, -546, 650, -545, 650, -545, 650, -546, 650,
+    -546, 650, -545, 650, -546, 649, -546, 650, -545, 650, -546, 650, -545, 650, -546,
+    649, -546, 650, -546, 649, -546, 650, -545, 650, -546, 650, -545, 650, -1634, 650,
+    -546, 649, -1636, 649, -1635, 649,
+]  # fmt: skip
+_YT1F_FAN_26_OFF = [
+    8944, -4447, 650, -1634, 651, -1634, 650, -545, 650, -545, 651, -545, 650, -546,
+    650, -545, 650, -546, 649, -545, 651, -1634, 651, -545, 650, -1634, 650, -546, 650,
+    -545, 650, -546, 650, -545, 650, -546, 650, -545, 650, -545, 650, -546, 650, -545,
+    650, -1635, 650, -545, 650, -546, 650, -545, 650, -546, 649, -546, 650, -546, 649,
+    -1635, 649, -546, 651, -1634, 650, -545, 650, -546, 649, -1636, 649, -546, 650,
+    -19857, 650, -545, 651, -545, 650, -546, 650, -544, 651, -545, 650, -545, 651, -545,
+    650, -545, 651, -545, 651, -544, 651, -544, 651, -545, 650, -546, 650, -545, 650,
+    -545, 650, -546, 650, -545, 650, -546, 649, -546, 650, -547, 649, -545, 650, -546,
+    649, -546, 650, -545, 650, -546, 650, -545, 650, -545, 650, -546, 650, -1635, 649,
+    -1635, 650, -1635, 649, -546, 649,
+]  # fmt: skip
 
-def test_decode_yb1f2_capture() -> None:
-    """Decode a raw remote capture with real pulse-length jitter."""
-    result = GreeAcCommand.from_raw_timings(_YB1F2_HEAT_24)
+
+@pytest.mark.parametrize(
+    ("timings", "expected"),
+    [
+        pytest.param(
+            _YB1F2_HEAT_24,
+            GreeAcCommand(mode=GreeAcMode.HEAT, temperature=24, swing_v=True),
+            id="yb1f2_heat_24",
+        ),
+        pytest.param(
+            _YT1F_FAN_24_ON,
+            GreeAcCommand(mode=GreeAcMode.FAN_ONLY, temperature=24, anion=True),
+            id="yt1f_fan_24_on",
+        ),
+        pytest.param(
+            _YT1F_FAN_26_OFF,
+            GreeAcCommand(power=False, mode=GreeAcMode.FAN_ONLY, temperature=26),
+            id="yt1f_fan_26_off",
+        ),
+    ],
+)
+def test_decode_remote_capture(timings: list[int], expected: GreeAcCommand) -> None:
+    """A raw remote capture decodes to its state and re-encodes with bit 13 set."""
+    result = GreeAcCommand.from_raw_timings(timings)
 
     assert result is not None
-    assert result.power
-    assert result.mode == GreeAcMode.HEAT
-    assert result.temperature == 24
-    assert result.fan == GreeAcFanSpeed.AUTO
+    assert vars(result) == vars(expected)
+    _, frame_b = _extract_frames(result.get_raw_timings())
+    assert frame_b[13] == "1"
 
 
 @pytest.mark.parametrize("label", list(_CAPTURED))
@@ -417,7 +463,6 @@ def test_decode_returns_none_for_nec_signal() -> None:
         pytest.param(_frame_a_space(28), -_BIT_ZERO_SPACE, id="trailer_bit_28_cleared"),
         pytest.param(_frame_a_space(30), -_BIT_ZERO_SPACE, id="trailer_bit_30_cleared"),
         pytest.param(_frame_a_space(33), -_BIT_ZERO_SPACE, id="trailer_bit_33_cleared"),
-        pytest.param(_frame_b_space(13), -_BIT_ZERO_SPACE, id="signature_cleared"),
         pytest.param(_frame_a_space(2), -_BIT_ONE_SPACE, id="mode_field_undefined"),
     ],
 )

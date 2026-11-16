@@ -37,7 +37,7 @@ Block A (35 bits):
 Block B (32 bits):
   bit 0:      vertical swing
   bit 4:      horizontal swing
-  bit 13:     fixed signature
+  bit 13:     set by the encoder; some remotes clear it, so the decoder ignores it
   bits 28-31: checksum
 
 Block A's bit 6 records whether anything is swinging; block B's bits 0 and 4 say which
@@ -382,8 +382,6 @@ class GreeAcCommand(Command):
         for index in _A_TRAILER:
             if frame_a[index] != 1:
                 return None
-        if frame_b[_B_SIGNATURE] != 1:
-            return None
 
         # The checksum is computed over the frames as sent, so over block B's latched
         # horizontal bit rather than the effective swing state.
