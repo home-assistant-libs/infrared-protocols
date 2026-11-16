@@ -1,4 +1,4 @@
-"""Command codes for generic ceiling fan with light remote control."""
+"""Command codes for the generic 14-key E27 fan light remote control."""
 
 from enum import IntEnum, unique
 
@@ -7,8 +7,12 @@ from ...commands.nec import NECCommand
 
 
 @unique
-class GenericCeilingFanCode(IntEnum):
-    """Generic ceiling fan with light remote control IR command codes.
+class E27FanLightCode(IntEnum):
+    """IR command codes for the generic 14-key E27 fan light remote control.
+
+    The remote ships with unbranded E27 screw-in fan lights and has 14 keys; this
+    table covers the nine that control the fan and the light. The timer, natural
+    wind and M keys are not mapped yet.
 
     The remote sends NEC frames using address byte 0x01, which is the standard
     NEC address 0x01 plus its inversion 0xFE. Fan and light are each toggled by
