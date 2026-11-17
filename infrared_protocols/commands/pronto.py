@@ -151,7 +151,9 @@ class ProntoCommand(Command):
         """Convert raw timings to ProntoCommand.
 
         If modulation is None, the typical 38000 Hz are used. All timings are
-        encoded as the once sequence.
+        encoded as the once sequence. Timings that end with a mark get a
+        trailing space of one carrier period, because pronto stores
+        mark/space pairs.
         Returns a ProntoCommand.
         """
         if modulation is None:
@@ -165,6 +167,8 @@ class ProntoCommand(Command):
             )
             for timing in timings
         )
+        if len(timings) % 2:
+            timing_data += ProntoCommand._int_to_pronto(value=1)
         return cls(
             pronto_data=b"".join(
                 [
@@ -173,7 +177,7 @@ class ProntoCommand(Command):
                         value=round(PRONTO_REFERENCE_FREQUENCY / modulation)
                     ),  # modulation frequency
                     ProntoCommand._int_to_pronto(
-                        value=len(timings) // 2
+                        value=(len(timings) + 1) // 2
                     ),  # once sequence burst pairs
                     ProntoCommand._int_to_pronto(
                         value=0
