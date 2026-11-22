@@ -74,6 +74,13 @@ def test_encode_pronto_from_timing_clamps_words(
     assert pronto.to_pronto_hex() == expected_pronto_hex
 
 
+def test_encode_pronto_from_timing_ending_with_mark() -> None:
+    """Test that timings that end with a mark get a one-word trailing space."""
+    pronto = ProntoCommand.from_raw_timings([500, -500, 500], 38000)
+    assert pronto.to_pronto_hex() == "0000 006d 0002 0000 0013 0014 0013 0001"
+    assert pronto.get_raw_timings() == [500, -526, 500, -26]
+
+
 def test_decode_pronto_to_timing() -> None:
     """Test that a ProntoCommand can be decoded to raw timings."""
     pronto = ProntoCommand(pronto_data=TEST_DATA_KNOWN_GOOD_PRONTO_FULL)
