@@ -3,7 +3,7 @@
 import pytest
 
 from infrared_protocols.codes.marantz.audio import MarantzAudioCode
-from infrared_protocols.codes.marantz.models import PM8006
+from infrared_protocols.codes.marantz.models import GENERIC, PM8006
 from infrared_protocols.commands.marantz_extended import MarantzExtendedCommand
 
 
@@ -42,3 +42,11 @@ def test_pm8006_source_mappings() -> None:
     """PM8006 uses its own AUX and DVD codes."""
     assert MarantzAudioCode.SOURCE_DVD not in PM8006.codes
     assert MarantzAudioCode.SOURCE_AUX_1 not in PM8006.codes
+
+
+def test_generic_source_mappings() -> None:
+    """Generic exposes one AUX and one DVD code, not the PM8006 variants."""
+    assert MarantzAudioCode.SOURCE_AUX_1 in GENERIC.codes
+    assert MarantzAudioCode.SOURCE_DVD in GENERIC.codes
+    assert MarantzAudioCode.SOURCE_AUX_PM8006 not in GENERIC.codes
+    assert MarantzAudioCode.SOURCE_DVD_PM8006 not in GENERIC.codes

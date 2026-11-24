@@ -52,7 +52,9 @@ _CURSOR_PAD = frozenset(
 
 GENERIC = MarantzModel(
     name="Generic Amplifier",
-    codes=frozenset(MarantzAudioCode),
+    # PM8006 source codes duplicate SOURCE_AUX_1 and SOURCE_DVD with different bytes.
+    codes=frozenset(MarantzAudioCode)
+    - {MarantzAudioCode.SOURCE_AUX_PM8006, MarantzAudioCode.SOURCE_DVD_PM8006},
 )
 
 
