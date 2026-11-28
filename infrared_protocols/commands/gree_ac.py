@@ -76,6 +76,16 @@ _YAP1F_BIT_MARK = 673
 _YAP1F_BIT_ONE_SPACE = 1580
 _YAP1F_BIT_ZERO_SPACE = 516
 _YAP1F_GAPS = (19500, 39000, 19500)
+# The I-Feel room-temperature report has its own, shorter leader. The capture
+# receiver read it as 5695/2832 us while reading the YAP1F state leader as
+# 8557/4263 us (class means above: 8796/4365), so the report leader is scaled by
+# the same receiver ratios: 5695 * 8796 / 8557 ~= 5854, 2832 * 4365 / 4263 ~= 2900.
+_YAP1F_REPORT_LEADER_MARK = 5854
+_YAP1F_REPORT_LEADER_SPACE = 2900
+# Second report byte, constant in every captured report.
+_YAP1F_REPORT_TAG = 0xA5
+# Highest room temperature (deg C) a report may carry.
+YAP1F_REPORT_MAX_TEMP = 50
 
 _FRAME_A_BITS = 35
 _FRAME_B_BITS = 32
@@ -778,3 +788,72 @@ class GreeAcCommand(Command):
             ifeel=bool(state_b[_B1_IFEEL]),
             model=GreeAcModel.YAP1F,
         )
+
+
+class GreeAcIFeelReport(Command):
+    """Gree YAP1F "I-Feel" room-temperature report.
+
+    With I-Feel on, the remote follows its state frames with a separate short
+    burst carrying the temperature it measures: a 5854/2900 us leader (see
+    ``_YAP1F_REPORT_LEADER_MARK``), 16 data bits, then one bit mark. The bits
+    are sent least-significant first per byte: byte 0 is the room temperature
+    in whole degrees Celsius, byte 1 is the constant 0xA5. There is no
+    checksum. The format comes from captured remote frames.
+    """
+
+    def __init__(
+        self,
+        *,
+        temperature: int,
+        model: GreeAcModel = GreeAcModel.YAP1F,
+    ) -> None:
+        """Initialize the report with a room temperature in whole deg C."""
+        if model is not GreeAcModel.YAP1F:
+            raise ValueError("I-Feel reports are only supported for YAP1F")
+        super().__init__(modulation=_YAP1F_MODULATION)
+        if not 0 <= temperature <= YAP1F_REPORT_MAX_TEMP:
+            raise ValueError(
+                f"temperature {temperature} out of range 0..{YAP1F_REPORT_MAX_TEMP}"
+            )
+        self.temperature = temperature
+        self.model = model
+
+    @override
+    def get_raw_timings(self) -> list[int]:
+        """Return leader, 16 data bits and the final bit mark."""
+        value = self.temperature | (_YAP1F_REPORT_TAG << 8)
+        bits = [(value >> i) & 1 for i in range(16)]
+        return _encode_frame(
+            bits,
+            leader=True,
+            leader_mark=_YAP1F_REPORT_LEADER_MARK,
+            leader_space=_YAP1F_REPORT_LEADER_SPACE,
+            bit_mark=_YAP1F_BIT_MARK,
+            bit_one_space=_YAP1F_BIT_ONE_SPACE,
+            bit_zero_space=_YAP1F_BIT_ZERO_SPACE,
+        )
+
+    @classmethod
+    def from_raw_timings(cls, timings: list[int]) -> Self | None:
+        """Strictly decode one report burst, or None if it is not one."""
+        if len(timings) != 2 + 2 * 16 + 1:
+            return None
+        if not _is_close(
+            timings[0], _YAP1F_REPORT_LEADER_MARK, _TOLERANCE
+        ) or not _is_close(abs(timings[1]), _YAP1F_REPORT_LEADER_SPACE, _TOLERANCE):
+            return None
+        if timings[1] >= 0 or abs(timings[-1] - _YAP1F_BIT_MARK) > _BIT_TOLERANCE:
+            return None
+        value = 0
+        for i in range(16):
+            mark, space = timings[2 + 2 * i], timings[3 + 2 * i]
+            if space >= 0 or abs(mark - _YAP1F_BIT_MARK) > _BIT_TOLERANCE:
+                return None
+            if abs(space + _YAP1F_BIT_ONE_SPACE) <= _BIT_TOLERANCE:
+                value |= 1 << i
+            elif abs(space + _YAP1F_BIT_ZERO_SPACE) > _BIT_TOLERANCE:
+                return None
+        temperature, tag = value & 0xFF, value >> 8
+        if tag != _YAP1F_REPORT_TAG or temperature > YAP1F_REPORT_MAX_TEMP:
+            return None
+        return cls(temperature=temperature)
