@@ -68,5 +68,5 @@ addopts = [
     "--tb=short",
 ]
 minversion = "9.0"
-pythonpath = ["."]
+pythonpath = [".", "tests/commands"]
 testpaths = ["tests"]
